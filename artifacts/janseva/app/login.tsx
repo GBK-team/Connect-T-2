@@ -1,15 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Image,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  ScrollView, Platform, ActivityIndicator, KeyboardAvoidingView,
+  Image, Animated, Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -17,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useAuth, UserRole } from "@/context/AuthContext";
+
+const { width } = Dimensions.get("window");
 
 const WARDS = [
   "Ward 1 — Colaba", "Ward 2 — Mazagaon", "Ward 3 — Byculla",
@@ -32,7 +27,7 @@ const roleCards = [
     title: "Citizen",
     subtitle: "नागरिक",
     desc: "Submit complaints, access services & track status",
-    icon: "user",
+    icon: "user" as const,
     color: "#2563EB",
     bg: "#EFF6FF",
     border: "#BFDBFE",
@@ -42,7 +37,7 @@ const roleCards = [
     title: "Nagarsevak",
     subtitle: "नगरसेवक",
     desc: "Ward officer — manage & resolve ward complaints",
-    icon: "briefcase",
+    icon: "briefcase" as const,
     color: "#059669",
     bg: "#ECFDF5",
     border: "#A7F3D0",
@@ -52,79 +47,247 @@ const roleCards = [
     title: "Head Admin",
     subtitle: "मुख्य प्रशासक",
     desc: "Full control — all wards, services & users",
-    icon: "shield",
+    icon: "shield" as const,
     color: "#7C3AED",
     bg: "#F5F3FF",
     border: "#C4B5FD",
   },
 ];
 
+type Step = "phone" | "welcome_back" | "select_role" | "details";
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login } = useAuth();
+  const { checkPhone, register, loginWithPhone } = useAuth();
 
-  const [name, setName] = useState("");
+  const [step, setStep] = useState<Step>("phone");
   const [mobile, setMobile] = useState("");
+  const [name, setName] = useState("");
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [selectedWard, setSelectedWard] = useState(WARDS[7]);
   const [showWardPicker, setShowWardPicker] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"role" | "details">("role");
+  const [existingUser, setExistingUser] = useState<{ name: string; role: UserRole } | null>(null);
+  const [error, setError] = useState("");
+
+  const haptic = () => { if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
+  const hapticSuccess = () => { if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); };
+
+  const selectedRoleCard = roleCards.find((r) => r.role === selectedRole);
+
+  const handlePhoneSubmit = async () => {
+    const cleaned = mobile.trim().replace(/\D/g, "");
+    if (cleaned.length !== 10) { setError("Please enter a valid 10-digit number"); return; }
+    setError("");
+    setLoading(true);
+    haptic();
+    try {
+      const found = await checkPhone(cleaned);
+      if (found) {
+        setExistingUser({ name: found.name, role: found.role });
+        setStep("welcome_back");
+      } else {
+        setStep("select_role");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoginExisting = async () => {
+    setLoading(true);
+    hapticSuccess();
+    try {
+      await loginWithPhone(mobile.trim().replace(/\D/g, ""));
+      router.replace("/(tabs)");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSelectRole = (role: UserRole) => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic();
     setSelectedRole(role);
     setStep("details");
   };
 
-  const handleLogin = async () => {
-    if (!name.trim() || !mobile.trim() || !selectedRole) return;
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleRegister = async () => {
+    if (!name.trim() || !selectedRole) return;
     setLoading(true);
-    setTimeout(async () => {
-      await login({
-        id: "",
+    hapticSuccess();
+    try {
+      await register({
         name: name.trim(),
-        mobile: mobile.trim(),
+        mobile: mobile.trim().replace(/\D/g, ""),
         role: selectedRole,
         ward: selectedRole === "nagarsevak" ? selectedWard : "Ward 8 — Dadar",
         wardNumber: selectedRole === "nagarsevak" ? selectedWard.split(" ")[1] : "8",
       });
-      setLoading(false);
       router.replace("/(tabs)");
-    }, 800);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const selectedRoleCard = roleCards.find((r) => r.role === selectedRole);
+  const roleOfExisting = existingUser ? roleCards.find((r) => r.role === existingUser.role) : null;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* ─── Header gradient ─── */}
       <LinearGradient
-        colors={["#0F172A", "#1E3A8A", "#1E40AF"]}
-        style={[styles.headerBg, { paddingTop: (Platform.OS === "web" ? 67 : insets.top) + 30 }]}
+        colors={["#0C1A3A", "#1E3A8A", "#1E40AF", "#2563EB"]}
+        locations={[0, 0.35, 0.7, 1]}
+        style={[styles.header, { paddingTop: (Platform.OS === "web" ? 52 : insets.top) + 24 }]}
       >
         <View style={styles.logoRow}>
-          <Image
-            source={require("../assets/images/logo_transparent.png")}
-            style={styles.logoImg}
-            resizeMode="contain"
-          />
+          <View style={styles.logoImgWrap}>
+            <Image
+              source={require("../assets/images/logo_transparent.png")}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
+          </View>
           <View>
             <Text style={styles.logoTitle}>JanSeva</Text>
             <Text style={styles.logoSub}>Citizen Services Platform</Text>
           </View>
         </View>
-        <Text style={styles.headerTagline}>नागरिकों की सेवा में</Text>
+        <View style={styles.headerMeta}>
+          <View style={styles.flagRow}>
+            <View style={[styles.flagStripe, { backgroundColor: "#F97316" }]} />
+            <View style={[styles.flagStripe, { backgroundColor: "rgba(255,255,255,0.7)" }]} />
+            <View style={[styles.flagStripe, { backgroundColor: "#22C55E" }]} />
+          </View>
+          <Text style={styles.headerTagline}>नागरिकों की सेवा में</Text>
+        </View>
       </LinearGradient>
 
+      {/* ─── Card sheet ─── */}
       <View style={styles.card}>
-        {step === "role" ? (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-            <View style={{ gap: 4, marginBottom: 4 }}>
-              <Text style={styles.stepTitle}>Select Your Role</Text>
-              <Text style={styles.stepSub}>Who are you logging in as?</Text>
+        {step === "phone" && (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 20 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={styles.stepTitle}>Welcome to JanSeva</Text>
+              <Text style={styles.stepSub}>Enter your mobile number to get started</Text>
             </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>MOBILE NUMBER</Text>
+              <View style={[styles.inputRow, error ? styles.inputRowError : null]}>
+                <View style={styles.countryCode}>
+                  <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                </View>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={mobile}
+                  onChangeText={(t) => { setMobile(t); setError(""); }}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor="#CBD5E1"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  autoFocus
+                  onSubmitEditing={handlePhoneSubmit}
+                />
+              </View>
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </View>
+
+            <View style={styles.infoBox}>
+              <Feather name="info" size={14} color="#2563EB" />
+              <Text style={styles.infoText}>
+                Existing users will be logged in automatically. New users will be guided through registration.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryBtn, (!mobile.trim() || mobile.trim().length < 10) && { opacity: 0.5 }]}
+              onPress={handlePhoneSubmit}
+              disabled={!mobile.trim() || mobile.trim().length < 10 || loading}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={["#1E3A8A", "#2563EB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnGrad}>
+                {loading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <Text style={styles.primaryBtnText}>Continue</Text>
+                    <Feather name="arrow-right" size={18} color="white" />
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <Text style={styles.termsText}>
+              By continuing, you agree to our Terms of Service and Privacy Policy. Mumbai BMC · JanSeva 2025
+            </Text>
+          </ScrollView>
+        )}
+
+        {step === "welcome_back" && existingUser && roleOfExisting && (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 20 }}>
+            <TouchableOpacity onPress={() => { setStep("phone"); setExistingUser(null); }} style={styles.backBtn} activeOpacity={0.7}>
+              <Feather name="arrow-left" size={16} color="#475569" />
+              <Text style={styles.backText}>Change number</Text>
+            </TouchableOpacity>
+
+            <View style={styles.welcomeCard}>
+              <View style={[styles.welcomeAvatar, { backgroundColor: roleOfExisting.color + "20" }]}>
+                <Text style={[styles.welcomeAvatarText, { color: roleOfExisting.color }]}>
+                  {existingUser.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.welcomeCheck}>
+                <Feather name="check" size={12} color="white" />
+              </View>
+              <Text style={styles.welcomeGreet}>Welcome back!</Text>
+              <Text style={styles.welcomeName}>{existingUser.name}</Text>
+              <View style={[styles.welcomeRolePill, { backgroundColor: roleOfExisting.bg, borderColor: roleOfExisting.border }]}>
+                <Feather name={roleOfExisting.icon} size={12} color={roleOfExisting.color} />
+                <Text style={[styles.welcomeRoleText, { color: roleOfExisting.color }]}>{roleOfExisting.title}</Text>
+              </View>
+              <View style={styles.welcomePhone}>
+                <Feather name="phone" size={13} color="#64748B" />
+                <Text style={styles.welcomePhoneText}>+91 {mobile}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleLoginExisting} disabled={loading} activeOpacity={0.85}>
+              <LinearGradient colors={["#1E3A8A", "#2563EB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnGrad}>
+                {loading ? <ActivityIndicator color="white" /> : (
+                  <>
+                    <Feather name="log-in" size={18} color="white" />
+                    <Text style={styles.primaryBtnText}>Login to JanSeva</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => { setStep("select_role"); setExistingUser(null); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.secondaryBtnText}>Not you? Register new account</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+
+        {step === "select_role" && (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+            <View style={styles.backRow}>
+              <TouchableOpacity onPress={() => setStep("phone")} style={styles.backBtnIcon} activeOpacity={0.7}>
+                <Feather name="arrow-left" size={16} color="#475569" />
+              </TouchableOpacity>
+              <View style={{ gap: 2 }}>
+                <Text style={styles.stepTitle}>Create Account</Text>
+                <Text style={styles.stepSub}>Select your role to continue</Text>
+              </View>
+            </View>
+
+            <View style={styles.newBadge}>
+              <Feather name="user-plus" size={13} color="#059669" />
+              <Text style={styles.newBadgeText}>New user — +91 {mobile}</Text>
+            </View>
+
             {roleCards.map((rc) => (
               <TouchableOpacity
                 key={rc.role}
@@ -133,12 +296,12 @@ export default function LoginScreen() {
                 activeOpacity={0.85}
               >
                 <View style={[styles.roleCardIcon, { backgroundColor: rc.color + "22" }]}>
-                  <Feather name={rc.icon as any} size={24} color={rc.color} />
+                  <Feather name={rc.icon} size={24} color={rc.color} />
                 </View>
                 <View style={styles.roleCardText}>
                   <View style={styles.roleCardTitleRow}>
                     <Text style={[styles.roleCardTitle, { color: rc.color }]}>{rc.title}</Text>
-                    <Text style={styles.roleCardSub}>{rc.subtitle}</Text>
+                    <Text style={styles.roleCardHindi}>{rc.subtitle}</Text>
                   </View>
                   <Text style={styles.roleCardDesc}>{rc.desc}</Text>
                 </View>
@@ -146,23 +309,23 @@ export default function LoginScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        ) : (
+        )}
+
+        {step === "details" && selectedRoleCard && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16 }}>
             <View style={styles.backRow}>
-              <TouchableOpacity onPress={() => setStep("role")} style={styles.backBtn} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => setStep("select_role")} style={styles.backBtnIcon} activeOpacity={0.7}>
                 <Feather name="arrow-left" size={16} color="#475569" />
               </TouchableOpacity>
-              {selectedRoleCard && (
-                <View style={[styles.rolePill, { backgroundColor: selectedRoleCard.bg, borderColor: selectedRoleCard.border }]}>
-                  <Feather name={selectedRoleCard.icon as any} size={12} color={selectedRoleCard.color} />
-                  <Text style={[styles.rolePillText, { color: selectedRoleCard.color }]}>{selectedRoleCard.title}</Text>
-                </View>
-              )}
+              <View style={[styles.rolePill, { backgroundColor: selectedRoleCard.bg, borderColor: selectedRoleCard.border }]}>
+                <Feather name={selectedRoleCard.icon} size={12} color={selectedRoleCard.color} />
+                <Text style={[styles.rolePillText, { color: selectedRoleCard.color }]}>{selectedRoleCard.title}</Text>
+              </View>
             </View>
 
             <View style={{ gap: 4 }}>
               <Text style={styles.stepTitle}>Your Details</Text>
-              <Text style={styles.stepSub}>Enter your name and mobile number</Text>
+              <Text style={styles.stepSub}>Almost done — fill in your information</Text>
             </View>
 
             <View style={styles.inputGroup}>
@@ -178,25 +341,21 @@ export default function LoginScreen() {
                   placeholder="Enter your full name"
                   placeholderTextColor="#CBD5E1"
                   autoCapitalize="words"
+                  autoFocus
                 />
               </View>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>MOBILE NUMBER</Text>
-              <View style={styles.inputRow}>
+              <View style={[styles.inputRow, { backgroundColor: "#F8FAFC" }]}>
                 <View style={styles.countryCode}>
-                  <Text style={styles.countryCodeText}>+91</Text>
+                  <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
                 </View>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={mobile}
-                  onChangeText={setMobile}
-                  placeholder="10-digit mobile number"
-                  placeholderTextColor="#CBD5E1"
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                />
+                <Text style={[styles.input, { color: "#475569", lineHeight: 48 }]}>{mobile}</Text>
+                <View style={{ paddingRight: 14 }}>
+                  <Feather name="lock" size={14} color="#94A3B8" />
+                </View>
               </View>
             </View>
 
@@ -234,36 +393,29 @@ export default function LoginScreen() {
               </View>
             )}
 
-            <View style={styles.otpNote}>
-              <Feather name="lock" size={13} color="#059669" />
-              <Text style={styles.otpNoteText}>OTP verification will be sent to your mobile number</Text>
+            <View style={styles.secureBox}>
+              <Feather name="shield" size={14} color="#059669" />
+              <Text style={styles.secureText}>Your information is securely stored. OTP verification active.</Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.loginBtn, (!name.trim() || !mobile.trim()) && { opacity: 0.5 }]}
-              onPress={handleLogin}
-              disabled={!name.trim() || !mobile.trim() || loading}
+              style={[styles.primaryBtn, !name.trim() && { opacity: 0.5 }]}
+              onPress={handleRegister}
+              disabled={!name.trim() || loading}
               activeOpacity={0.85}
             >
-              <LinearGradient
-                colors={["#1E40AF", "#2563EB", "#3B82F6"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.loginBtnGrad}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
+              <LinearGradient colors={["#1E3A8A", "#2563EB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnGrad}>
+                {loading ? <ActivityIndicator color="white" /> : (
                   <>
-                    <Feather name="log-in" size={18} color="white" />
-                    <Text style={styles.loginBtnText}>Continue</Text>
+                    <Feather name="user-check" size={18} color="white" />
+                    <Text style={styles.primaryBtnText}>Create Account & Enter</Text>
                   </>
                 )}
               </LinearGradient>
             </TouchableOpacity>
 
             <Text style={styles.termsText}>
-              By continuing, you agree to our Terms of Service and Privacy Policy
+              By registering, you agree to our Terms of Service and Privacy Policy. Mumbai BMC · JanSeva 2025
             </Text>
           </ScrollView>
         )}
@@ -273,12 +425,54 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerBg: { paddingHorizontal: 24, paddingBottom: 48 },
-  logoRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 16 },
-  logoImg: { width: 72, height: 72 },
-  logoTitle: { fontSize: 28, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  logoSub: { fontSize: 12, color: "rgba(255,255,255,0.55)", fontFamily: "Inter_400Regular", marginTop: 2 },
-  headerTagline: { fontSize: 14, color: "rgba(255,255,255,0.4)", fontFamily: "Inter_400Regular", letterSpacing: 0.5 },
+  header: {
+    paddingHorizontal: 24,
+    paddingBottom: 52,
+  },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 16,
+  },
+  logoImgWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  logoImg: { width: 56, height: 56 },
+  logoTitle: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: "white",
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.8,
+  },
+  logoSub: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.5)",
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  headerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  flagRow: { flexDirection: "row", gap: 2 },
+  flagStripe: { width: 18, height: 3, borderRadius: 2 },
+  headerTagline: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.4)",
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 0.5,
+  },
+
   card: {
     flex: 1,
     backgroundColor: "#FFFFFF",
@@ -291,30 +485,7 @@ const styles = StyleSheet.create({
   },
   stepTitle: { fontSize: 20, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold" },
   stepSub: { fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular", marginTop: 2 },
-  roleCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1.5,
-  },
-  roleCardIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  roleCardText: { flex: 1 },
-  roleCardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  roleCardTitle: { fontSize: 16, fontWeight: "800", fontFamily: "Inter_700Bold" },
-  roleCardSub: { fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular" },
-  roleCardDesc: { fontSize: 12, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 17 },
-  backRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  backBtn: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: "#F1F5F9",
-    alignItems: "center", justifyContent: "center",
-  },
-  rolePill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
-  },
-  rolePillText: { fontSize: 12, fontWeight: "700", fontFamily: "Inter_600SemiBold" },
+
   inputGroup: { gap: 8 },
   label: { fontSize: 10, fontWeight: "700", color: "#94A3B8", letterSpacing: 1.2, fontFamily: "Inter_600SemiBold" },
   inputRow: {
@@ -322,19 +493,75 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 14, overflow: "hidden",
     backgroundColor: "white",
   },
-  inputIcon: {
-    width: 46, height: 48, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#EFF6FF",
-  },
+  inputRowError: { borderColor: "#EF4444" },
+  inputIcon: { width: 46, height: 48, alignItems: "center", justifyContent: "center", backgroundColor: "#EFF6FF" },
   countryCode: {
-    paddingHorizontal: 14, height: 48, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 12, height: 48, alignItems: "center", justifyContent: "center",
     backgroundColor: "#F8FAFC", borderRightWidth: 1, borderRightColor: "#E2E8F0",
   },
-  countryCodeText: { fontSize: 14, fontWeight: "700", color: "#1E40AF", fontFamily: "Inter_700Bold" },
+  countryCodeText: { fontSize: 13, fontWeight: "700", color: "#1E40AF", fontFamily: "Inter_700Bold" },
   input: {
     flex: 1, height: 48, paddingHorizontal: 14,
     fontSize: 14, color: "#0F172A", fontFamily: "Inter_400Regular",
   },
+  errorText: { fontSize: 12, color: "#EF4444", fontFamily: "Inter_400Regular" },
+
+  infoBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    backgroundColor: "#EFF6FF", borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: "#BFDBFE",
+  },
+  infoText: { fontSize: 12, color: "#1E40AF", fontFamily: "Inter_400Regular", flex: 1, lineHeight: 18 },
+
+  primaryBtn: {
+    borderRadius: 16, overflow: "hidden",
+    shadowColor: "#1E40AF", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
+  },
+  primaryBtnGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, paddingVertical: 16,
+  },
+  primaryBtnText: { fontSize: 16, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" },
+  secondaryBtn: { alignItems: "center", paddingVertical: 12 },
+  secondaryBtnText: { fontSize: 13, color: "#2563EB", fontFamily: "Inter_500Medium", textDecorationLine: "underline" },
+
+  termsText: {
+    fontSize: 11, color: "#94A3B8", textAlign: "center",
+    fontFamily: "Inter_400Regular", lineHeight: 16,
+  },
+
+  backBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
+  backText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular" },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtnIcon: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: "#F1F5F9",
+    alignItems: "center", justifyContent: "center",
+  },
+  newBadge: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#ECFDF5", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#A7F3D0", alignSelf: "flex-start",
+  },
+  newBadgeText: { fontSize: 12, color: "#065F46", fontFamily: "Inter_500Medium" },
+
+  roleCard: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    padding: 16, borderRadius: 18, borderWidth: 1.5,
+  },
+  roleCardIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  roleCardText: { flex: 1 },
+  roleCardTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  roleCardTitle: { fontSize: 16, fontWeight: "800", fontFamily: "Inter_700Bold" },
+  roleCardHindi: { fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  roleCardDesc: { fontSize: 12, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 17 },
+
+  rolePill: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
+  },
+  rolePillText: { fontSize: 12, fontWeight: "700", fontFamily: "Inter_600SemiBold" },
+
   wardPicker: {
     flexDirection: "row", alignItems: "center", gap: 10,
     borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 14,
@@ -352,14 +579,39 @@ const styles = StyleSheet.create({
   },
   wardOptionSelected: { backgroundColor: "#EFF6FF" },
   wardOptionText: { fontSize: 13, color: "#334155", fontFamily: "Inter_400Regular" },
-  otpNote: {
-    flexDirection: "row", alignItems: "center", gap: 8,
+
+  secureBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
     backgroundColor: "#ECFDF5", borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: "#A7F3D0",
   },
-  otpNoteText: { fontSize: 12, color: "#065F46", fontFamily: "Inter_400Regular" },
-  loginBtn: { borderRadius: 16, overflow: "hidden", shadowColor: "#1E40AF", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  loginBtnGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
-  loginBtnText: { fontSize: 16, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" },
-  termsText: { fontSize: 11, color: "#94A3B8", textAlign: "center", fontFamily: "Inter_400Regular", lineHeight: 16 },
+  secureText: { fontSize: 12, color: "#065F46", fontFamily: "Inter_400Regular", flex: 1 },
+
+  welcomeCard: {
+    backgroundColor: "#F8FAFC", borderRadius: 20, padding: 28,
+    alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#E2E8F0",
+  },
+  welcomeAvatar: {
+    width: 80, height: 80, borderRadius: 40,
+    alignItems: "center", justifyContent: "center",
+  },
+  welcomeAvatarText: { fontSize: 32, fontWeight: "900", fontFamily: "Inter_700Bold" },
+  welcomeCheck: {
+    position: "absolute",
+    top: 28 + 80 - 16,
+    right: (width - 80) / 2 - 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "#059669",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: "white",
+  },
+  welcomeGreet: { fontSize: 14, color: "#64748B", fontFamily: "Inter_400Regular", marginTop: 8 },
+  welcomeName: { fontSize: 24, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold" },
+  welcomeRolePill: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1,
+  },
+  welcomeRoleText: { fontSize: 13, fontWeight: "700", fontFamily: "Inter_600SemiBold" },
+  welcomePhone: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  welcomePhoneText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular" },
 });

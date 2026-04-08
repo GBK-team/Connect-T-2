@@ -2,13 +2,17 @@ import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import React from "react";
-import { Platform, StyleSheet, View, Text, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View, Text, useColorScheme, TouchableOpacity } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const isAndroid = Platform.OS === "android";
+
+  const TAB_HEIGHT = isWeb ? 72 : isAndroid ? 64 : 80;
+  const BOTTOM_PAD = isWeb ? 14 : isAndroid ? 8 : 24;
 
   return (
     <Tabs
@@ -22,9 +26,9 @@ export default function TabLayout() {
           borderTopWidth: 1,
           borderTopColor: "#E2E8F0",
           elevation: 0,
-          height: isWeb ? 80 : Platform.OS === "android" ? 64 : 80,
+          height: TAB_HEIGHT,
           paddingTop: 8,
-          paddingBottom: isWeb ? 18 : Platform.OS === "android" ? 10 : 24,
+          paddingBottom: BOTTOM_PAD,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -48,47 +52,56 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Complaints — simple, no circle */}
       <Tabs.Screen
         name="complaints"
         options={{
           title: "Complaints",
           tabBarIcon: ({ color }) => <Feather name="edit-3" size={22} color={color} />,
-          tabBarActiveTintColor: "#2563EB",
         }}
       />
 
-      {/* SOS — floating red circle with "SOS" text inside, no external label */}
+      {/* ─── SOS — centred floating red pill ─── */}
       <Tabs.Screen
         name="emergency"
         options={{
           tabBarLabel: () => null,
+          tabBarItemStyle: {
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+          },
           tabBarIcon: ({ focused }) => (
-            <View style={{
-              width: 54,
-              height: 54,
-              borderRadius: 27,
-              backgroundColor: focused ? "#B91C1C" : "#DC2626",
-              alignItems: "center",
-              justifyContent: "center",
-              marginTop: -20,
-              borderWidth: 3,
-              borderColor: "white",
-              shadowColor: "#DC2626",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.5,
-              shadowRadius: 8,
-              elevation: 8,
-              gap: 1,
-            }}>
-              <Feather name="phone-call" size={16} color="white" />
-              <Text style={{
-                fontSize: 8,
-                fontWeight: "900",
-                color: "white",
-                letterSpacing: 1,
-                fontFamily: "Inter_700Bold",
-              }}>SOS</Text>
+            <View
+              style={{
+                width: 58,
+                height: 58,
+                borderRadius: 29,
+                backgroundColor: focused ? "#B91C1C" : "#DC2626",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: -22,
+                borderWidth: 3.5,
+                borderColor: "white",
+                shadowColor: "#DC2626",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.45,
+                shadowRadius: 12,
+                elevation: 10,
+                gap: 2,
+              }}
+            >
+              <Feather name="phone-call" size={17} color="white" />
+              <Text
+                style={{
+                  fontSize: 8,
+                  fontWeight: "900",
+                  color: "white",
+                  letterSpacing: 1.5,
+                  fontFamily: "Inter_700Bold",
+                }}
+              >
+                SOS
+              </Text>
             </View>
           ),
           tabBarActiveTintColor: "#DC2626",
@@ -102,6 +115,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Feather name="rss" size={22} color={color} />,
         }}
       />
+
       <Tabs.Screen
         name="profile"
         options={{
@@ -109,6 +123,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />
+
       <Tabs.Screen name="services" options={{ href: null }} />
       <Tabs.Screen name="admin" options={{ href: null }} />
     </Tabs>

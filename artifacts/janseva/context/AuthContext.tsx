@@ -11,6 +11,7 @@ export interface User {
   ward?: string;
   wardNumber?: string;
   avatarColor?: string;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -19,19 +20,36 @@ interface AuthContextType {
   loading: boolean;
   login: (user: User) => Promise<void>;
   logout: () => Promise<void>;
+  checkPhone: (mobile: string) => Promise<User | null>;
+  register: (userData: Omit<User, "id" | "avatarColor" | "createdAt">) => Promise<User>;
+  loginWithPhone: (mobile: string) => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-const STORAGE_KEY = "janseva_user";
+const SESSION_KEY = "janseva_user";
+const USERS_KEY = "janseva_users";
 
 const AVATAR_COLORS = ["#1E40AF", "#059669", "#7C3AED", "#D97706", "#DC2626", "#0EA5E9"];
+
+async function getAllUsers(): Promise<User[]> {
+  try {
+    const raw = await AsyncStorage.getItem(USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveAllUsers(users: User[]): Promise<void> {
+  await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    AsyncStorage.getItem(SESSION_KEY)
       .then((stored) => {
         if (stored) setUser(JSON.parse(stored));
       })
@@ -39,19 +57,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (userData: User) => {
-    const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
-    const enriched = { ...userData, id: "U" + Date.now(), avatarColor: AVATAR_COLORS[colorIndex] };
-    setUser(enriched);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(enriched));
+    setUser(userData);
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
   };
 
   const logout = async () => {
     setUser(null);
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(SESSION_KEY);
+  };
+
+  const checkPhone = async (mobile: string): Promise<User | null> => {
+    const users = await getAllUsers();
+    return users.find((u) => u.mobile === mobile.trim()) ?? null;
+  };
+
+  const register = async (
+    userData: Omit<User, "id" | "avatarColor" | "createdAt">
+  ): Promise<User> => {
+    const users = await getAllUsers();
+    const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
+    const newUser: User = {
+      ...userData,
+      id: "U" + Date.now(),
+      avatarColor: AVATAR_COLORS[colorIndex],
+      createdAt: new Date().toISOString(),
+    };
+    users.push(newUser);
+    await saveAllUsers(users);
+    await login(newUser);
+    return newUser;
+  };
+
+  const loginWithPhone = async (mobile: string): Promise<User | null> => {
+    const found = await checkPhone(mobile);
+    if (found) {
+      await login(found);
+      return found;
+    }
+    return null;
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, login, logout, checkPhone, register, loginWithPhone }}>
       {children}
     </AuthContext.Provider>
   );
