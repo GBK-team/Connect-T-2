@@ -23,11 +23,6 @@ const roleConfig = {
     color: "#059669", bg: "#ECFDF5",
     grad: ["#064E3B", "#047857", "#059669"] as [string, string, string],
   },
-  head_admin: {
-    label: "Head Admin", subLabel: "मुख्य प्रशासक", icon: "shield" as const,
-    color: "#7C3AED", bg: "#F5F3FF",
-    grad: ["#2E1065", "#4C1D95", "#7C3AED"] as [string, string, string],
-  },
 };
 
 const usefulLinks = [
@@ -93,7 +88,7 @@ export default function ProfileScreen() {
     );
   }
 
-  const rc = roleConfig[user.role] || roleConfig.citizen;
+  const rc = roleConfig[user.role as keyof typeof roleConfig] || roleConfig.citizen;
   const totalComplaints = complaints.length;
   const activeCount = complaints.filter((c) => ["submitted", "assigned", "in_progress"].includes(c.status)).length;
   const resolvedCount = complaints.filter((c) => c.status === "resolved").length;
@@ -167,8 +162,7 @@ export default function ProfileScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* Admin Panel Card */}
-        {(user.role === "nagarsevak" || user.role === "head_admin") && (
+        {user.role === "nagarsevak" && (
           <View style={styles.section}>
             <TouchableOpacity
               onPress={() => router.push("/(tabs)/admin" as any)}
@@ -176,23 +170,17 @@ export default function ProfileScreen() {
               style={styles.adminCard}
             >
               <LinearGradient
-                colors={user.role === "head_admin" ? ["#4C1D95", "#7C3AED"] : ["#065F46", "#059669"]}
+                colors={["#065F46", "#059669"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.adminCardGrad}
               >
                 <View style={styles.adminCardIcon}>
-                  <Feather name={rc.icon} size={22} color="white" />
+                  <Feather name="briefcase" size={22} color="white" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.adminCardTitle}>
-                    {user.role === "head_admin" ? "Head Admin Panel" : "Nagarsevak Panel"}
-                  </Text>
-                  <Text style={styles.adminCardSub}>
-                    {user.role === "head_admin"
-                      ? "Manage all wards, services & officers"
-                      : "View & resolve ward complaints"}
-                  </Text>
+                  <Text style={styles.adminCardTitle}>{t("nagarsevakPanel")}</Text>
+                  <Text style={styles.adminCardSub}>{t("viewResolveWard")}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color="rgba(255,255,255,0.6)" />
               </LinearGradient>

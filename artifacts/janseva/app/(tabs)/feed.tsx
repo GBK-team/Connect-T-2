@@ -60,14 +60,11 @@ const categoryConfig: Record<string, { icon: string; color: string; bg: string }
 const roleLabelKeys: Record<string, string> = {
   citizen: "citizen",
   nagarsevak: "nagarsevak",
-  head_admin: "headAdmin",
 };
 
 const roleBadgeColor: Record<string, { bg: string; text: string }> = {
   citizen: { bg: "#EFF6FF", text: "#2563EB" },
   nagarsevak: { bg: "#ECFDF5", text: "#059669" },
-  head_admin: { bg: "#F5F3FF", text: "#7C3AED" },
-  "Head Admin": { bg: "#F5F3FF", text: "#7C3AED" },
   "Nagarsevak": { bg: "#ECFDF5", text: "#059669" },
   "Citizen": { bg: "#EFF6FF", text: "#2563EB" },
 };
@@ -280,7 +277,7 @@ export default function FeedScreen() {
   const [showNewPost, setShowNewPost] = useState(false);
 
   const userId = user?.id || "guest";
-  const canPostAnnouncement = user?.role === "head_admin" || user?.role === "nagarsevak";
+  const canPostAnnouncement = user?.role === "nagarsevak";
 
   const activeComplaints = complaints.filter((c) => ["submitted", "assigned", "in_progress"].includes(c.status));
   const resolvedComplaints = complaints.filter((c) => c.status === "resolved" || c.status === "rejected");

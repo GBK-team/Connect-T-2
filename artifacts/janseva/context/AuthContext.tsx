@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export type UserRole = "citizen" | "nagarsevak" | "head_admin";
+export type UserRole = "citizen" | "nagarsevak";
 
 export interface User {
   id: string;
@@ -12,8 +12,12 @@ export interface User {
   wardNumber?: string;
   age?: number;
   email?: string;
+  address?: string;
+  nagarsevakId?: string;
   avatarColor?: string;
   createdAt?: string;
+  notifyEmail?: boolean;
+  notifyWhatsapp?: boolean;
 }
 
 interface AuthContextType {
@@ -25,6 +29,7 @@ interface AuthContextType {
   checkPhone: (mobile: string) => Promise<User | null>;
   register: (userData: Omit<User, "id" | "avatarColor" | "createdAt">) => Promise<User>;
   loginWithPhone: (mobile: string) => Promise<User | null>;
+  loginWithNagarsevakId: (mobile: string, nagarsevakId: string) => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -32,6 +37,8 @@ const SESSION_KEY = "janseva_user";
 const USERS_KEY = "janseva_users";
 
 const AVATAR_COLORS = ["#1E40AF", "#059669", "#7C3AED", "#D97706", "#DC2626", "#0EA5E9"];
+
+const NAGARSEVAK_IDS = ["NS001", "NS002", "NS003", "NS004", "NS005"];
 
 async function getAllUsers(): Promise<User[]> {
   try {
@@ -99,8 +106,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const loginWithNagarsevakId = async (mobile: string, nagarsevakId: string): Promise<User | null> => {
+    const isValidId = NAGARSEVAK_IDS.includes(nagarsevakId.toUpperCase());
+    if (!isValidId) return null;
+
+    const users = await getAllUsers();
+    let found = users.find((u) => u.mobile === mobile.trim() && u.nagarsevakId === nagarsevakId.toUpperCase());
+    if (found) {
+      await login(found);
+      return found;
+    }
+
+    found = users.find((u) => u.mobile === mobile.trim());
+    if (found) {
+      found.role = "nagarsevak";
+      found.nagarsevakId = nagarsevakId.toUpperCase();
+      await saveAllUsers(users);
+      await login(found);
+      return found;
+    }
+
+    const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
+    const newUser: User = {
+      id: "U" + Date.now(),
+      name: "Nagarsevak",
+      mobile: mobile.trim(),
+      role: "nagarsevak",
+      nagarsevakId: nagarsevakId.toUpperCase(),
+      avatarColor: AVATAR_COLORS[colorIndex],
+      createdAt: new Date().toISOString(),
+    };
+    users.push(newUser);
+    await saveAllUsers(users);
+    await login(newUser);
+    return newUser;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, login, logout, checkPhone, register, loginWithPhone }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, login, logout, checkPhone, register, loginWithPhone, loginWithNagarsevakId }}>
       {children}
     </AuthContext.Provider>
   );

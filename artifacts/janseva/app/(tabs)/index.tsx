@@ -57,13 +57,11 @@ function getGreetingKey(): string {
 
 function getRoleColor(role?: string) {
   if (role === "nagarsevak") return { bg: "#ECFDF5", text: "#059669", border: "#A7F3D0" };
-  if (role === "head_admin") return { bg: "#F5F3FF", text: "#7C3AED", border: "#C4B5FD" };
   return { bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE" };
 }
 
 function getRoleLabelKey(role?: string) {
   if (role === "nagarsevak") return "nagarsevak";
-  if (role === "head_admin") return "headAdmin";
   return "citizen";
 }
 
@@ -112,7 +110,7 @@ export default function HomeScreen() {
             <View style={styles.metaRow}>
               <View style={[styles.rolePill, { backgroundColor: roleColor.bg + "33", borderColor: "rgba(255,255,255,0.3)" }]}>
                 <Feather
-                  name={user?.role === "head_admin" ? "shield" : user?.role === "nagarsevak" ? "briefcase" : "user"}
+                  name={user?.role === "nagarsevak" ? "briefcase" : "user"}
                   size={9}
                   color="rgba(255,255,255,0.8)"
                 />
@@ -191,13 +189,13 @@ export default function HomeScreen() {
             <Text style={[styles.statNum, { color: "#2563EB" }]}>{t("feed")}</Text>
             <Text style={styles.statLabel}>{t("community")}</Text>
           </TouchableOpacity>
-          {(user?.role === "nagarsevak" || user?.role === "head_admin") && (
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: "#F5F3FF" }]} onPress={() => router.push("/(tabs)/admin")} activeOpacity={0.8}>
-              <View style={[styles.statIcon, { backgroundColor: "#EDE9FE" }]}>
-                <Feather name={user.role === "head_admin" ? "shield" : "briefcase"} size={16} color="#7C3AED" />
+          {user?.role === "nagarsevak" && (
+            <TouchableOpacity style={[styles.statCard, { backgroundColor: "#ECFDF5" }]} onPress={() => router.push("/(tabs)/admin")} activeOpacity={0.8}>
+              <View style={[styles.statIcon, { backgroundColor: "#D1FAE5" }]}>
+                <Feather name="briefcase" size={16} color="#059669" />
               </View>
-              <Text style={[styles.statNum, { color: "#7C3AED" }]}>{t("panel")}</Text>
-              <Text style={styles.statLabel}>{user.role === "head_admin" ? t("admin") : t("officer")}</Text>
+              <Text style={[styles.statNum, { color: "#059669" }]}>{t("panel")}</Text>
+              <Text style={styles.statLabel}>{t("officer")}</Text>
             </TouchableOpacity>
           )}
         </View>

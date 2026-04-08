@@ -38,7 +38,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!user && !inLogin) {
       router.replace("/login");
     } else if (user && inLogin) {
-      router.replace("/(tabs)");
+      if (user.role === "nagarsevak") {
+        router.replace("/(tabs)/admin" as any);
+      } else {
+        router.replace("/(tabs)");
+      }
     }
   }, [user, loading, segments]);
 

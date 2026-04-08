@@ -39,12 +39,12 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - `ComplaintContext` — grievance data
 - `FeedContext` — community feed posts
 
-### Auth Flow (phone-first)
-1. User enters phone number
-2. System checks `janseva_users` in AsyncStorage
-3a. Phone found → "Welcome back" screen → login (no re-registration)
-3b. Phone new → Select role → Enter name (+ward for nagarsevak) → Register + login
-- Methods: `checkPhone(mobile)`, `register(userData)`, `loginWithPhone(mobile)`
+### Auth Flow (tabbed Register/Login)
+- Splash → Login screen with Register/Login tabs
+- **Register**: name(req), age, email(opt), address, phone, ward → mock OTP → notification prefs → success → home
+- **Login**: phone + optional Nagarsevak ID → mock OTP → routes to home (citizen) or admin panel (nagarsevak)
+- Valid Nagarsevak IDs (demo): NS001–NS005
+- Methods: `checkPhone(mobile)`, `register(userData)`, `loginWithPhone(mobile)`, `loginWithNagarsevakId(mobile, id)`
 
 ### Navigation
 - 5 tabs: Home | Complaints (edit icon) | **SOS** (red circle, centred, floating) | Feed | Profile
@@ -87,7 +87,7 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Each alert has: title, body, detail (full text), source, date
 - Modal shows icon, type badge, title, date/time meta, full detail text, source
 
-### Roles
+### Roles (app only — 2 roles)
 - `citizen` — submit/track complaints, view feed
-- `nagarsevak` — ward officer, resolve complaints, admin panel
-- `head_admin` — full control, all wards, admin panel
+- `nagarsevak` — ward officer, resolve complaints, admin panel (green gradient header)
+- `head_admin` — REMOVED from app (future separate website)
