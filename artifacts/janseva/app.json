@@ -28,6 +28,7 @@
       "translucent": true
     },
     "androidNavigationBar": {
+      "visible": "sticky-immersive",
       "barStyle": "dark-content",
       "backgroundColor": "#FFFFFF"
     },
