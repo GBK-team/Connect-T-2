@@ -9,9 +9,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+
+let KeyboardProvider: React.ComponentType<{ children: React.ReactNode }> | null = null;
+if (Platform.OS !== "web") {
+  try {
+    KeyboardProvider = require("react-native-keyboard-controller").KeyboardProvider;
+  } catch {}
+}
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSplash } from "@/components/AppSplash";
@@ -89,14 +96,25 @@ export default function RootLayout() {
               <ComplaintProvider>
                 <FeedProvider>
                   <GestureHandlerRootView style={{ flex: 1 }}>
-                    <KeyboardProvider>
-                      <AuthGate>
-                        <RootLayoutNav />
-                      </AuthGate>
-                      {!splashDone && (
-                        <AppSplash onFinish={() => setSplashDone(true)} />
-                      )}
-                    </KeyboardProvider>
+                    {KeyboardProvider ? (
+                      <KeyboardProvider>
+                        <AuthGate>
+                          <RootLayoutNav />
+                        </AuthGate>
+                        {!splashDone && (
+                          <AppSplash onFinish={() => setSplashDone(true)} />
+                        )}
+                      </KeyboardProvider>
+                    ) : (
+                      <>
+                        <AuthGate>
+                          <RootLayoutNav />
+                        </AuthGate>
+                        {!splashDone && (
+                          <AppSplash onFinish={() => setSplashDone(true)} />
+                        )}
+                      </>
+                    )}
                   </GestureHandlerRootView>
                 </FeedProvider>
               </ComplaintProvider>
