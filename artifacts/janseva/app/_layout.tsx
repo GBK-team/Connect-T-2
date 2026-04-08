@@ -5,6 +5,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import { Asset } from "expo-asset";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -64,6 +65,8 @@ function RootLayoutNav() {
   );
 }
 
+const logoImage = require("@/assets/images/logo_transparent.png");
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     ...Feather.font,
@@ -72,15 +75,20 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const [assetsReady, setAssetsReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    Asset.loadAsync([logoImage]).then(() => setAssetsReady(true)).catch(() => setAssetsReady(true));
+  }, []);
+
+  useEffect(() => {
+    if ((fontsLoaded || fontError) && assetsReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, assetsReady]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if ((!fontsLoaded && !fontError) || !assetsReady) return null;
 
   return (
     <SafeAreaProvider>
