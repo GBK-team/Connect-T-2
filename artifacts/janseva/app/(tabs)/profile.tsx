@@ -65,9 +65,6 @@ export default function ProfileScreen() {
           colors={["#1E3A8A", "#1E40AF", "#2563EB"]}
           style={[styles.header, { paddingTop: topPad + 12, alignItems: "center", paddingBottom: 48 }]}
         >
-          <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { alignSelf: "flex-start" }]} activeOpacity={0.8}>
-            <Feather name="arrow-left" size={18} color="white" />
-          </TouchableOpacity>
           <View style={styles.guestIcon}>
             <Feather name="user" size={36} color="#3B82F6" />
           </View>
@@ -110,9 +107,6 @@ export default function ProfileScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
-          <Feather name="arrow-left" size={18} color="white" />
-        </TouchableOpacity>
         <View style={styles.headerContent}>
           <Avatar name={user.name} color={rc.color} />
           <View style={styles.headerText}>

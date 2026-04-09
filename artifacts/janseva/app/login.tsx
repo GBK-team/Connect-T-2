@@ -246,18 +246,7 @@ export default function LoginScreen() {
           </LinearGradient>
         )}
       </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          if (activeTab === "register") setRegStep("form");
-          else setLoginStep("form");
-          setOtpDigits(["", "", "", ""]);
-          setError("");
-        }}
-        style={s.backLink}
-      >
-        <Feather name="chevron-left" size={14} color="#64748B" />
-        <Text style={s.backLinkText}>{t("goBack")}</Text>
-      </TouchableOpacity>
+      
     </View>
   );
 

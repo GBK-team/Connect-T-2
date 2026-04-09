@@ -163,9 +163,6 @@ export default function ComplaintsScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
-          <Feather name="arrow-left" size={18} color="white" />
-        </TouchableOpacity>
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerTitle}>{t("myComplaints")}</Text>

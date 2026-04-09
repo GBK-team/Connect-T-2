@@ -92,9 +92,6 @@ export default function ComplaintDetailScreen() {
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-            <Feather name="arrow-left" size={20} color="white" />
-          </TouchableOpacity>
           <View style={styles.headerCenter}>
             {fresh === "1" && (
               <View style={styles.successPill}>

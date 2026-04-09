@@ -49,9 +49,7 @@ export default function ServiceDetailScreen() {
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
         <Feather name="alert-circle" size={40} color="#DC2626" />
         <Text style={{ marginTop: 12, fontSize: 16, color: "#64748B" }}>Place not found</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={{ color: "#2563EB", fontWeight: "700" }}>Go Back</Text>
-        </TouchableOpacity>
+        
       </View>
     );
   }
@@ -80,9 +78,6 @@ export default function ServiceDetailScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 10 }]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBack} activeOpacity={0.8}>
-          <Feather name="arrow-left" size={18} color="white" />
-        </TouchableOpacity>
         <View style={styles.headerContent}>
           <View style={[styles.headerIconCircle, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
             <Feather name={category.icon as any} size={28} color="white" />

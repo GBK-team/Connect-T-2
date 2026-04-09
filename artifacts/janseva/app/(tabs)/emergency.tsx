@@ -12,7 +12,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
 import { EmergencyButton } from "@/components/EmergencyButton";
 import { emergencyContacts } from "@/data/mumbaiServices";
 import { useLanguage } from "@/context/LanguageContext";
@@ -21,7 +20,7 @@ import { useTabBarVisibility } from "@/context/TabBarVisibilityContext";
 export default function EmergencyScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const router = useRouter();
+
   const { t } = useLanguage();
   const { handleScroll } = useTabBarVisibility();
 
@@ -42,9 +41,6 @@ export default function EmergencyScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
-          <Feather name="arrow-left" size={18} color="white" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("emergency")}</Text>
         <Text style={styles.headerSub}>{t("oneTopAccess")}</Text>
       </LinearGradient>
