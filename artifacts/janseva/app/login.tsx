@@ -246,7 +246,6 @@ export default function LoginScreen() {
           </LinearGradient>
         )}
       </TouchableOpacity>
-      
     </View>
   );
 
