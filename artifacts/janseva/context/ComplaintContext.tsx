@@ -35,6 +35,10 @@ export interface Complaint {
   assignedTo?: string;
   resolvedNote?: string;
   userName?: string;
+  userMobile?: string;
+  userAddress?: string;
+  userAge?: number;
+  userEmail?: string;
 }
 
 interface ComplaintContextType {
@@ -176,6 +180,10 @@ function getDemoComplaints(): Complaint[] {
         { status: "in_progress", timestamp: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(), note: "Team is working on repair", updatedBy: "Ward Officer Patil" },
       ],
       assignedTo: "Road Maintenance Team",
+      userName: "Rajesh Sharma",
+      userMobile: "9876543210",
+      userAddress: "B-12, Sindhi Colony, Camp 1, Ulhasnagar",
+      userAge: 42,
     },
     {
       id: "CMP002CD",
@@ -194,6 +202,11 @@ function getDemoComplaints(): Complaint[] {
         { status: "resolved", timestamp: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(), note: "Water supply restored", updatedBy: "ULMC Team" },
       ],
       resolvedNote: "Water supply restored. Pipe replaced.",
+      userName: "Priya Deshmukh",
+      userMobile: "9123456789",
+      userAddress: "Flat 3B, Sagar Apt, Camp 3, Ulhasnagar",
+      userAge: 35,
+      userEmail: "priya.d@email.com",
     },
     {
       id: "CMP003EF",
@@ -208,6 +221,10 @@ function getDemoComplaints(): Complaint[] {
       timeline: [
         { status: "submitted", timestamp: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(), note: "Complaint registered", updatedBy: "System" },
       ],
+      userName: "Amit Jadhav",
+      userMobile: "9988776655",
+      userAddress: "Near School, Camp 5, Ulhasnagar",
+      userAge: 28,
     },
   ];
 }

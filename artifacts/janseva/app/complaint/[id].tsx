@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useComplaints, ComplaintStatus } from "@/context/ComplaintContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
 
 const statusLabelKeys: Record<ComplaintStatus, string> = {
   submitted: "submitted", assigned: "assigned", in_progress: "inProgress",
@@ -60,6 +61,8 @@ export default function ComplaintDetailScreen() {
   const { id, fresh } = useLocalSearchParams<{ id: string; fresh?: string }>();
   const { getComplaintById } = useComplaints();
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const isNagarsevak = user?.role === "nagarsevak";
 
   const fadeAnim = useRef(new Animated.Value(fresh === "1" ? 0 : 1)).current;
 
@@ -124,6 +127,77 @@ export default function ComplaintDetailScreen() {
             </View>
           </View>
         ) : null}
+
+        {isNagarsevak && complaint.userName && (
+          <View style={styles.complainantCard}>
+            <Text style={styles.detailSectionTitle}>{t("complainantProfile")}</Text>
+            <View style={styles.complainantHeader}>
+              <View style={styles.complainantAvatar}>
+                <Text style={styles.complainantAvatarText}>{complaint.userName.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.complainantName}>{complaint.userName}</Text>
+                <Text style={styles.complainantRole}>{t("citizen")}</Text>
+              </View>
+            </View>
+            <View style={styles.complainantDivider} />
+            <View style={styles.complainantDetails}>
+              {complaint.userMobile ? (
+                <View style={styles.complainantRow}>
+                  <View style={[styles.complainantIcon, { backgroundColor: "#DBEAFE" }]}>
+                    <Feather name="phone" size={13} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.complainantLabel}>{t("phone")}</Text>
+                    <Text style={styles.complainantValue}>+91 {complaint.userMobile}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {complaint.userEmail ? (
+                <View style={styles.complainantRow}>
+                  <View style={[styles.complainantIcon, { backgroundColor: "#FCE7F3" }]}>
+                    <Feather name="mail" size={13} color="#DB2777" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.complainantLabel}>{t("email")}</Text>
+                    <Text style={styles.complainantValue}>{complaint.userEmail}</Text>
+                  </View>
+                </View>
+              ) : null}
+              <View style={styles.complainantRow}>
+                <View style={[styles.complainantIcon, { backgroundColor: "#D1FAE5" }]}>
+                  <Feather name="map-pin" size={13} color="#059669" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.complainantLabel}>{t("ward")}</Text>
+                  <Text style={styles.complainantValue}>{complaint.ward}</Text>
+                </View>
+              </View>
+              {complaint.userAddress ? (
+                <View style={styles.complainantRow}>
+                  <View style={[styles.complainantIcon, { backgroundColor: "#FEF3C7" }]}>
+                    <Feather name="home" size={13} color="#D97706" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.complainantLabel}>{t("address")}</Text>
+                    <Text style={styles.complainantValue}>{complaint.userAddress}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {complaint.userAge ? (
+                <View style={styles.complainantRow}>
+                  <View style={[styles.complainantIcon, { backgroundColor: "#EDE9FE" }]}>
+                    <Feather name="calendar" size={13} color="#7C3AED" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.complainantLabel}>{t("age")}</Text>
+                    <Text style={styles.complainantValue}>{complaint.userAge} years</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        )}
 
         {/* Status tracker */}
         <View style={styles.trackerCard}>
@@ -415,4 +489,40 @@ const styles = StyleSheet.create({
   tlTime: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular" },
   tlNote: { fontSize: 12, color: "#334155", fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 2 },
   tlBy: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", fontStyle: "italic" },
+  complainantCard: {
+    backgroundColor: "white",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#1E40AF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  complainantHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 0 },
+  complainantAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  complainantAvatarText: { fontSize: 18, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
+  complainantName: { fontSize: 15, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold" },
+  complainantRole: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", marginTop: 1 },
+  complainantDivider: { height: 1, backgroundColor: "#F1F5F9", marginVertical: 12 },
+  complainantDetails: { gap: 10 },
+  complainantRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  complainantIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  complainantLabel: { fontSize: 9, color: "#94A3B8", fontFamily: "Inter_400Regular", marginBottom: 1 },
+  complainantValue: { fontSize: 13, fontWeight: "600", color: "#0F172A", fontFamily: "Inter_600SemiBold" },
 });

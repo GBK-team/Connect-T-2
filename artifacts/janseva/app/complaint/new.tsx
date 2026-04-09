@@ -118,6 +118,10 @@ export default function NewComplaintScreen() {
         location,
         ward: user?.ward || "Camp 1 — Ulhasnagar",
         userName: user?.name,
+        userMobile: user?.mobile,
+        userAddress: user?.address,
+        userAge: user?.age,
+        userEmail: user?.email,
       });
 
       setSubmitting(false);
