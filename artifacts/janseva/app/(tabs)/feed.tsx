@@ -638,36 +638,39 @@ export default function FeedScreen() {
                   <Text style={styles.chatWarningText}>{chatWarning}</Text>
                 </View>
               )}
-            <View style={[styles.chatInputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-              <TouchableOpacity style={styles.chatAttachBtn} activeOpacity={0.75} onPress={handlePickChatImage}>
-                <Feather name="image" size={26} color="#EA580C" />
-              </TouchableOpacity>
-              <View style={[styles.chatInputPill, !!chatWarning && { backgroundColor: "#FEF2F2", borderWidth: 1.5, borderColor: "#EF4444" }]}>
-                <TextInput
-                  style={styles.chatInput}
-                  value={chatInput}
-                  onChangeText={handleChatInputChange}
-                  placeholder="Message..."
-                  placeholderTextColor="#94A3B8"
-                  returnKeyType="send"
-                  onSubmitEditing={handleSendChat}
-                  maxLength={300}
-                  multiline
-                />
-              </View>
-              {chatInput.trim() ? (
-                <TouchableOpacity onPress={handleSendChat} style={styles.chatSendBtn} activeOpacity={0.85}>
-                  <LinearGradient colors={["#B45309", "#EA580C"]} style={styles.chatSendGrad}>
-                    <Feather name="send" size={17} color="white" />
-                  </LinearGradient>
+            <View style={[styles.chatInputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+              <View style={styles.chatInputRow}>
+                <TouchableOpacity style={styles.chatCameraBtn} activeOpacity={0.75} onPress={handlePickChatImage}>
+                  <Feather name="camera" size={20} color="#EA580C" />
                 </TouchableOpacity>
-              ) : (
-                <View style={styles.chatIdleActions}>
-                  <TouchableOpacity style={styles.chatIdleBtn} activeOpacity={0.7}>
-                    <Feather name="heart" size={24} color="#EA580C" />
+                <View style={[styles.chatInputCard, !!chatWarning && { borderColor: "#EF4444", borderWidth: 1.5 }]}>
+                  <TextInput
+                    style={styles.chatInput}
+                    value={chatInput}
+                    onChangeText={handleChatInputChange}
+                    placeholder="Type a message..."
+                    placeholderTextColor="#C4B5A5"
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendChat}
+                    maxLength={300}
+                    multiline
+                  />
+                  <TouchableOpacity style={styles.chatEmojiBtn} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 20 }}>😊</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+                {chatInput.trim() ? (
+                  <TouchableOpacity onPress={handleSendChat} style={styles.chatSendBtn} activeOpacity={0.85}>
+                    <LinearGradient colors={["#7C2D12", "#EA580C"]} style={styles.chatSendGrad}>
+                      <Feather name="send" size={16} color="white" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={styles.chatMicBtn} activeOpacity={0.75}>
+                    <Feather name="mic" size={20} color="#EA580C" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             </View>
           )}
@@ -842,13 +845,16 @@ const styles = StyleSheet.create({
   bubbleTime: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 4 },
   chatWarningBanner: { backgroundColor: "#FEF2F2", borderTopWidth: 1, borderTopColor: "#FECACA", paddingHorizontal: 14, paddingVertical: 8 },
   chatWarningText: { fontSize: 12, color: "#DC2626", fontFamily: "Inter_400Regular", lineHeight: 18 },
-  chatInputBar: { backgroundColor: "#FFFFFF", borderTopWidth: 0.5, borderTopColor: "#E2E8F0", paddingHorizontal: 12, paddingTop: 10, flexDirection: "row", alignItems: "flex-end", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: -1 }, shadowOpacity: 0.04, shadowRadius: 4 },
-  chatAttachBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 1 },
-  chatInputPill: { flex: 1, backgroundColor: "#F1F5F9", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, minHeight: 38, maxHeight: 110, justifyContent: "center" },
-  chatInput: { fontSize: 15, color: "#0F172A", fontFamily: "Inter_400Regular", lineHeight: 20, padding: 0, margin: 0 },
-  chatSendBtn: { borderRadius: 19, overflow: "hidden", marginBottom: 1 },
-  chatSendGrad: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  chatIdleActions: { flexDirection: "row", alignItems: "center", marginBottom: 1 },
+  chatInputBar: { backgroundColor: "#FFF7ED", borderTopWidth: 1, borderTopColor: "#FED7AA", paddingHorizontal: 10, paddingTop: 10, shadowColor: "#C2410C", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 6 },
+  chatInputRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  chatCameraBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFEDD5", alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  chatInputCard: { flex: 1, flexDirection: "row", alignItems: "flex-end", backgroundColor: "white", borderRadius: 22, paddingLeft: 16, paddingRight: 6, paddingVertical: 6, minHeight: 42, maxHeight: 110, shadowColor: "#EA580C", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
+  chatInput: { flex: 1, fontSize: 15, color: "#1C1917", fontFamily: "Inter_400Regular", lineHeight: 20, padding: 0, margin: 0, paddingBottom: 2 },
+  chatEmojiBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginBottom: 1 },
+  chatSendBtn: { borderRadius: 20, overflow: "hidden", marginBottom: 2 },
+  chatSendGrad: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  chatMicBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFEDD5", alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  chatIdleActions: { flexDirection: "row", alignItems: "center" },
   chatIdleBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
 
   blockedScreen: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 },
