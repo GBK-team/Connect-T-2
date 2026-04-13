@@ -89,42 +89,38 @@ function PostCard({ post, userId, subscribed }: { post: FeedPost; userId: string
           <Text style={styles.pinnedText}>Pinned</Text>
         </View>
       )}
-      <View style={styles.cardBody}>
-        <Avatar name={post.authorName} color={post.avatarColor} size={42} />
-        <View style={{ flex: 1 }}>
-          <View style={styles.cardMeta}>
-            <Text style={styles.cardAuthor} numberOfLines={1}>{post.authorName}</Text>
-            <View style={[styles.roleBadge, { backgroundColor: roleInfo.bg }]}>
-              <Text style={[styles.roleBadgeText, { color: roleInfo.text }]}>{post.authorRole}</Text>
-            </View>
-            <Text style={styles.cardTime}>· {timeAgo(post.createdAt)}</Text>
-          </View>
-          <View style={[styles.typePill, { backgroundColor: tc.bg }]}>
-            <Feather name={tc.icon as any} size={9} color={tc.color} />
-            <Text style={[styles.typePillText, { color: tc.color }]}>{post.type}</Text>
-          </View>
-          <Text style={styles.cardContent}>{post.content}</Text>
-          {post.imageUri ? (
-            <Image source={{ uri: post.imageUri }} style={styles.postImage} resizeMode="cover" />
-          ) : null}
-          <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.action} onPress={() => {
-              if (!subscribed) return;
-              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              toggleLike(post.id, userId);
-            }} activeOpacity={0.8}>
-              <Feather name="heart" size={15} color={liked ? "#DC2626" : "#94A3B8"} />
-              <Text style={[styles.actionText, liked && { color: "#DC2626" }]}>{post.likes.length > 0 ? post.likes.length : ""}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.action} activeOpacity={0.8}>
-              <Feather name="message-circle" size={15} color="#94A3B8" />
-              <Text style={styles.actionText}>{post.commentsCount > 0 ? post.commentsCount : ""}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.action} activeOpacity={0.8}>
-              <Feather name="share" size={15} color="#94A3B8" />
-            </TouchableOpacity>
-          </View>
+      <View style={styles.cardMeta}>
+        <Avatar name={post.authorName} color={post.avatarColor} size={30} />
+        <Text style={styles.cardAuthor} numberOfLines={1}>{post.authorName}</Text>
+        <View style={[styles.roleBadge, { backgroundColor: roleInfo.bg }]}>
+          <Text style={[styles.roleBadgeText, { color: roleInfo.text }]}>{post.authorRole}</Text>
         </View>
+        <Text style={styles.cardTime}>· {timeAgo(post.createdAt)}</Text>
+      </View>
+      <View style={[styles.typePill, { backgroundColor: tc.bg, marginBottom: 8 }]}>
+        <Feather name={tc.icon as any} size={9} color={tc.color} />
+        <Text style={[styles.typePillText, { color: tc.color }]}>{post.type}</Text>
+      </View>
+      <Text style={styles.cardContent}>{post.content}</Text>
+      {post.imageUri ? (
+        <Image source={{ uri: post.imageUri }} style={styles.postImage} resizeMode="cover" />
+      ) : null}
+      <View style={styles.cardActions}>
+        <TouchableOpacity style={styles.action} onPress={() => {
+          if (!subscribed) return;
+          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          toggleLike(post.id, userId);
+        }} activeOpacity={0.8}>
+          <Feather name="heart" size={15} color={liked ? "#DC2626" : "#94A3B8"} />
+          <Text style={[styles.actionText, liked && { color: "#DC2626" }]}>{post.likes.length > 0 ? post.likes.length : ""}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.action} activeOpacity={0.8}>
+          <Feather name="message-circle" size={15} color="#94A3B8" />
+          <Text style={styles.actionText}>{post.commentsCount > 0 ? post.commentsCount : ""}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.action} activeOpacity={0.8}>
+          <Feather name="share" size={15} color="#94A3B8" />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -135,47 +131,43 @@ function ComplaintCard({ complaint, onPress }: { complaint: Complaint; onPress: 
   const cat = categoryConfig[complaint.category] || categoryConfig.other;
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
-      <View style={styles.cardBody}>
-        <View style={[styles.cmpAvatar, { backgroundColor: cat.bg }]}>
-          <Feather name={cat.icon as any} size={18} color={cat.color} />
+      <View style={styles.cardMeta}>
+        <View style={[styles.cmpAvatar, { backgroundColor: cat.bg, width: 28, height: 28, borderRadius: 8 }]}>
+          <Feather name={cat.icon as any} size={13} color={cat.color} />
         </View>
-        <View style={{ flex: 1 }}>
-          <View style={styles.cardMeta}>
-            <Text style={styles.cardAuthor} numberOfLines={1}>{complaint.title}</Text>
-            <Text style={styles.cardTime}>· {timeAgo(complaint.createdAt)}</Text>
-          </View>
-          <View style={[styles.typePill, { backgroundColor: st.bg, alignSelf: "flex-start", marginBottom: 6 }]}>
-            <Feather name={st.icon as any} size={9} color={st.color} />
-            <Text style={[styles.typePillText, { color: st.color }]}>{complaint.status.replace("_", " ")}</Text>
-          </View>
-          {complaint.photoUri ? (
-            <Image source={{ uri: complaint.photoUri }} style={styles.postImage} resizeMode="cover" />
-          ) : (
-            <View style={[styles.cmpPhotoPlaceholder, { backgroundColor: cat.bg }]}>
-              <Feather name={cat.icon as any} size={28} color={cat.color + "60"} />
-            </View>
-          )}
-          <Text style={styles.cardContent} numberOfLines={2}>{complaint.description}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 }}>
-            <Feather name="map-pin" size={10} color="#94A3B8" />
-            <Text style={{ fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", flex: 1 }} numberOfLines={1}>{complaint.location}</Text>
-          </View>
-          {complaint.status === "resolved" && complaint.resolvedNote ? (
-            <View style={styles.resolvedNote}>
-              <Feather name="check-circle" size={11} color="#059669" />
-              <Text style={styles.resolvedNoteText} numberOfLines={1}>{complaint.resolvedNote}</Text>
-            </View>
-          ) : null}
-          <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.action} activeOpacity={0.8}>
-              <Feather name="share" size={15} color="#94A3B8" />
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.action, { marginLeft: "auto" }]} onPress={onPress} activeOpacity={0.8}>
-              <Feather name="arrow-right" size={14} color="#EA580C" />
-              <Text style={[styles.actionText, { color: "#EA580C" }]}>Details</Text>
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.cardAuthor} numberOfLines={1}>{complaint.title}</Text>
+        <Text style={styles.cardTime}>· {timeAgo(complaint.createdAt)}</Text>
+      </View>
+      <View style={[styles.typePill, { backgroundColor: st.bg, alignSelf: "flex-start", marginBottom: 8 }]}>
+        <Feather name={st.icon as any} size={9} color={st.color} />
+        <Text style={[styles.typePillText, { color: st.color }]}>{complaint.status.replace("_", " ")}</Text>
+      </View>
+      {complaint.photoUri ? (
+        <Image source={{ uri: complaint.photoUri }} style={styles.postImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.cmpPhotoPlaceholder, { backgroundColor: cat.bg }]}>
+          <Feather name={cat.icon as any} size={28} color={cat.color + "60"} />
         </View>
+      )}
+      <Text style={styles.cardContent} numberOfLines={2}>{complaint.description}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 }}>
+        <Feather name="map-pin" size={10} color="#94A3B8" />
+        <Text style={{ fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", flex: 1 }} numberOfLines={1}>{complaint.location}</Text>
+      </View>
+      {complaint.status === "resolved" && complaint.resolvedNote ? (
+        <View style={styles.resolvedNote}>
+          <Feather name="check-circle" size={11} color="#059669" />
+          <Text style={styles.resolvedNoteText} numberOfLines={1}>{complaint.resolvedNote}</Text>
+        </View>
+      ) : null}
+      <View style={styles.cardActions}>
+        <TouchableOpacity style={styles.action} activeOpacity={0.8}>
+          <Feather name="share" size={15} color="#94A3B8" />
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.action, { marginLeft: "auto" }]} onPress={onPress} activeOpacity={0.8}>
+          <Feather name="arrow-right" size={14} color="#EA580C" />
+          <Text style={[styles.actionText, { color: "#EA580C" }]}>Details</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -938,14 +930,14 @@ const styles = StyleSheet.create({
   tabBadgeText: { fontSize: 9, fontWeight: "700", color: "rgba(255,255,255,0.9)", fontFamily: "Inter_700Bold" },
   tabBadgeTextActive: { color: "white" },
   list: { paddingTop: 8 },
-  separator: { height: 1, backgroundColor: "#E2E8F0", marginLeft: 70 },
+  separator: { height: 1, backgroundColor: "#E2E8F0" },
 
-  card: { backgroundColor: "white", paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4 },
+  card: { backgroundColor: "white", paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4 },
   cardPinned: { borderLeftWidth: 3, borderLeftColor: "#7C3AED" },
-  pinnedBar: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8, marginLeft: 54 },
+  pinnedBar: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 6 },
   pinnedText: { fontSize: 10, fontWeight: "700", color: "#7C3AED", fontFamily: "Inter_600SemiBold" },
   cardBody: { flexDirection: "row", gap: 12 },
-  cardMeta: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4, flexWrap: "wrap", flex: 1 },
+  cardMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" },
   cardAuthor: { fontSize: 14, fontWeight: "700", color: "#0F172A", fontFamily: "Inter_700Bold", flexShrink: 1 },
   cardTime: { fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular" },
   roleBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 10 },
