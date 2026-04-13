@@ -21,9 +21,6 @@ function AnimatedTabBar(props: any) {
   const BOTTOM_INSET = isWeb ? 14 : Math.max(insets.bottom, 8);
   const TAB_HEIGHT = (isWeb ? 58 : 56) + BOTTOM_INSET;
 
-  const currentRouteName = state.routes[state.index]?.name;
-  if (currentRouteName === "feed") return null;
-
   return (
     <Animated.View
       style={[

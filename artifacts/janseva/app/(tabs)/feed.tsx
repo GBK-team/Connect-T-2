@@ -378,6 +378,7 @@ function PremiumTeaser({ onPress }: { onPress: () => void }) {
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const TAB_H = Platform.OS === "web" ? 72 : 56 + Math.max(insets.bottom, 8);
   const router = useRouter();
   const { posts, chatMessages, addPost, addChatMessage, deleteChatMessage, editChatMessage, toggleLike, isSubscribed, isBlocked, subscribe, blocked } = useFeed();
   const { user } = useAuth();
@@ -581,7 +582,7 @@ export default function FeedScreen() {
             data={officialPosts}
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => <PostCard post={item} userId={userId} subscribed={false} />}
-            contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 70 }]}
+            contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 70 + TAB_H }]}
             showsVerticalScrollIndicator={false}
             onScroll={handleScroll}
             scrollEventThrottle={16}
@@ -597,7 +598,7 @@ export default function FeedScreen() {
           data={posts}
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => <PostCard post={item} userId={userId} subscribed={subscribed} />}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 }]}
+          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 + TAB_H }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -626,13 +627,13 @@ export default function FeedScreen() {
                   onLongPress={() => handleMsgLongPress(item)}
                 />
               )}
-              contentContainerStyle={[styles.chatList, { paddingBottom: Math.max(insets.bottom, 8) + 60 }]}
+              contentContainerStyle={[styles.chatList, { paddingBottom: Math.max(insets.bottom, 8) + 60 + TAB_H }]}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={() => chatRef.current?.scrollToEnd({ animated: false })}
             />
           )}
           {!userBlocked && (
-            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}>
+            <View style={{ position: "absolute", bottom: TAB_H, left: 0, right: 0 }}>
               {!!chatWarning && (
                 <View style={styles.chatWarningBanner}>
                   <Text style={styles.chatWarningText}>{chatWarning}</Text>
@@ -682,7 +683,7 @@ export default function FeedScreen() {
           data={complaints}
           keyExtractor={(c) => c.id}
           renderItem={({ item }) => <ComplaintCard complaint={item} onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: item.id } })} />}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 }]}
+          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 + TAB_H }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -696,7 +697,7 @@ export default function FeedScreen() {
           data={resolvedComplaints}
           keyExtractor={(c) => c.id}
           renderItem={({ item }) => <ComplaintCard complaint={item} onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: item.id } })} />}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 }]}
+          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 + TAB_H }]}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -707,7 +708,7 @@ export default function FeedScreen() {
 
 
       {!subscribed && activeTab === "news" && (
-        <View style={[styles.composeBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        <View style={[styles.composeBar, { paddingBottom: Math.max(insets.bottom, 8), bottom: TAB_H }]}>
           <TouchableOpacity style={[styles.composeInner, { backgroundColor: "#FFF7ED", borderColor: "#FED7AA" }]} onPress={() => setShowSubscribe(true)} activeOpacity={0.85}>
             <Feather name="lock" size={18} color="#EA580C" />
             <Text style={[styles.composePlaceholder, { color: "#C2410C", fontFamily: "Inter_600SemiBold" }]}>Subscribe to post & chat — ₹199</Text>
