@@ -82,7 +82,7 @@ export default function HomeScreen() {
   const resolvedCount = complaints.filter((c) => c.status === "resolved").length;
   const roleColor = getRoleColor(user?.role);
 
-  const notifCount = alertsAndNews.length;
+  const notifCount = alertsAndNews.filter((i) => i.type === "alert").length;
 
   const handleCall = (number: string) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -205,7 +205,7 @@ export default function HomeScreen() {
           <View style={styles.alertsSectionHeader}>
             <View style={styles.alertsSectionTitleRow}>
               <View style={styles.alertsDot} />
-              <Text style={styles.alertsSectionTitle}>{t("alertsAndNews")}</Text>
+              <Text style={styles.alertsSectionTitle}>{t("alerts")}</Text>
             </View>
             <View style={styles.alertsLivePill}>
               <View style={styles.alertsLiveDot} />
@@ -213,7 +213,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 2, paddingBottom: 2 }}>
-            {alertsAndNews.map((item) => (
+            {alertsAndNews.filter((item) => item.type === "alert").map((item) => (
               <TouchableOpacity key={item.id} style={styles.alertCard} activeOpacity={0.88} onPress={() => setSelectedAlert(item)}>
                 <View style={[styles.alertCardIcon, { backgroundColor: item.bg }]}>
                   <Feather name={item.icon as any} size={16} color={item.color} />
@@ -319,10 +319,10 @@ export default function HomeScreen() {
           <View style={styles.modalSheet}>
             <View style={styles.notifHeader}>
               <Feather name="bell" size={20} color="#EA580C" />
-              <Text style={styles.modalTitle}>{t("alertsAndNews")}</Text>
+              <Text style={styles.modalTitle}>{t("alerts")}</Text>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420, width: "100%" }}>
-              {alertsAndNews.map((item) => (
+              {alertsAndNews.filter((item) => item.type === "alert").map((item) => (
                 <TouchableOpacity
                   key={item.id}
                   style={styles.notifItem}
