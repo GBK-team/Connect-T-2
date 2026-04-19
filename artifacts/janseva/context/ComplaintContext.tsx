@@ -51,7 +51,7 @@ interface ComplaintContextType {
 
 const ComplaintContext = createContext<ComplaintContextType | null>(null);
 
-const STORAGE_KEY = "janseva_complaints_v2";
+const STORAGE_KEY = "janseva_complaints_v3";
 
 function generateId(): string {
   return "CMP" + Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 4).toUpperCase();
