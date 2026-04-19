@@ -96,7 +96,7 @@ export function AppSplash({ onFinish }: AppSplashProps) {
               activeOpacity={0.85}
             >
               <LinearGradient
-                colors={["#92400E", "#C2410C"]}
+                colors={["#C2410C", "#EA580C"]}
                 style={styles.portalIconWrap}
               >
                 <Feather name="briefcase" size={28} color="white" />
