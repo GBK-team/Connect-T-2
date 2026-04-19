@@ -13,11 +13,11 @@ function JobsTabBar() {
   const TAB_H = Platform.OS === "web" ? 64 : 56 + Math.max(insets.bottom, 8);
 
   const TABS = [
-    { name: "index", label: "Jobs", icon: "briefcase" as const, path: "/jobs/(tabs)" },
+    { name: "index",   label: "Jobs",     icon: "briefcase"   as const, path: "/jobs/(tabs)" },
     ...(jobsUser?.role === "employer"
       ? [{ name: "post", label: "Post Job", icon: "plus-circle" as const, path: "/jobs/(tabs)/post" }]
-      : []),
-    { name: "profile", label: "Profile", icon: "user" as const, path: "/jobs/(tabs)/profile" },
+      : [{ name: "applied", label: "Applied",  icon: "check-circle" as const, path: "/jobs/(tabs)/applied" }]),
+    { name: "profile", label: "Profile",  icon: "user"        as const, path: "/jobs/(tabs)/profile" },
   ];
 
   return (
@@ -50,6 +50,7 @@ export default function JobsTabLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="post" />
+      <Tabs.Screen name="applied" />
       <Tabs.Screen name="profile" />
     </Tabs>
   );
