@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Animated,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -458,9 +459,14 @@ export default function LoginScreen() {
     <LinearGradient
       colors={["#C2410C", "#EA580C", "#F97316", "#FB923C"]}
       locations={[0, 0.25, 0.65, 1]}
-      style={[s.root, { paddingTop: topPad }]}
+      style={[s.root, { paddingTop: topPad, overflow: "hidden" }]}
     >
       <TopShade height={220} />
+      <View style={[ld.blob, ld.b1]} />
+      <View style={[ld.blob, ld.b2]} />
+      <View style={[ld.ring, ld.r1]} />
+      <View style={[ld.ring, ld.r2]} />
+      <View style={[ld.ring, ld.r3]} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
@@ -733,4 +739,15 @@ const s = StyleSheet.create({
   wardRowText: {
     flex: 1, fontSize: 14, color: "#334155", fontFamily: "Inter_400Regular",
   },
+});
+
+const { width: SW } = Dimensions.get("window");
+const ld = StyleSheet.create({
+  blob: { position: "absolute", borderRadius: 9999, backgroundColor: "rgba(255,255,255,0.20)" },
+  ring: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.20)", borderWidth: 1.5 },
+  b1: { width: SW * 0.50, height: SW * 0.50, top: -SW * 0.16, right: -SW * 0.14 },
+  b2: { width: SW * 0.28, height: SW * 0.28, bottom: SW * 0.12, left: -SW * 0.08 },
+  r1: { width: SW * 0.88, height: SW * 0.88, top: -SW * 0.32, right: -SW * 0.32 },
+  r2: { width: SW * 0.62, height: SW * 0.62, top: -SW * 0.10, right: -SW * 0.10 },
+  r3: { width: SW * 0.72, height: SW * 0.72, bottom: SW * 0.05, left: -SW * 0.26 },
 });
