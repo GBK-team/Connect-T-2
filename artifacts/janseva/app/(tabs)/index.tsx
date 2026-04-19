@@ -11,7 +11,6 @@ import { useRouter } from "expo-router";
 import { UtilityCard } from "@/components/UtilityCard";
 import { SectionHeader } from "@/components/SectionHeader";
 import { emergencyContacts } from "@/data/mumbaiServices";
-import { useComplaints, ComplaintStatus } from "@/context/ComplaintContext";
 import { useAuth } from "@/context/AuthContext";
 import { useTabBarVisibility } from "@/context/TabBarVisibilityContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -29,18 +28,6 @@ const quickServices = [
   { id: "shamshanbhumi", label: "Crematorium", icon: "wind", color: "#475569", bg: "#F1F5F9" },
 ];
 
-const statusConfig: Record<ComplaintStatus, { label: string; color: string; bg: string; icon: string }> = {
-  submitted: { label: "Submitted", color: "#D97706", bg: "#FEF3C7", icon: "clock" },
-  assigned: { label: "Assigned", color: "#EA580C", bg: "#FFEDD5", icon: "user-check" },
-  in_progress: { label: "In Progress", color: "#7C3AED", bg: "#EDE9FE", icon: "tool" },
-  resolved: { label: "Resolved", color: "#059669", bg: "#D1FAE5", icon: "check-circle" },
-  rejected: { label: "Rejected", color: "#DC2626", bg: "#FEE2E2", icon: "x-circle" },
-};
-
-const categoryIcons: Record<string, string> = {
-  roads: "truck", water: "droplet", electricity: "zap", garbage: "trash-2",
-  drainage: "git-merge", streetlight: "sun", encroachment: "alert-triangle", other: "more-horizontal",
-};
 
 function getGreetingKey(): string {
   const hour = new Date().getHours();
@@ -63,7 +50,6 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { complaints } = useComplaints();
   const { user } = useAuth();
   const { t } = useLanguage();
   const { handleScroll } = useTabBarVisibility();
@@ -71,9 +57,6 @@ export default function HomeScreen() {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [selectedUtility, setSelectedUtility] = useState<string | null>(null);
 
-  const recentComplaints = complaints.slice(0, 3);
-  const pendingCount = complaints.filter((c) => ["submitted", "assigned", "in_progress"].includes(c.status)).length;
-  const resolvedCount = complaints.filter((c) => c.status === "resolved").length;
   const roleColor = getRoleColor(user?.role);
 
   const notifCount = alertsAndNews.filter((i) => i.type === "alert").length;
@@ -125,16 +108,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.alertBanner} activeOpacity={0.82} onPress={() => setSelectedAlert(alertsAndNews[0])}>
-          <View style={styles.alertIconBox}>
-            <Feather name="info" size={14} color="#F59E0B" />
-          </View>
-          <View style={styles.alertText}>
-            <Text style={styles.alertTitle}>{t("ulmcUpdate")}</Text>
-            <Text style={styles.alertBody}>{t("waterRestricted")}</Text>
-          </View>
-          <Feather name="chevron-right" size={14} color="rgba(255,255,255,0.4)" />
-        </TouchableOpacity>
       </LinearGradient>
 
       <ScrollView
@@ -144,55 +117,6 @@ export default function HomeScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* REPORT A PROBLEM CTA */}
-        <TouchableOpacity style={styles.complaintCTA} onPress={() => router.push("/complaint/new")} activeOpacity={0.88}>
-          <LinearGradient colors={["#15803D", "#16A34A", "#22C55E"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.complaintCTAGrad}>
-            <View style={styles.complaintCTAIcon}>
-              <Feather name="camera" size={24} color="white" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.complaintCTATitle}>{t("reportProblem")}</Text>
-              <Text style={styles.complaintCTASub}>{t("reportProblemSub")}</Text>
-            </View>
-            <View style={styles.complaintCTAArrow}>
-              <Feather name="arrow-right" size={18} color="white" />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* STATS */}
-        <View style={styles.statsRow}>
-          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/(tabs)/complaints")} activeOpacity={0.8}>
-            <View style={[styles.statIcon, { backgroundColor: "#FEF3C7" }]}>
-              <Feather name="clock" size={16} color="#D97706" />
-            </View>
-            <Text style={[styles.statNum, { color: "#D97706" }]}>{pendingCount}</Text>
-            <Text style={styles.statLabel}>{t("active")}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/(tabs)/complaints")} activeOpacity={0.8}>
-            <View style={[styles.statIcon, { backgroundColor: "#D1FAE5" }]}>
-              <Feather name="check-circle" size={16} color="#059669" />
-            </View>
-            <Text style={[styles.statNum, { color: "#059669" }]}>{resolvedCount}</Text>
-            <Text style={styles.statLabel}>{t("resolved")}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/(tabs)/feed")} activeOpacity={0.8}>
-            <View style={[styles.statIcon, { backgroundColor: "#FFEDD5" }]}>
-              <Feather name="rss" size={16} color="#EA580C" />
-            </View>
-            <Text style={[styles.statNum, { color: "#EA580C" }]}>{t("feed")}</Text>
-            <Text style={styles.statLabel}>{t("community")}</Text>
-          </TouchableOpacity>
-          {user?.role === "nagarsevak" && (
-            <TouchableOpacity style={[styles.statCard, { backgroundColor: "#ECFDF5" }]} onPress={() => router.push("/(tabs)/admin")} activeOpacity={0.8}>
-              <View style={[styles.statIcon, { backgroundColor: "#D1FAE5" }]}>
-                <Feather name="briefcase" size={16} color="#059669" />
-              </View>
-              <Text style={[styles.statNum, { color: "#059669" }]}>{t("panel")}</Text>
-              <Text style={styles.statLabel}>{t("officer")}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* ALERTS & NEWS */}
         <View style={styles.alertsSection}>
@@ -228,42 +152,6 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         </View>
-
-        {/* RECENT COMPLAINTS */}
-        <SectionHeader title={t("recentComplaints")} actionLabel={t("viewAll")} onAction={() => router.push("/(tabs)/complaints")} />
-        {recentComplaints.length > 0 ? (
-          <View style={styles.complaintsCard}>
-            {recentComplaints.map((complaint, idx) => {
-              const st = statusConfig[complaint.status];
-              const catIcon = categoryIcons[complaint.category] || "more-horizontal";
-              return (
-                <TouchableOpacity
-                  key={complaint.id}
-                  style={[styles.complaintRow, idx < recentComplaints.length - 1 && styles.complaintRowBorder]}
-                  onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: complaint.id } })}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.complaintRowIcon, { backgroundColor: st.bg }]}>
-                    <Feather name={catIcon as any} size={14} color={st.color} />
-                  </View>
-                  <View style={styles.complaintRowText}>
-                    <Text style={styles.complaintRowTitle} numberOfLines={1}>{complaint.title}</Text>
-                    <Text style={styles.complaintRowLocation} numberOfLines={1}>{complaint.location}</Text>
-                  </View>
-                  <View style={[styles.complaintRowStatus, { backgroundColor: st.bg }]}>
-                    <Feather name={st.icon as any} size={9} color={st.color} />
-                    <Text style={[styles.complaintRowStatusText, { color: st.color }]}>{st.label}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.noComplaintsCard} onPress={() => router.push("/complaint/new")} activeOpacity={0.8}>
-            <Feather name="camera" size={24} color="#EA580C" />
-            <Text style={styles.noComplaintsText}>{t("tapToReport")}</Text>
-          </TouchableOpacity>
-        )}
 
         {/* UTILITY STATUS */}
         <SectionHeader title={t("utilityStatus")} />

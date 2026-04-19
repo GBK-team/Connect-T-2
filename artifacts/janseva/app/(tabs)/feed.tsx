@@ -11,38 +11,16 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useFeed, FeedPost, PostType, hasBadContent } from "@/context/FeedContext";
 import { useAuth } from "@/context/AuthContext";
-import { useComplaints, Complaint, ComplaintStatus } from "@/context/ComplaintContext";
-import { useRouter } from "expo-router";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTabBarVisibility } from "@/context/TabBarVisibilityContext";
-import { withTiming, Easing } from "react-native-reanimated";
 
-type FeedTab = "community" | "complaints" | "resolved";
+type FeedTab = "community";
 
 const postTypeConfig: Record<PostType, { color: string; bg: string; icon: string }> = {
   announcement: { color: "#DC2626", bg: "#FEE2E2", icon: "alert-circle" },
   update: { color: "#059669", bg: "#D1FAE5", icon: "check-circle" },
   complaint: { color: "#D97706", bg: "#FEF3C7", icon: "alert-triangle" },
   general: { color: "#EA580C", bg: "#FFEDD5", icon: "message-circle" },
-};
-
-const statusConfig: Record<ComplaintStatus, { color: string; bg: string; icon: string }> = {
-  submitted: { color: "#D97706", bg: "#FEF3C7", icon: "clock" },
-  assigned: { color: "#EA580C", bg: "#FFEDD5", icon: "user-check" },
-  in_progress: { color: "#7C3AED", bg: "#EDE9FE", icon: "tool" },
-  resolved: { color: "#059669", bg: "#D1FAE5", icon: "check-circle" },
-  rejected: { color: "#DC2626", bg: "#FEE2E2", icon: "x-circle" },
-};
-
-const categoryConfig: Record<string, { icon: string; color: string; bg: string }> = {
-  roads: { icon: "truck", color: "#92400E", bg: "#FEF3C7" },
-  water: { icon: "droplet", color: "#0369A1", bg: "#BAE6FD" },
-  electricity: { icon: "zap", color: "#D97706", bg: "#FEF3C7" },
-  garbage: { icon: "trash-2", color: "#059669", bg: "#D1FAE5" },
-  drainage: { icon: "git-merge", color: "#0EA5E9", bg: "#FFF7ED" },
-  streetlight: { icon: "sun", color: "#7C3AED", bg: "#EDE9FE" },
-  encroachment: { icon: "alert-triangle", color: "#DC2626", bg: "#FEE2E2" },
-  other: { icon: "more-horizontal", color: "#475569", bg: "#F1F5F9" },
 };
 
 const roleBadgeColor: Record<string, { bg: string; text: string }> = {
@@ -124,54 +102,6 @@ function PostCard({ post, userId }: { post: FeedPost; userId: string }) {
     </View>
   );
 }
-
-function ComplaintCard({ complaint, onPress }: { complaint: Complaint; onPress: () => void }) {
-  const st = statusConfig[complaint.status];
-  const cat = categoryConfig[complaint.category] || categoryConfig.other;
-  return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
-      <View style={styles.cardMeta}>
-        <View style={[styles.cmpAvatar, { backgroundColor: cat.bg, width: 28, height: 28, borderRadius: 8 }]}>
-          <Feather name={cat.icon as any} size={13} color={cat.color} />
-        </View>
-        <Text style={styles.cardAuthor} numberOfLines={1}>{complaint.title}</Text>
-        <Text style={styles.cardTime}>· {timeAgo(complaint.createdAt)}</Text>
-      </View>
-      <View style={[styles.typePill, { backgroundColor: st.bg, alignSelf: "flex-start", marginBottom: 8 }]}>
-        <Feather name={st.icon as any} size={9} color={st.color} />
-        <Text style={[styles.typePillText, { color: st.color }]}>{complaint.status.replace("_", " ")}</Text>
-      </View>
-      {complaint.photoUri ? (
-        <Image source={{ uri: complaint.photoUri }} style={styles.postImage} resizeMode="cover" />
-      ) : (
-        <View style={[styles.cmpPhotoPlaceholder, { backgroundColor: cat.bg }]}>
-          <Feather name={cat.icon as any} size={28} color={cat.color + "60"} />
-        </View>
-      )}
-      <Text style={styles.cardContent} numberOfLines={2}>{complaint.description}</Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 }}>
-        <Feather name="map-pin" size={10} color="#94A3B8" />
-        <Text style={{ fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", flex: 1 }} numberOfLines={1}>{complaint.location}</Text>
-      </View>
-      {complaint.status === "resolved" && complaint.resolvedNote ? (
-        <View style={styles.resolvedNote}>
-          <Feather name="check-circle" size={11} color="#059669" />
-          <Text style={styles.resolvedNoteText} numberOfLines={1}>{complaint.resolvedNote}</Text>
-        </View>
-      ) : null}
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.action} activeOpacity={0.8}>
-          <Feather name="share" size={15} color="#94A3B8" />
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.action, { marginLeft: "auto" }]} onPress={onPress} activeOpacity={0.8}>
-          <Feather name="arrow-right" size={14} color="#EA580C" />
-          <Text style={[styles.actionText, { color: "#EA580C" }]}>Details</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 
 function NewPostModal({ visible, onClose, onSubmit, canPostAnnouncement }: {
   visible: boolean; onClose: () => void;
@@ -273,33 +203,19 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H = Platform.OS === "web" ? 72 : 56 + Math.max(insets.bottom, 8);
-  const router = useRouter();
   const { posts, addPost, toggleLike, isBlocked, blocked } = useFeed();
   const { user } = useAuth();
-  const { complaints } = useComplaints();
   const { t } = useLanguage();
-  const { handleScroll, tabBarTranslateY } = useTabBarVisibility();
+  const { handleScroll } = useTabBarVisibility();
 
   const userId = user?.id || "guest";
   const userBlocked = isBlocked(userId);
   const blockedUntil = blocked[userId] ? new Date(blocked[userId]).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
 
-  const [activeTab, setActiveTab] = useState<FeedTab>("community");
-
-  const isSubTab = activeTab === "complaints" || activeTab === "resolved";
-
-  useEffect(() => {
-    if (isSubTab) {
-      tabBarTranslateY.value = withTiming(200, { duration: 220, easing: Easing.in(Easing.cubic) });
-    } else {
-      tabBarTranslateY.value = withTiming(0, { duration: 250, easing: Easing.out(Easing.cubic) });
-    }
-  }, [isSubTab]);
+  const [activeTab] = useState<FeedTab>("community");
 
   const [showNewPost, setShowNewPost] = useState(false);
   const canPostAnnouncement = user?.role === "nagarsevak";
-  const activeComplaints = complaints.filter((c) => ["submitted", "assigned", "in_progress"].includes(c.status));
-  const resolvedComplaints = complaints.filter((c) => c.status === "resolved" || c.status === "rejected");
 
   const handlePost = (content: string, type: PostType, imageUri?: string) => {
     const result = addPost(content, type, user?.name || "Anonymous", user?.role || "citizen", user?.avatarColor || "#EA580C", userId, imageUri);
@@ -307,19 +223,6 @@ export default function FeedScreen() {
       Alert.alert("Content Violation", "Your post contains inappropriate content. You have been blocked from posting for 24 hours.");
     }
   };
-
-  const tabs: { id: FeedTab; label: string; count?: number }[] = [
-    { id: "community", label: "News" },
-    { id: "complaints", label: "Complaints", count: complaints.length },
-    { id: "resolved", label: "Resolved", count: resolvedComplaints.length },
-  ];
-
-  const renderEmptyComplaints = (msg: string, icon: string) => (
-    <View style={styles.emptyState}>
-      <Feather name={icon as any} size={40} color="#CBD5E1" />
-      <Text style={styles.emptyTitle}>{msg}</Text>
-    </View>
-  );
 
   return (
     <View style={styles.root}>
@@ -329,21 +232,10 @@ export default function FeedScreen() {
             <Text style={styles.headerTitle}>News Feed</Text>
             <Text style={styles.headerSub}>Ambernath · BJP Ward Network</Text>
           </View>
-          {isSubTab ? (
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => setActiveTab("community")}
-              activeOpacity={0.8}
-            >
-              <Feather name="chevron-left" size={16} color="white" />
-              <Text style={styles.backBtnText}>Back</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.newPostBtn} onPress={() => userBlocked ? Alert.alert("Blocked", `You are blocked until ${blockedUntil}.`) : setShowNewPost(true)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.newPostBtn} onPress={() => userBlocked ? Alert.alert("Blocked", `You are blocked until ${blockedUntil}.`) : setShowNewPost(true)} activeOpacity={0.85}>
               <Feather name="edit-2" size={14} color="white" />
               <Text style={styles.newPostBtnText}>Post</Text>
             </TouchableOpacity>
-          )}
         </View>
         {userBlocked && (
           <View style={styles.blockedBanner}>
@@ -352,28 +244,9 @@ export default function FeedScreen() {
           </View>
         )}
         <View style={styles.tabRow}>
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => setActiveTab(tab.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                {tab.count !== undefined && tab.count > 0 && (
-                  <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
-                    <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
-                      {tab.count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
+          <View style={[styles.tab, styles.tabActive]}>
+            <Text style={[styles.tabText, styles.tabTextActive]}>News</Text>
+          </View>
         </View>
       </LinearGradient>
 
@@ -387,36 +260,12 @@ export default function FeedScreen() {
           onScroll={handleScroll}
           scrollEventThrottle={16}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={renderEmptyComplaints("No posts yet", "inbox")}
-        />
-      )}
-
-
-      {activeTab === "complaints" && (
-        <FlatList
-          data={complaints}
-          keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <ComplaintCard complaint={item} onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: item.id } })} />}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 }]}
-          showsVerticalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={renderEmptyComplaints("No complaints yet", "inbox")}
-        />
-      )}
-
-      {activeTab === "resolved" && (
-        <FlatList
-          data={resolvedComplaints}
-          keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <ComplaintCard complaint={item} onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: item.id } })} />}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 8) + 20 }]}
-          showsVerticalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={renderEmptyComplaints("No resolved complaints yet", "inbox")}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Feather name="inbox" size={40} color="#CBD5E1" />
+              <Text style={styles.emptyTitle}>No posts yet</Text>
+            </View>
+          }
         />
       )}
 

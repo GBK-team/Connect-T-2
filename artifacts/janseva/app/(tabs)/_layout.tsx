@@ -70,7 +70,6 @@ function AnimatedTabBar(props: any) {
 
           const iconMap: Record<string, string> = {
             index: "home",
-            complaints: "edit-3",
             feed: "rss",
             profile: "user",
           };
@@ -132,17 +131,10 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="complaints"
-        options={{
-          title: t("complaints"),
-          href: isNagarsevak ? null : undefined,
-        }}
-      />
-
-      <Tabs.Screen
         name="emergency"
         options={{ href: null }}
       />
+      <Tabs.Screen name="complaints" options={{ href: null }} />
 
       <Tabs.Screen
         name="feed"
