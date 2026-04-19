@@ -178,12 +178,12 @@ const styles = StyleSheet.create({
 });
 
 const s2 = StyleSheet.create({
-  blob: { position: "absolute", borderRadius: 9999, backgroundColor: "rgba(255,255,255,0.18)" },
-  ring: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.50)" },
-  b1: { width: width * 0.55, height: width * 0.55, top: -width * 0.18, right: -width * 0.18 },
-  b2: { width: width * 0.35, height: width * 0.35, bottom: -width * 0.12, left: -width * 0.10 },
-  b3: { width: width * 0.20, height: width * 0.20, top: "30%", left: "60%" },
-  r1: { width: width * 0.80, height: width * 0.80, top: -width * 0.28, right: -width * 0.28, borderWidth: 3 },
-  r2: { width: width * 0.55, height: width * 0.55, bottom: -width * 0.22, left: -width * 0.18, borderWidth: 2.5 },
-  r3: { width: width * 0.35, height: width * 0.35, top: "25%", left: "22%", borderWidth: 2 },
+  blob: { position: "absolute", borderRadius: 9999, backgroundColor: "rgba(255,255,255,0.12)" },
+  ring: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.20)", borderWidth: 1.5 },
+  b1: { width: width * 0.50, height: width * 0.50, top: -width * 0.16, right: -width * 0.14 },
+  b2: { width: width * 0.28, height: width * 0.28, bottom: -width * 0.10, left: -width * 0.08 },
+  b3: { width: 0, height: 0 },
+  r1: { width: width * 0.88, height: width * 0.88, top: -width * 0.32, right: -width * 0.32 },
+  r2: { width: width * 0.62, height: width * 0.62, top: -width * 0.10, right: -width * 0.10 },
+  r3: { width: width * 0.72, height: width * 0.72, bottom: -width * 0.28, left: -width * 0.26 },
 });

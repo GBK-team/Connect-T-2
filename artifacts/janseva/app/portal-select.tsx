@@ -4,7 +4,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import DecorativeCircles from "@/components/DecorativeCircles";
 
 const { width } = Dimensions.get("window");
 
@@ -19,7 +18,11 @@ export default function PortalSelectScreen() {
         locations={[0, 0.25, 0.55, 0.8, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <DecorativeCircles />
+      <View style={ps.b1} />
+      <View style={ps.b2} />
+      <View style={ps.r1} />
+      <View style={ps.r2} />
+      <View style={ps.r3} />
 
       <View style={[styles.wrap, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 }]}>
         <View style={styles.logoRow}>
@@ -86,4 +89,12 @@ const styles = StyleSheet.create({
   portalArrow: { marginTop: 4, width: 28, height: 28, borderRadius: 14, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" },
 
   footer: { fontSize: 10, color: "rgba(255,255,255,0.3)", fontFamily: "Inter_400Regular", letterSpacing: 1 },
+});
+
+const ps = StyleSheet.create({
+  b1: { position: "absolute", borderRadius: 9999, backgroundColor: "rgba(255,255,255,0.12)", width: width * 0.50, height: width * 0.50, top: -width * 0.16, right: -width * 0.14 },
+  b2: { position: "absolute", borderRadius: 9999, backgroundColor: "rgba(255,255,255,0.10)", width: width * 0.30, height: width * 0.30, bottom: -width * 0.10, left: -width * 0.08 },
+  r1: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.20)", borderWidth: 1.5, width: width * 0.88, height: width * 0.88, top: -width * 0.32, right: -width * 0.32 },
+  r2: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.15)", borderWidth: 1, width: width * 0.62, height: width * 0.62, top: -width * 0.10, right: -width * 0.10 },
+  r3: { position: "absolute", borderRadius: 9999, borderColor: "rgba(255,255,255,0.18)", borderWidth: 1.5, width: width * 0.72, height: width * 0.72, bottom: -width * 0.28, left: -width * 0.26 },
 });
