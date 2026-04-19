@@ -13,7 +13,7 @@ type TemplateId = "classic" | "modern" | "minimal";
 
 const TEMPLATES: { id: TemplateId; name: string; desc: string; accent: string }[] = [
   { id: "classic", name: "Classic",  desc: "Orange saffron header, clean sections",      accent: "#EA580C" },
-  { id: "modern",  name: "Modern",   desc: "Two-column layout with dark sidebar",        accent: "#1E293B" },
+  { id: "modern",  name: "Modern",   desc: "Dark header · blue accents · clean sections", accent: "#1D4ED8" },
   { id: "minimal", name: "Minimal",  desc: "Clean black & white with subtle accents",    accent: "#059669" },
 ];
 
@@ -89,73 +89,88 @@ function ClassicResume({ user }: { user: any }) {
 }
 
 function ModernResume({ user }: { user: any }) {
+  const initials = user.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <View style={[r.page, { flexDirection: "row", minHeight: 600 }]}>
-      <View style={r.modernSidebar}>
-        <View style={r.modernAvatar}>
+    <View style={r.page}>
+      {/* Header band */}
+      <View style={r.modHeader}>
+        <View style={r.modAvatarCircle}>
           {user.profilePhoto
-            ? <Image source={{ uri: user.profilePhoto }} style={r.modernAvatarImg} />
-            : <Text style={r.modernAvatarText}>{user.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}</Text>}
+            ? <Image source={{ uri: user.profilePhoto }} style={r.modAvatarImg} />
+            : <Text style={r.modAvatarText}>{initials}</Text>}
         </View>
-        <Text style={r.modernName}>{user.name}</Text>
-        <Text style={r.modernRole}>{user.currentRole || user.qualification || "Job Seeker"}</Text>
-
-        <View style={r.modernDivider} />
-        <Text style={r.modernSectionTitle}>CONTACT</Text>
-        <Text style={r.modernSideText}>📞 +91 {user.phone}</Text>
-        {user.email && <Text style={r.modernSideText}>✉ {user.email}</Text>}
-        {user.location && <Text style={r.modernSideText}>📍 {user.location}</Text>}
-
-        {user.skills && (
-          <>
-            <View style={r.modernDivider} />
-            <Text style={r.modernSectionTitle}>SKILLS</Text>
-            {user.skills.split(",").map((s: string, i: number) => (
-              <View key={i} style={r.modernSkillRow}>
-                <View style={r.modernSkillDot} />
-                <Text style={r.modernSideText}>{s.trim()}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        {user.languages && (
-          <>
-            <View style={r.modernDivider} />
-            <Text style={r.modernSectionTitle}>LANGUAGES</Text>
-            <Text style={r.modernSideText}>{user.languages}</Text>
-          </>
-        )}
+        <View style={{ flex: 1 }}>
+          <Text style={r.modName}>{user.name}</Text>
+          <Text style={r.modRole}>{user.currentRole || user.qualification || "Job Seeker"}</Text>
+          <View style={r.modContactRow}>
+            <Text style={r.modContactItem}>📞 +91 {user.phone}</Text>
+            {user.email ? <Text style={r.modContactItem}>✉ {user.email}</Text> : null}
+            {user.location ? <Text style={r.modContactItem}>📍 {user.location}</Text> : null}
+          </View>
+        </View>
       </View>
 
-      <View style={r.modernMain}>
-        {user.about && (
-          <ResumeSection title="ABOUT ME" color="#1E293B">
+      {/* Accent bar */}
+      <View style={r.modAccentBar} />
+
+      {/* Body */}
+      <View style={r.modBody}>
+        {user.about ? (
+          <View style={r.modSection}>
+            <View style={r.modSectionLabel}><Text style={r.modSectionText}>ABOUT ME</Text></View>
             <Text style={r.bodyText}>{user.about}</Text>
-          </ResumeSection>
-        )}
+          </View>
+        ) : null}
 
-        <ResumeSection title="EDUCATION" color="#1E293B">
+        <View style={r.modSection}>
+          <View style={r.modSectionLabel}><Text style={r.modSectionText}>EDUCATION</Text></View>
           <Text style={r.expRole}>{user.qualification || "—"}</Text>
-        </ResumeSection>
+        </View>
 
-        {(user.currentCompany || user.previousCompany) && (
-          <ResumeSection title="EXPERIENCE" color="#1E293B">
-            {user.experience && <Text style={[r.bodyText, { marginBottom: 8 }]}>Total: {user.experience}</Text>}
-            {user.currentCompany && (
-              <View style={r.expEntry}>
-                <Text style={r.expRole}>{user.currentRole || "Employee"} · Current</Text>
-                <Text style={r.expCompany}>{user.currentCompany}</Text>
+        {(user.experience || user.currentCompany || user.previousCompany) ? (
+          <View style={r.modSection}>
+            <View style={r.modSectionLabel}><Text style={r.modSectionText}>EXPERIENCE</Text></View>
+            {user.experience ? <Text style={[r.bodyText, { marginBottom: 6 }]}>Total: {user.experience}</Text> : null}
+            {user.currentCompany ? (
+              <View style={r.modExpCard}>
+                <View style={r.modExpDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={r.expRole}>{user.currentRole || "Employee"}</Text>
+                  <Text style={r.expCompany}>{user.currentCompany}  ·  Current</Text>
+                </View>
               </View>
-            )}
-            {user.previousCompany && (
-              <View style={r.expEntry}>
-                <Text style={r.expRole}>{user.previousRole || "Employee"} · Previous</Text>
-                <Text style={r.expCompany}>{user.previousCompany}</Text>
+            ) : null}
+            {user.previousCompany ? (
+              <View style={r.modExpCard}>
+                <View style={[r.modExpDot, { backgroundColor: "#94A3B8" }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={r.expRole}>{user.previousRole || "Employee"}</Text>
+                  <Text style={r.expCompany}>{user.previousCompany}  ·  Previous</Text>
+                </View>
               </View>
-            )}
-          </ResumeSection>
-        )}
+            ) : null}
+          </View>
+        ) : null}
+
+        {user.skills ? (
+          <View style={r.modSection}>
+            <View style={r.modSectionLabel}><Text style={r.modSectionText}>SKILLS</Text></View>
+            <View style={r.skillsWrap}>
+              {user.skills.split(",").map((s: string, i: number) => (
+                <View key={i} style={[r.skillChip, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
+                  <Text style={[r.skillText, { color: "#1D4ED8" }]}>{s.trim()}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {user.languages ? (
+          <View style={r.modSection}>
+            <View style={r.modSectionLabel}><Text style={r.modSectionText}>LANGUAGES</Text></View>
+            <Text style={r.bodyText}>{user.languages}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -353,18 +368,21 @@ const r = StyleSheet.create({
   classicContactText: { fontSize: 11, color: "rgba(255,255,255,0.8)", fontFamily: "Inter_400Regular" },
   classicBody: { padding: 16 },
 
-  modernSidebar: { width: 140, backgroundColor: "#1E293B", padding: 16, alignItems: "center" },
-  modernMain: { flex: 1, padding: 16 },
-  modernAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#EA580C", alignItems: "center", justifyContent: "center", marginBottom: 10 },
-  modernAvatarImg: { width: 72, height: 72, borderRadius: 36 },
-  modernAvatarText: { fontSize: 26, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
-  modernName: { fontSize: 14, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", textAlign: "center" },
-  modernRole: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 4 },
-  modernDivider: { height: 1, backgroundColor: "#334155", width: "100%", marginVertical: 12 },
-  modernSectionTitle: { fontSize: 9, fontWeight: "700", color: "#EA580C", fontFamily: "Inter_700Bold", letterSpacing: 1, marginBottom: 6, alignSelf: "flex-start" },
-  modernSideText: { fontSize: 10, color: "#CBD5E1", fontFamily: "Inter_400Regular", marginBottom: 4, alignSelf: "flex-start" },
-  modernSkillRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4, alignSelf: "flex-start" },
-  modernSkillDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#EA580C" },
+  modHeader: { backgroundColor: "#0F172A", padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
+  modAvatarCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#1D4ED8", alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#3B82F6" },
+  modAvatarImg: { width: 68, height: 68, borderRadius: 34 },
+  modAvatarText: { fontSize: 24, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
+  modName: { fontSize: 19, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+  modRole: { fontSize: 12, color: "#93C5FD", fontFamily: "Inter_400Regular", marginTop: 3 },
+  modContactRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  modContactItem: { fontSize: 10, color: "#CBD5E1", fontFamily: "Inter_400Regular" },
+  modAccentBar: { height: 4, backgroundColor: "#1D4ED8" },
+  modBody: { padding: 16, gap: 2 },
+  modSection: { marginBottom: 14, borderLeftWidth: 3, borderLeftColor: "#BFDBFE", paddingLeft: 12 },
+  modSectionLabel: { backgroundColor: "#EFF6FF", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginBottom: 8 },
+  modSectionText: { fontSize: 10, fontWeight: "700", color: "#1D4ED8", fontFamily: "Inter_700Bold", letterSpacing: 0.8 },
+  modExpCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
+  modExpDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#1D4ED8", marginTop: 4 },
 
   minimalHeader: { padding: 24, borderBottomWidth: 2, borderBottomColor: "#E2E8F0" },
   minimalName: { fontSize: 26, fontWeight: "900", color: "#0F172A", fontFamily: "Inter_700Bold" },
