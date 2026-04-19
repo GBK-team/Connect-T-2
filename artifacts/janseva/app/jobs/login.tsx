@@ -569,7 +569,7 @@ export default function JobsLoginScreen() {
         <View style={styles.backBtn}>
           <TouchableOpacity onPress={() => router.replace("/login" as any)} style={styles.backPill}>
             <Feather name="arrow-left" size={14} color="#EA580C" />
-            <Text style={styles.backPillText}>Back to Civic Services</Text>
+            <Text style={styles.backPillText}>Back</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
