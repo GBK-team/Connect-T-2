@@ -512,7 +512,7 @@ export default function JobsHomeScreen() {
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={[s.header, { paddingTop: topPad + 12 }]}
       >
-        <View style={s.headerRow}>
+        <View style={[s.headerRow, isEmployer && { marginBottom: 0 }]}>
           <View style={{ flex: 1 }}>
             <Text style={s.headerTitle}>{isEmployer ? "Employer Dashboard" : "Connect T Jobs"}</Text>
             <Text style={s.headerSub}>
