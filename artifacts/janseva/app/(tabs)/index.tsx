@@ -274,7 +274,7 @@ export default function HomeScreen() {
                     onPress={() => handleServiceTap(svc.id)}
                   >
                     <View style={[styles.serviceIcon, { backgroundColor: svc.bg }]}>
-                      <Feather name={svc.icon as any} size={18} color={svc.color} />
+                      <Feather name={svc.icon as any} size={24} color={svc.color} />
                     </View>
                     <Text style={styles.serviceLabel}>{svc.label}</Text>
                   </TouchableOpacity>
@@ -585,14 +585,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   serviceIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
+    width: 58,
+    height: 58,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   serviceLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
     color: "#475569",
     textAlign: "center",
