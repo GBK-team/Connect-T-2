@@ -249,7 +249,7 @@ export default function HomeScreen() {
         <SectionHeader title={t("quickServices")} actionLabel={t("allServices")} onAction={() => router.push("/(tabs)/services" as any)} />
         <View style={styles.servicesCard}>
           <View style={styles.servicesGrid}>
-            {Array.from({ length: Math.ceil(quickServices.length / 2) }, (_, rowIndex) => quickServices.slice(rowIndex * 2, rowIndex * 2 + 2)).map((row, rowIndex) => (
+            {Array.from({ length: Math.ceil(quickServices.length / 4) }, (_, rowIndex) => quickServices.slice(rowIndex * 4, rowIndex * 4 + 4)).map((row, rowIndex) => (
               <View key={`service-row-${rowIndex}`} style={styles.serviceRow}>
                 {row.map((svc) => (
                   <TouchableOpacity
@@ -259,7 +259,7 @@ export default function HomeScreen() {
                     onPress={() => handleServiceTap(svc.id)}
                   >
                     <View style={[styles.serviceIcon, { backgroundColor: svc.bg }]}>
-                      <Feather name={svc.icon as any} size={22} color={svc.color} />
+                      <Feather name={svc.icon as any} size={18} color={svc.color} />
                     </View>
                     <Text style={styles.serviceLabel}>{svc.label}</Text>
                   </TouchableOpacity>
@@ -559,13 +559,13 @@ const styles = StyleSheet.create({
   noComplaintsCard: { backgroundColor: "#FFF7ED", borderRadius: 16, padding: 20, alignItems: "center", gap: 8, marginBottom: 18, borderWidth: 1, borderColor: "#FFEDD5", borderStyle: "dashed" },
   noComplaintsText: { fontSize: 13, color: "#EA580C", fontFamily: "Inter_500Medium", fontWeight: "600" },
   utilityRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
-  servicesCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 16, marginBottom: 18, shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  servicesCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 14, marginBottom: 18, shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   servicesGrid: {
-    gap: 18,
+    gap: 14,
   },
   serviceRow: {
     flexDirection: "row",
-    gap: 18,
+    gap: 8,
   },
   serviceItem: {
     flex: 1,
@@ -573,14 +573,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   serviceIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 46,
+    height: 46,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
   serviceLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     color: "#475569",
     textAlign: "center",
