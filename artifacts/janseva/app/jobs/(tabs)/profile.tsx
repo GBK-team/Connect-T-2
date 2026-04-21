@@ -35,11 +35,10 @@ function Avatar({ user, size = 72 }: { user: any; size?: number }) {
 }
 
 function CompletionBar({ pct }: { pct: number }) {
-  const barColor = pct === 100 ? "#FACC15" : pct >= 60 ? "#FCD34D" : "#FCA5A5";
   return (
     <View style={cs.barWrap}>
       <View style={cs.barTrack}>
-        <View style={[cs.barFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+        <View style={[cs.barFill, { width: `${pct}%` as any, backgroundColor: "#FFFFFF" }]} />
       </View>
       <Text style={cs.barLabel}>{pct}%</Text>
     </View>
