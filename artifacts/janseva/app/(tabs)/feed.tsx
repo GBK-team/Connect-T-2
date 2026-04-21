@@ -189,11 +189,6 @@ export default function FeedScreen() {
             <Text style={styles.headerSub}>Ambernath · BJP Ward Network</Text>
           </View>
         </View>
-        <View style={styles.tabRow}>
-          <View style={[styles.tab, styles.tabActive]}>
-            <Text style={[styles.tabText, styles.tabTextActive]}>News</Text>
-          </View>
-        </View>
       </LinearGradient>
 
       {activeTab === "community" && (
