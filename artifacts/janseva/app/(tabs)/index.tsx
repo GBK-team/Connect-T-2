@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Platform, Modal,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Platform, Modal, Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -157,9 +157,18 @@ export default function HomeScreen() {
                 })();
                 return (
                   <TouchableOpacity key={item.id} style={styles.alertCard} activeOpacity={0.88} onPress={() => setSelectedAlert(item)}>
-                    <View style={[styles.alertCardIcon, { backgroundColor: cardBg }]}>
-                      <Feather name={isAlert ? "alert-triangle" : "radio"} size={16} color={cardColor} />
-                    </View>
+                    {item.media?.type === "image" ? (
+                      <Image source={{ uri: item.media.uri }} style={styles.alertCardMedia} />
+                    ) : item.media?.type === "video" ? (
+                      <View style={[styles.alertCardVideo, { backgroundColor: cardBg }]}>
+                        <Feather name="play-circle" size={28} color={cardColor} />
+                        <Text style={[styles.alertCardVideoText, { color: cardColor }]}>Video attached</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.alertCardIcon, { backgroundColor: cardBg }]}>
+                        <Feather name={isAlert ? "alert-triangle" : "radio"} size={16} color={cardColor} />
+                      </View>
+                    )}
                     <View style={styles.alertCardBody}>
                       <View style={styles.alertCardRow}>
                         <View style={[styles.alertTypePill, { backgroundColor: cardBg }]}>
@@ -170,6 +179,12 @@ export default function HomeScreen() {
                         <Text style={styles.alertCardTime}>{timeStr}</Text>
                       </View>
                       <Text style={styles.alertCardTitle}>{item.title}</Text>
+                      {!!item.location && (
+                        <View style={styles.alertLocationRow}>
+                          <Feather name="map-pin" size={10} color="#94A3B8" />
+                          <Text style={styles.alertLocationText} numberOfLines={1}>{item.location}</Text>
+                        </View>
+                      )}
                       <Text style={styles.alertCardDesc} numberOfLines={2}>{item.body}</Text>
                     </View>
                   </TouchableOpacity>
@@ -405,6 +420,46 @@ export default function HomeScreen() {
                       <Feather name="clock" size={12} color="#94A3B8" />
                       <Text style={styles.modalMetaText}>{timeStr}</Text>
                     </View>
+                    {selectedAlert.media?.type === "image" ? (
+                      <Image source={{ uri: selectedAlert.media.uri }} style={styles.modalMediaImage} />
+                    ) : selectedAlert.media?.type === "video" ? (
+                      <View style={[styles.modalVideoBox, { backgroundColor: cardBg }]}>
+                        <Feather name="play-circle" size={34} color={cardColor} />
+                        <Text style={[styles.modalVideoText, { color: cardColor }]}>Video attached · max 2 minutes</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.alertDetailGrid}>
+                      {!!selectedAlert.priority && (
+                        <View style={styles.alertDetailChip}>
+                          <Feather name="flag" size={12} color={cardColor} />
+                          <Text style={styles.alertDetailText}>{selectedAlert.priority}</Text>
+                        </View>
+                      )}
+                      {!!selectedAlert.category && (
+                        <View style={styles.alertDetailChip}>
+                          <Feather name="tag" size={12} color={cardColor} />
+                          <Text style={styles.alertDetailText}>{selectedAlert.category}</Text>
+                        </View>
+                      )}
+                      {!!selectedAlert.location && (
+                        <View style={styles.alertDetailChip}>
+                          <Feather name="map-pin" size={12} color={cardColor} />
+                          <Text style={styles.alertDetailText}>{selectedAlert.location}</Text>
+                        </View>
+                      )}
+                      {!!selectedAlert.validUntil && (
+                        <View style={styles.alertDetailChip}>
+                          <Feather name="calendar" size={12} color={cardColor} />
+                          <Text style={styles.alertDetailText}>Valid until {selectedAlert.validUntil}</Text>
+                        </View>
+                      )}
+                      {!!selectedAlert.targetAudience && (
+                        <View style={styles.alertDetailChip}>
+                          <Feather name="users" size={12} color={cardColor} />
+                          <Text style={styles.alertDetailText}>{selectedAlert.targetAudience}</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.modalDivider} />
                     <Text style={styles.modalBody}>{selectedAlert.body}</Text>
                     <View style={styles.modalSourceRow}>
@@ -512,6 +567,9 @@ const styles = StyleSheet.create({
   alertsLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#DC2626" },
   alertsLiveText: { fontSize: 9, fontWeight: "900", color: "#DC2626", fontFamily: "Inter_700Bold", letterSpacing: 1 },
   alertCard: { width: 230, backgroundColor: "white", borderRadius: 16, overflow: "hidden", shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: "#F1F5F9" },
+  alertCardMedia: { width: "100%", height: 92, backgroundColor: "#F8FAFC" },
+  alertCardVideo: { height: 92, alignItems: "center", justifyContent: "center", gap: 4 },
+  alertCardVideoText: { fontSize: 11, fontWeight: "800", fontFamily: "Inter_700Bold" },
   alertCardIcon: { padding: 14, paddingBottom: 0, alignSelf: "flex-start" },
   alertCardBody: { padding: 12 },
   alertCardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
@@ -519,6 +577,8 @@ const styles = StyleSheet.create({
   alertTypeText: { fontSize: 9, fontWeight: "700", fontFamily: "Inter_600SemiBold" },
   alertCardTime: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular" },
   alertCardTitle: { fontSize: 13, fontWeight: "700", color: "#0F172A", fontFamily: "Inter_700Bold", marginBottom: 4 },
+  alertLocationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
+  alertLocationText: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_400Regular", flex: 1 },
   alertCardDesc: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 16 },
   modalOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.5)",
@@ -549,6 +609,12 @@ const styles = StyleSheet.create({
   modalMetaText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular" },
   modalMetaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: "#CBD5E1" },
   modalDivider: { height: 1, backgroundColor: "#F1F5F9", width: "100%", marginBottom: 14 },
+  modalMediaImage: { width: "100%", height: 180, borderRadius: 16, marginBottom: 14, backgroundColor: "#F8FAFC" },
+  modalVideoBox: { width: "100%", height: 140, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 },
+  modalVideoText: { fontSize: 12, fontWeight: "800", fontFamily: "Inter_700Bold" },
+  alertDetailGrid: { width: "100%", flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+  alertDetailChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 12, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0" },
+  alertDetailText: { fontSize: 11, color: "#475569", fontFamily: "Inter_600SemiBold", fontWeight: "600", textTransform: "capitalize" },
   modalBody: {
     fontSize: 13, color: "#374151", fontFamily: "Inter_400Regular",
     lineHeight: 20, textAlign: "left", width: "100%",

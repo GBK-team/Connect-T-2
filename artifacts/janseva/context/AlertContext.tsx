@@ -2,19 +2,36 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type AlertType = "alert" | "news";
+export type AlertPriority = "normal" | "important" | "urgent";
+
+export interface AlertMedia {
+  uri: string;
+  type: "image" | "video";
+  fileName?: string;
+  mimeType?: string;
+  duration?: number;
+}
 
 export interface AppAlert {
   id: string;
   title: string;
   body: string;
   type: AlertType;
+  category?: string;
+  priority?: AlertPriority;
+  location?: string;
+  validUntil?: string;
+  targetAudience?: string;
+  media?: AlertMedia | null;
   createdAt: string;
   postedBy: string;
 }
 
+export type AlertDraft = Pick<AppAlert, "title" | "body" | "type"> & Partial<Pick<AppAlert, "category" | "priority" | "location" | "validUntil" | "targetAudience" | "media">>;
+
 interface AlertContextType {
   alerts: AppAlert[];
-  addAlert: (data: Pick<AppAlert, "title" | "body" | "type">, postedBy: string) => void;
+  addAlert: (data: AlertDraft, postedBy: string) => void;
   removeAlert: (id: string) => void;
   loading: boolean;
 }
@@ -41,9 +58,11 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
   };
 
-  const addAlert = (data: Pick<AppAlert, "title" | "body" | "type">, postedBy: string) => {
+  const addAlert = (data: AlertDraft, postedBy: string) => {
     const newAlert: AppAlert = {
       ...data,
+      priority: data.priority || "normal",
+      media: data.media || null,
       id: "ALT" + Date.now().toString().slice(-6),
       createdAt: new Date().toISOString(),
       postedBy,

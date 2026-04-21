@@ -8,7 +8,7 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useComplaints, Complaint, ComplaintStatus } from "@/context/ComplaintContext";
-import { useAlerts, AlertType } from "@/context/AlertContext";
+import { useAlerts } from "@/context/AlertContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
 import { useLanguage } from "@/context/LanguageContext";
@@ -193,7 +193,7 @@ export default function AdminScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { user, logout, updateUser } = useAuth();
   const { complaints, updateStatus } = useComplaints();
-  const { alerts, addAlert, removeAlert } = useAlerts();
+  const { alerts, removeAlert } = useAlerts();
   const router = useRouter();
   const { t } = useLanguage();
   const [filter, setFilter] = useState<ComplaintStatus | "all">("all");
@@ -203,10 +203,6 @@ export default function AdminScreen() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName] = useState("");
   const [editWard, setEditWard] = useState("");
-  const [showAlertModal, setShowAlertModal] = useState(false);
-  const [alertTitle, setAlertTitle] = useState("");
-  const [alertBody, setAlertBody] = useState("");
-  const [alertType, setAlertType] = useState<AlertType>("alert");
   const complaintListRef = useRef<FlatList<Complaint>>(null);
 
   if (!user || user.role !== "nagarsevak") {
@@ -327,7 +323,7 @@ export default function AdminScreen() {
           </View>
           <TouchableOpacity
             style={styles.postAlertBtn}
-            onPress={() => { setAlertTitle(""); setAlertBody(""); setAlertType("alert"); setShowAlertModal(true); }}
+            onPress={() => router.push("/alert/new" as any)}
             activeOpacity={0.85}
           >
             <Feather name="plus" size={13} color="white" />
@@ -426,77 +422,6 @@ export default function AdminScreen() {
           }} />
         </Modal>
       )}
-
-      {/* POST ALERT MODAL */}
-      <Modal visible={showAlertModal} transparent animationType="slide" onRequestClose={() => setShowAlertModal(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "white", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Math.max(insets.bottom, 16) + 10 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "#E2E8F0", alignSelf: "center", marginBottom: 16 }} />
-            <Text style={{ fontSize: 18, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold", marginBottom: 4 }}>Post Alert</Text>
-            <Text style={{ fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular", marginBottom: 16 }}>Visible to all citizens on the home screen</Text>
-
-            <Text style={{ fontSize: 11, fontWeight: "700", color: "#475569", fontFamily: "Inter_700Bold", marginBottom: 6 }}>TYPE</Text>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
-              {(["alert", "news"] as AlertType[]).map((t2) => (
-                <TouchableOpacity
-                  key={t2}
-                  style={{ flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, borderColor: alertType === t2 ? "#C2410C" : "#E2E8F0", backgroundColor: alertType === t2 ? "#FFF7ED" : "white", alignItems: "center" }}
-                  onPress={() => setAlertType(t2)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: alertType === t2 ? "#C2410C" : "#94A3B8", fontFamily: "Inter_700Bold" }}>
-                    {t2 === "alert" ? "⚠ Alert" : "📢 News"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={{ fontSize: 11, fontWeight: "700", color: "#475569", fontFamily: "Inter_700Bold", marginBottom: 6 }}>TITLE</Text>
-            <TextInput
-              style={{ borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: "#0F172A", fontFamily: "Inter_400Regular", marginBottom: 12 }}
-              value={alertTitle}
-              onChangeText={setAlertTitle}
-              placeholder="e.g. Water supply cut tomorrow"
-              placeholderTextColor="#CBD5E1"
-              maxLength={80}
-            />
-
-            <Text style={{ fontSize: 11, fontWeight: "700", color: "#475569", fontFamily: "Inter_700Bold", marginBottom: 6 }}>MESSAGE</Text>
-            <TextInput
-              style={{ borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, color: "#0F172A", fontFamily: "Inter_400Regular", height: 88, textAlignVertical: "top", marginBottom: 16 }}
-              value={alertBody}
-              onChangeText={setAlertBody}
-              placeholder="Explain the alert in detail..."
-              placeholderTextColor="#CBD5E1"
-              multiline
-              numberOfLines={4}
-              maxLength={300}
-            />
-
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: "#E2E8F0", alignItems: "center" }} onPress={() => setShowAlertModal(false)} activeOpacity={0.8}>
-                <Text style={{ fontSize: 14, fontWeight: "700", color: "#94A3B8", fontFamily: "Inter_700Bold" }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 2, borderRadius: 14, overflow: "hidden", opacity: alertTitle.trim() && alertBody.trim() ? 1 : 0.5 }}
-                onPress={() => {
-                  if (!alertTitle.trim() || !alertBody.trim()) return;
-                  if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  addAlert({ title: alertTitle.trim(), body: alertBody.trim(), type: alertType }, user?.name || "Nagarsevak");
-                  setShowAlertModal(false);
-                }}
-                disabled={!alertTitle.trim() || !alertBody.trim()}
-                activeOpacity={0.85}
-              >
-                <LinearGradient colors={["#C2410C", "#EA580C"]} style={{ paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }}>
-                  <Feather name="send" size={15} color="white" />
-                  <Text style={{ fontSize: 14, fontWeight: "800", color: "white", fontFamily: "Inter_700Bold" }}>Broadcast</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <Modal visible={showProfile} transparent animationType="slide" onRequestClose={() => setShowProfile(false)}>
         <View style={pStyles.root}>

@@ -95,6 +95,10 @@ function RootLayoutNav() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="alert/new"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
+      <Stack.Screen
         name="service/[id]"
         options={{ headerShown: false }}
       />

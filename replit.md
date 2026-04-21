@@ -119,9 +119,10 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Translations file: `context/LanguageContext.tsx` (includes all translations inline)
 
 ### Alerts Detail
-- Home screen alerts are clickable → opens modal with full details
-- Each alert has: title, body, detail (full text), source, date
-- Modal shows icon, type badge, title, date/time meta, full detail text, source
+- Home screen alerts are clickable → opens modal with full details, metadata, and media preview
+- Nagarsevak admin uses `/alert/new` for a full-screen Post Alert / News workflow
+- Alerts support: type, priority, category, area/ward, validity, target audience, optional contact, and one photo or video attachment
+- Video attachment picker enforces a maximum of 2 minutes when duration metadata is available
 
 ### Roles (app only — 2 roles)
 - `citizen` / BJP Member — submit/track complaints, view feed
