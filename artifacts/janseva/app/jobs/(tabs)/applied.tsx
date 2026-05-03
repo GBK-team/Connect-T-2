@@ -5,6 +5,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useJobsAuth } from "@/context/JobsAuthContext";
 import { useJobs, categoryConfig, typeConfig, Job } from "@/context/JobsContext";
 
@@ -18,11 +19,12 @@ function timeAgo(dateStr: string) {
 }
 
 function AppliedCard({ job }: { job: Job }) {
+  const router = useRouter();
   const cat = categoryConfig[job.category];
   const type = typeConfig[job.type];
 
   return (
-    <View style={s.card}>
+    <TouchableOpacity style={s.card} activeOpacity={0.86} onPress={() => router.push(`/jobs/detail/${job.id}` as any)}>
       <View style={s.cardTop}>
         <View style={[s.catIcon, { backgroundColor: cat.bg }]}>
           <Feather name={cat.icon as any} size={18} color={cat.color} />
@@ -72,7 +74,7 @@ function AppliedCard({ job }: { job: Job }) {
           <Text style={[s.statusStepText, { color: "#CBD5E1" }]}>Contacted</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

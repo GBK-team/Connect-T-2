@@ -59,6 +59,10 @@ export default function JobDetailScreen() {
             <View style={s.metaPill}><Text style={s.metaPillText}>{job.openings} openings</Text></View>
             <View style={s.metaPill}><Text style={s.metaPillText}>{job.salary}</Text></View>
           </View>
+          <Text style={s.sectionTitle}>Company Details</Text>
+          <Text style={s.body}>{job.employerName}</Text>
+          <Text style={s.body}>{job.company}</Text>
+          <Text style={s.body}>{job.location}</Text>
           <Text style={s.sectionTitle}>About the Job</Text>
           <Text style={s.body}>{job.description}</Text>
           <Text style={s.sectionTitle}>Requirements</Text>
@@ -66,10 +70,6 @@ export default function JobDetailScreen() {
         </View>
 
         <View style={s.card}>
-          <Text style={s.sectionTitle}>Employer</Text>
-          <Text style={s.employerName}>{job.employerName}</Text>
-          <Text style={s.body}>{job.company}</Text>
-
           <View style={s.actionRow}>
             <TouchableOpacity style={[s.actionBtn, !canChat && s.disabledBtn]} onPress={openChat} activeOpacity={0.85} disabled={!canChat}>
               <Feather name="message-circle" size={16} color="white" />
@@ -118,7 +118,6 @@ const s = StyleSheet.create({
   metaPillText: { fontSize: 11, color: "#C2410C", fontFamily: "Inter_600SemiBold" },
   sectionTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold", marginTop: 4 },
   body: { fontSize: 13, color: "#334155", fontFamily: "Inter_400Regular", lineHeight: 19 },
-  employerName: { fontSize: 16, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold" },
   actionRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#1D4ED8", borderRadius: 14, paddingVertical: 12 },
   whatsappBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#059669", borderRadius: 14, paddingVertical: 12 },
