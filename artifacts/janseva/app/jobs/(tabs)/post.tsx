@@ -192,6 +192,7 @@ export default function PostJobScreen() {
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const companies = jobsUser.companies || [];
   const showCompanyPicker = companies.length > 1;
+  const defaultCompanyId = companies[0]?.id || "";
 
   if (!jobsUser || jobsUser.role !== "employer") {
     return (
@@ -257,11 +258,17 @@ export default function PostJobScreen() {
     setSubmitting(true);
     await new Promise((r) => setTimeout(r, 800));
     const selectedCompany = companies.find((c) => c.id === selectedCompanyId) || companies[0];
-    if (!selectedCompany) { Alert.alert("Add a company first"); return; }
+    if (!selectedCompany) {
+      setSubmitting(false);
+      Alert.alert("Add a company first");
+      return;
+    }
     addJob({
       employerId: jobsUser.id,
       employerName: jobsUser.name,
       company: selectedCompany.name,
+      employerPhone: jobsUser.phone,
+      employerWhatsApp: jobsUser.whatsapp || jobsUser.phone,
       title: title.trim(),
       category,
       type,
@@ -275,6 +282,10 @@ export default function PostJobScreen() {
     setSubmitting(false);
     setPosted(true);
   };
+
+  if (!selectedCompanyId && defaultCompanyId) {
+    setSelectedCompanyId(defaultCompanyId);
+  }
 
   return (
     <View style={styles.root}>
@@ -290,7 +301,7 @@ export default function PostJobScreen() {
       {showCompanyPicker && (
         <View style={styles.field}>
           <Text style={styles.label}>Select Company *</Text>
-          <CompanyDropdown companies={companies} selectedCompanyId={selectedCompanyId || companies[0]?.id} onSelect={setSelectedCompanyId} />
+          <CompanyDropdown companies={companies} selectedCompanyId={selectedCompanyId || defaultCompanyId} onSelect={setSelectedCompanyId} />
         </View>
       )}
 
