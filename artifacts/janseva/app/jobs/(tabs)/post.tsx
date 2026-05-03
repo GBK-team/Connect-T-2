@@ -124,7 +124,7 @@ function CompanyDropdown({
 
   return (
     <View>
-      <TouchableOpacity style={[styles.dropdownBtn, styles.companyDropdownBtn]} activeOpacity={0.85} onPress={() => setOpen(true)}>
+      <TouchableOpacity style={styles.dropdownBtn} activeOpacity={0.85} onPress={() => setOpen(true)}>
         <View style={[styles.dropdownIcon, { backgroundColor: "#FFF7ED" }]}>
           <Feather name="briefcase" size={14} color="#C2410C" />
         </View>
@@ -290,11 +290,7 @@ export default function PostJobScreen() {
       {showCompanyPicker && (
         <View style={styles.field}>
           <Text style={styles.label}>Select Company *</Text>
-          <CompanyDropdown
-            companies={companies}
-            selectedCompanyId={selectedCompanyId || companies[0]?.id}
-            onSelect={setSelectedCompanyId}
-          />
+          <CompanyDropdown companies={companies} selectedCompanyId={selectedCompanyId || companies[0]?.id} onSelect={setSelectedCompanyId} />
         </View>
       )}
 
@@ -457,9 +453,8 @@ const styles = StyleSheet.create({
   successSecondaryText: { fontSize: 14, color: "#EA580C", fontFamily: "Inter_600SemiBold", textDecorationLine: "underline" },
 
   // Dropdown
-  dropdownBtn: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "white", borderWidth: 1.5, borderColor: "#FED7AA", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 48 },
-  companyDropdownBtn: { width: "100%" },
-  dropdownIcon: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  dropdownBtn: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "white", borderWidth: 1.5, borderColor: "#FED7AA", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 48, width: "100%" },
+  dropdownIcon: { width: 24, height: 24, borderRadius: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   dropdownBtnText: { flex: 1, fontSize: 14, color: "#0F172A", fontFamily: "Inter_400Regular" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", paddingHorizontal: 16 },
   dropdownList: { backgroundColor: "white", borderRadius: 20, overflow: "hidden", shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 20, elevation: 10 },
