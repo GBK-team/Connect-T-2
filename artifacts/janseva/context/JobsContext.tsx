@@ -18,6 +18,7 @@ export interface Job {
   requirements: string;
   openings: number;
   applicants: string[];
+  hired: string[];
   shortlisted: string[];
   rejected: string[];
   createdAt: string;
@@ -27,7 +28,7 @@ export interface Job {
 interface JobsContextType {
   jobs: Job[];
   loading: boolean;
-  addJob: (data: Omit<Job, "id" | "createdAt" | "applicants" | "shortlisted" | "rejected" | "active">) => void;
+  addJob: (data: Omit<Job, "id" | "createdAt" | "applicants" | "hired" | "shortlisted" | "rejected" | "active">) => void;
   applyJob: (jobId: string, seekerId: string) => void;
   hasApplied: (jobId: string, seekerId: string) => boolean;
   getJobsByEmployer: (employerId: string) => Job[];
@@ -56,6 +57,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
           // migrate old jobs that lack shortlisted/rejected
           const migrated = parsed.map((j) => ({
             ...j,
+            hired: j.hired || [],
             shortlisted: j.shortlisted || [],
             rejected: j.rejected || [],
           }));
@@ -73,11 +75,12 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   };
 
-  const addJob = (data: Omit<Job, "id" | "createdAt" | "applicants" | "shortlisted" | "rejected" | "active">) => {
+  const addJob = (data: Omit<Job, "id" | "createdAt" | "applicants" | "hired" | "shortlisted" | "rejected" | "active">) => {
     const job: Job = {
       ...data,
       id: generateId(),
       applicants: [],
+      hired: [],
       shortlisted: [],
       rejected: [],
       active: true,

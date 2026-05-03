@@ -285,7 +285,6 @@ function EmployerDashboard({
   onDelete: (jobId: string) => void;
 }) {
   const myJobs = jobs.filter((j) => j.employerId === employerId);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const router = useRouter();
 
@@ -301,8 +300,6 @@ function EmployerDashboard({
   const recentActivity = myJobs
     .flatMap((j) => j.applicants.map((id) => ({ jobId: j.id, jobTitle: j.title, applicantId: id, createdAt: j.createdAt })))
     .slice(-5).reverse();
-
-  const liveJob = myJobs.find((j) => j.id === selectedJob?.id) ?? selectedJob;
 
   return (
     <View>
@@ -437,15 +434,15 @@ function EmployerDashboard({
               {/* View applicants + delete row */}
               <View style={{ flexDirection: "row", alignItems: "stretch" }}>
                 <TouchableOpacity
-                  onPress={() => setSelectedJob(job)}
+                  onPress={() => router.push(`/jobs/active/${job.id}` as any)}
                   activeOpacity={0.85}
                   style={[s.viewAppsBtn, { flex: 1, opacity: job.applicants.length === 0 ? 0.5 : 1 }]}
                 >
                   <Feather name="users" size={14} color="#EA580C" />
                   <Text style={s.viewAppsBtnText}>
-                    {job.applicants.length === 0 ? "No applicants yet" : `View ${job.applicants.length} applicant${job.applicants.length !== 1 ? "s" : ""}`}
+                    {job.active ? "Open active job" : `View ${job.applicants.length} applicant${job.applicants.length !== 1 ? "s" : ""}`}
                   </Text>
-                  {job.applicants.length > 0 && <Feather name="chevron-right" size={14} color="#EA580C" />}
+                  <Feather name="chevron-right" size={14} color="#EA580C" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setDeleteTarget(job)}
@@ -481,14 +478,6 @@ function EmployerDashboard({
           ))}
         </>
       )}
-
-      <ApplicantsModal
-        visible={!!selectedJob}
-        job={liveJob}
-        onClose={() => setSelectedJob(null)}
-        onShortlist={(jobId, id) => { onShortlist(jobId, id); }}
-        onReject={(jobId, id) => { onReject(jobId, id); }}
-      />
 
       {/* Delete confirm modal */}
       <Modal visible={!!deleteTarget} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
