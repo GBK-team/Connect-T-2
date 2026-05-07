@@ -91,43 +91,54 @@ export default function NewComplaintScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedCategory) {
-      Alert.alert(t("selectCategoryAlert"), t("selectCategoryMsg"));
-      return;
-    }
-    if (!title.trim()) {
-      Alert.alert(t("addTitleAlert"), t("addTitleMsg"));
-      return;
-    }
-    if (!description.trim()) {
-      Alert.alert(t("addDescAlert"), t("addDescMsg"));
-      return;
-    }
+  if (!selectedCategory) {
+    Alert.alert(t("selectCategoryAlert"), t("selectCategoryMsg"));
+    return;
+  }
 
+  if (!title.trim()) {
+    Alert.alert(t("addTitleAlert"), t("addTitleMsg"));
+    return;
+  }
+
+  if (!description.trim()) {
+    Alert.alert(t("addDescAlert"), t("addDescMsg"));
+    return;
+  }
+
+  try {
     setSubmitting(true);
+
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    setTimeout(() => {
-      const complaint = addComplaint({
-        title: title.trim(),
-        description: description.trim(),
-        category: selectedCategory,
-        photoUri,
-        location,
-        ward: user?.ward || "Ward 1 — Shivaji Chowk",
-        userName: user?.name,
-        userMobile: user?.mobile,
-        userAddress: user?.address,
-        userAge: user?.age,
-        userEmail: user?.email,
-      });
+    const complaint = await addComplaint({
+      title: title.trim(),
+      description: description.trim(),
+      category: selectedCategory,
+      photoUri,
+      location,
+      ward: user?.ward || "Ward 1 – Shivaji Chowk",
+      userName: user?.name,
+      userMobile: user?.mobile,
+      userAddress: user?.address,
+      userAge: user?.age,
+      userEmail: user?.email,
+    });
 
-      setSubmitting(false);
-      router.replace({ pathname: "/complaint/[id]", params: { id: complaint.id, fresh: "1" } });
-    }, 800);
-  };
+    setSubmitting(false);
+
+    router.replace({
+      pathname: "/complaint/[id]",
+      params: { id: String(complaint.id), fresh: "1" },
+    });
+  } catch (error) {
+    console.error("Submit complaint failed", error);
+    setSubmitting(false);
+    Alert.alert("Error", "Complaint submit failed. Please try again.");
+  }
+};  
 
   return (
     <View style={styles.root}>
