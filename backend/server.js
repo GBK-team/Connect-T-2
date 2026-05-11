@@ -54,6 +54,7 @@ app.get("/api/users", async (req, res) => {
 app.post("/api/users", async (req, res) => {
   try {
     const id = req.body.id || createId("user");
+
     const {
       name,
       mobile,
@@ -71,13 +72,14 @@ app.post("/api/users", async (req, res) => {
     } = req.body;
 
     if (!name || !mobile) {
-      return res
-        .status(400)
-        .json({ success: false, error: "name and mobile are required" });
+      return res.status(400).json({
+        success: false,
+        error: "name and mobile are required",
+      });
     }
 
     await db.query(
-      `INSERT INTO users 
+      `INSERT INTO users
       (id, name, mobile, role, ward, ward_number, age, email, address, nagarsevak_id, avatar_color, profile_photo, notify_email, notify_whatsapp)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -85,14 +87,14 @@ app.post("/api/users", async (req, res) => {
         name,
         mobile,
         role,
-        ward,
-        ward_number,
-        age,
-        email,
-        address,
-        nagarsevak_id,
-        avatar_color,
-        profile_photo,
+        ward || null,
+        ward_number || null,
+        age || null,
+        email || null,
+        address || null,
+        nagarsevak_id || null,
+        avatar_color || null,
+        profile_photo || null,
         notify_email,
         notify_whatsapp,
       ],
@@ -108,6 +110,7 @@ app.post("/api/users", async (req, res) => {
 app.get("/api/complaints", async (req, res) => {
   try {
     const { ward, status, category } = req.query;
+
     let sql = "SELECT * FROM complaints WHERE 1=1";
     const params = [];
 
@@ -115,10 +118,12 @@ app.get("/api/complaints", async (req, res) => {
       sql += " AND ward = ?";
       params.push(ward);
     }
+
     if (status) {
       sql += " AND status = ?";
       params.push(status);
     }
+
     if (category) {
       sql += " AND category = ?";
       params.push(category);
@@ -127,15 +132,56 @@ app.get("/api/complaints", async (req, res) => {
     sql += " ORDER BY created_at DESC";
 
     const [rows] = await db.query(sql, params);
-    res.json({ success: true, complaints: rows });
+
+    res.json({
+      success: true,
+      complaints: rows,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/complaints/:id", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM complaints WHERE id = ?", [
+      req.params.id,
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Complaint not found",
+      });
+    }
+
+    const [timeline] = await db.query(
+      "SELECT * FROM complaint_status_updates WHERE complaint_id = ? ORDER BY created_at ASC",
+      [req.params.id],
+    );
+
+    res.json({
+      success: true,
+      complaint: {
+        ...rows[0],
+        timeline,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
 app.post("/api/complaints", async (req, res) => {
   try {
     const id = req.body.id || createId("complaint");
+
     const {
       title,
       description,
@@ -159,7 +205,7 @@ app.post("/api/complaints", async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO complaints 
+      `INSERT INTO complaints
       (id, title, description, category, photo_url, location, ward, user_id, user_name, user_mobile, user_address, user_age, user_email)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -167,27 +213,34 @@ app.post("/api/complaints", async (req, res) => {
         title,
         description,
         category,
-        photo_url,
+        photo_url || null,
         location,
         ward,
-        user_id,
-        user_name,
-        user_mobile,
-        user_address,
-        user_age,
-        user_email,
+        user_id || null,
+        user_name || null,
+        user_mobile || null,
+        user_address || null,
+        user_age || null,
+        user_email || null,
       ],
     );
 
     await db.query(
-      `INSERT INTO complaint_status_updates (complaint_id, status, note, updated_by)
-       VALUES (?, 'submitted', 'Complaint submitted', ?)`,
+      `INSERT INTO complaint_status_updates
+      (complaint_id, status, note, updated_by)
+      VALUES (?, 'submitted', 'Complaint submitted', ?)`,
       [id, user_name || "citizen"],
     );
 
-    res.status(201).json({ success: true, complaintId: id });
+    res.status(201).json({
+      success: true,
+      complaintId: id,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
@@ -196,31 +249,40 @@ app.patch("/api/complaints/:id/status", async (req, res) => {
     const { status, note, assigned_to, resolved_note, updated_by } = req.body;
 
     if (!status) {
-      return res
-        .status(400)
-        .json({ success: false, error: "status is required" });
+      return res.status(400).json({
+        success: false,
+        error: "status is required",
+      });
     }
 
     await db.query(
-      `UPDATE complaints 
-       SET status = ?, assigned_to = COALESCE(?, assigned_to), resolved_note = COALESCE(?, resolved_note)
+      `UPDATE complaints
+       SET status = ?,
+           assigned_to = COALESCE(?, assigned_to),
+           resolved_note = COALESCE(?, resolved_note)
        WHERE id = ?`,
-      [status, assigned_to, resolved_note, req.params.id],
+      [status, assigned_to || null, resolved_note || null, req.params.id],
     );
 
     await db.query(
-      `INSERT INTO complaint_status_updates (complaint_id, status, note, updated_by)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO complaint_status_updates
+      (complaint_id, status, note, updated_by)
+      VALUES (?, ?, ?, ?)`,
       [req.params.id, status, note || null, updated_by || "admin"],
     );
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
-/* ALERTS / NEWS */
+/* ALERTS */
 app.get("/api/alerts", async (req, res) => {
   try {
     const { type, ward } = req.query;
@@ -231,6 +293,7 @@ app.get("/api/alerts", async (req, res) => {
       sql += " AND type = ?";
       params.push(type);
     }
+
     if (ward) {
       sql += " AND (ward = ? OR ward IS NULL)";
       params.push(ward);
@@ -248,6 +311,7 @@ app.get("/api/alerts", async (req, res) => {
 app.post("/api/alerts", async (req, res) => {
   try {
     const id = req.body.id || createId("alert");
+
     const {
       title,
       body,
@@ -276,7 +340,7 @@ app.post("/api/alerts", async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO alerts 
+      `INSERT INTO alerts
       (id, title, body, type, category, priority, location, valid_until, expires_at, target_audience, media_uri, media_type, media_file_name, media_mime_type, media_duration, posted_by, posted_by_id, ward)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -284,20 +348,20 @@ app.post("/api/alerts", async (req, res) => {
         title,
         body,
         type,
-        category,
+        category || null,
         priority,
-        location,
-        valid_until,
-        expires_at,
-        target_audience,
-        media_uri,
-        media_type,
-        media_file_name,
-        media_mime_type,
-        media_duration,
+        location || null,
+        valid_until || null,
+        expires_at || null,
+        target_audience || null,
+        media_uri || null,
+        media_type || null,
+        media_file_name || null,
+        media_mime_type || null,
+        media_duration || null,
         posted_by,
-        posted_by_id,
-        ward,
+        posted_by_id || null,
+        ward || null,
       ],
     );
 
@@ -329,6 +393,7 @@ app.get("/api/feed/posts", async (req, res) => {
 app.post("/api/feed/posts", async (req, res) => {
   try {
     const id = req.body.id || createId("post");
+
     const {
       author_id,
       author_name,
@@ -348,7 +413,7 @@ app.post("/api/feed/posts", async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO feed_posts 
+      `INSERT INTO feed_posts
       (id, author_id, author_name, author_role, avatar_color, type, content, image_uri, pinned)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -356,10 +421,10 @@ app.post("/api/feed/posts", async (req, res) => {
         author_id,
         author_name,
         author_role,
-        avatar_color,
+        avatar_color || null,
         type,
         content,
-        image_uri,
+        image_uri || null,
         pinned,
       ],
     );
@@ -375,9 +440,10 @@ app.post("/api/feed/posts/:id/like", async (req, res) => {
     const { user_id } = req.body;
 
     if (!user_id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "user_id is required" });
+      return res.status(400).json({
+        success: false,
+        error: "user_id is required",
+      });
     }
 
     await db.query(
@@ -406,6 +472,7 @@ app.get("/api/chat/messages", async (req, res) => {
 app.post("/api/chat/messages", async (req, res) => {
   try {
     const id = req.body.id || createId("msg");
+
     const { author_id, author_name, author_role, avatar_color, text } =
       req.body;
 
@@ -417,10 +484,10 @@ app.post("/api/chat/messages", async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO chat_messages 
+      `INSERT INTO chat_messages
       (id, author_id, author_name, author_role, avatar_color, text)
       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, author_id, author_name, author_role, avatar_color, text],
+      [id, author_id, author_name, author_role, avatar_color || null, text],
     );
 
     res.status(201).json({ success: true, messageId: id });
@@ -433,6 +500,7 @@ app.post("/api/chat/messages", async (req, res) => {
 app.get("/api/services", async (req, res) => {
   try {
     const { category_id } = req.query;
+
     let sql = "SELECT * FROM service_places";
     const params = [];
 
@@ -453,6 +521,7 @@ app.get("/api/services", async (req, res) => {
 app.post("/api/services", async (req, res) => {
   try {
     const id = req.body.id || createId("service");
+
     const {
       category_id,
       name,
@@ -487,17 +556,17 @@ app.post("/api/services", async (req, res) => {
         category_id,
         name,
         address,
-        distance,
-        distance_km,
-        type,
-        speciality,
-        timing,
-        govt_type,
-        established,
-        beds,
-        beds_occupied,
+        distance || null,
+        distance_km || null,
+        type || null,
+        speciality || null,
+        timing || null,
+        govt_type || null,
+        established || null,
+        beds || null,
+        beds_occupied || null,
         services_json ? JSON.stringify(services_json) : null,
-        rating,
+        rating || null,
         review_count,
       ],
     );
@@ -535,6 +604,7 @@ app.get("/api/job-users", async (req, res) => {
 app.post("/api/job-users", async (req, res) => {
   try {
     const id = req.body.id || createId("jobuser");
+
     const {
       name,
       phone,
@@ -547,7 +617,7 @@ app.post("/api/job-users", async (req, res) => {
       about,
       current_status,
       current_company,
-      current_role,
+      current_job_role,
       experience,
       previous_company,
       previous_role,
@@ -571,49 +641,50 @@ app.post("/api/job-users", async (req, res) => {
     } = req.body;
 
     if (!name || !phone || !role) {
-      return res
-        .status(400)
-        .json({ success: false, error: "name, phone and role are required" });
+      return res.status(400).json({
+        success: false,
+        error: "name, phone and role are required",
+      });
     }
 
     await db.query(
       `INSERT INTO job_users
-      (id, name, phone, role, avatar_color, age, qualification, skills, email, about, current_status, current_company, current_role, experience, previous_company, previous_role, college_name, field_of_study, location, languages, profile_photo, company, gst_no, company_type, company_size, industry, website, company_description, address, pincode, whatsapp, year_established, contact_person)
+      (id, name, phone, role, avatar_color, age, qualification, skills, email, about, current_status, current_company, current_job_role, experience, previous_company, previous_role, college_name, field_of_study, location, languages, profile_photo, company, gst_no, company_type, company_size, industry, website, company_description, address, pincode, whatsapp, year_established, contact_person)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         name,
         phone,
         role,
-        avatar_color,
-        age,
-        qualification,
-        skills,
-        email,
-        about,
-        current_status,
-        current_company,
-        current_role,
-        experience,
-        previous_company,
-        previous_role,
-        college_name,
-        field_of_study,
-        location,
-        languages,
-        profile_photo,
-        company,
-        gst_no,
-        company_type,
-        company_size,
-        industry,
-        website,
-        company_description,
-        address,
-        pincode,
-        whatsapp,
-        year_established,
-        contact_person,
+        avatar_color || null,
+        age || null,
+        qualification || null,
+        skills || null,
+        email || null,
+        about || null,
+        current_status || null,
+        current_company || null,
+        current_job_role || null,
+        experience || null,
+        previous_company || null,
+        previous_role || null,
+        college_name || null,
+        field_of_study || null,
+        location || null,
+        languages || null,
+        profile_photo || null,
+        company || null,
+        gst_no || null,
+        company_type || null,
+        company_size || null,
+        industry || null,
+        website || null,
+        company_description || null,
+        address || null,
+        pincode || null,
+        whatsapp || null,
+        year_established || null,
+        contact_person || null,
       ],
     );
 
@@ -627,6 +698,7 @@ app.post("/api/job-users", async (req, res) => {
 app.get("/api/jobs", async (req, res) => {
   try {
     const { category, type, active } = req.query;
+
     let sql = "SELECT * FROM jobs WHERE 1=1";
     const params = [];
 
@@ -657,6 +729,7 @@ app.get("/api/jobs", async (req, res) => {
 app.post("/api/jobs", async (req, res) => {
   try {
     const id = req.body.id || createId("job");
+
     const {
       employer_id,
       employer_name,
@@ -689,16 +762,16 @@ app.post("/api/jobs", async (req, res) => {
         id,
         employer_id,
         employer_name,
-        employer_phone,
-        employer_whatsapp,
+        employer_phone || null,
+        employer_whatsapp || null,
         company,
         title,
         category,
         type,
-        salary,
-        location,
-        description,
-        requirements,
+        salary || null,
+        location || null,
+        description || null,
+        requirements || null,
         openings,
         active,
       ],
@@ -716,9 +789,10 @@ app.post("/api/jobs/:id/apply", async (req, res) => {
     const { seeker_id } = req.body;
 
     if (!seeker_id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "seeker_id is required" });
+      return res.status(400).json({
+        success: false,
+        error: "seeker_id is required",
+      });
     }
 
     await db.query(
@@ -750,31 +824,6 @@ app.get("/api/jobs/:id/applications", async (req, res) => {
 });
 
 /* 404 */
-app.get("/api/complaints/:id", async (req, res) => {
-  try {
-    const [rows] = await db.query("SELECT * FROM complaints WHERE id = ?", [
-      req.params.id,
-    ]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Complaint not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      complaint: rows[0],
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -783,31 +832,6 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
-app.get("/api/complaints/:id", async (req, res) => {
-  try {
-    const [rows] = await db.query("SELECT * FROM complaints WHERE id = ?", [
-      req.params.id,
-    ]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Complaint not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      complaint: rows[0],
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Connect-T backend running on port ${PORT}`);
