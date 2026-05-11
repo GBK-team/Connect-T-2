@@ -73,4 +73,4 @@ externalPort = 3002
 
 [nix]
 channel = "stable-25_05"
-packages = ["nano", "fltk14"]
+packages = ["nano", "fltk14", "eas-cli"]

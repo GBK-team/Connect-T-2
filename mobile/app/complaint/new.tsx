@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
-import { useComplaints, ComplaintCategory } from "@/context/ComplaintContext";
+import { ComplaintCategory } from "@/context/ComplaintContext";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -58,7 +58,6 @@ export default function NewComplaintScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const router = useRouter();
-  const { addComplaint } = useComplaints();
   const { user } = useAuth();
   const { t } = useLanguage();
 
@@ -74,25 +73,32 @@ export default function NewComplaintScreen() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+
     if (Platform.OS === "web") {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         quality: 0.8,
       });
+
       if (!result.canceled && result.assets[0]) {
         setPhotoUri(result.assets[0].uri);
       }
+
       return;
     }
+
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
     if (status !== "granted") {
       Alert.alert(t("permissionNeeded"), t("cameraPermission"));
       return;
     }
+
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ["images"],
       quality: 0.8,
     });
+
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
     }
@@ -103,93 +109,70 @@ export default function NewComplaintScreen() {
       mediaTypes: ["images"],
       quality: 0.8,
     });
+
     if (!result.canceled && result.assets[0]) {
       setPhotoUri(result.assets[0].uri);
     }
   };
 
   const handleSubmit = async () => {
-  if (!selectedCategory) {
-    Alert.alert(t("selectCategoryAlert"), t("selectCategoryMsg"));
-    return;
-  }
-
-  if (!title.trim()) {
-    Alert.alert(t("addTitleAlert"), t("addTitleMsg"));
-    return;
-  }
-
-  if (!description.trim()) {
-    Alert.alert(t("addDescAlert"), t("addDescMsg"));
-    return;
-  }
-
-  try {
-    setSubmitting(true);
-
-    const response = await fetch(`${API_BASE_URL}/api/complaints`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title: title.trim(),
-        description: description.trim(),
-        category: selectedCategory,
-        photo_url: photoUri || null,
-        location,
-        ward: user?.ward || "Ward 1 – Shivaji Chowk",
-        user_id: user?.id || null,
-        user_name: user?.name || null,
-        user_mobile: user?.mobile || null,
-        user_address: user?.address || null,
-        user_age: user?.age || null,
-        user_email: user?.email || null,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Complaint submit failed");
+    if (!selectedCategory) {
+      Alert.alert(t("selectCategoryAlert"), t("selectCategoryMsg"));
+      return;
     }
 
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!title.trim()) {
+      Alert.alert(t("addTitleAlert"), t("addTitleMsg"));
+      return;
     }
 
-    setSubmitting(false);
+    if (!description.trim()) {
+      Alert.alert(t("addDescAlert"), t("addDescMsg"));
+      return;
+    }
 
-    router.replace({
-      pathname: "/complaint/[id]",
-      params: { id: String(data.complaintId), fresh: "1" },
-    });
-  } catch (error) {
-    console.error("Submit complaint failed", error);
-    setSubmitting(false);
-    Alert.alert("Error", "Complaint submit failed. Please try again.");
-  }
-};
+    try {
+      setSubmitting(true);
 
-      const complaint = await addComplaint({
-        title: title.trim(),
-        description: description.trim(),
-        category: selectedCategory,
-        photoUri,
-        location,
-        ward: user?.ward || "Ward 1 – Shivaji Chowk",
-        userName: user?.name,
-        userMobile: user?.mobile,
-        userAddress: user?.address,
-        userAge: user?.age,
-        userEmail: user?.email,
+      const response = await fetch(`${API_BASE_URL}/api/complaints`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          category: selectedCategory,
+          photo_url: photoUri || null,
+          location,
+          ward: user?.ward || "Ward 1 – Shivaji Chowk",
+          user_id: user?.id || null,
+          user_name: user?.name || null,
+          user_mobile: user?.mobile || null,
+          user_address: user?.address || null,
+          user_age: user?.age || null,
+          user_email: user?.email || null,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Complaint submit failed");
+      }
+
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
 
       setSubmitting(false);
 
       router.replace({
         pathname: "/complaint/[id]",
-        params: { id: String(complaint.id), fresh: "1" },
+        params: {
+          id: String(data.complaintId),
+          fresh: "1",
+        },
       });
     } catch (error) {
       console.error("Submit complaint failed", error);
@@ -214,6 +197,7 @@ export default function NewComplaintScreen() {
           <Feather name="chevron-left" size={20} color="white" />
           <Text style={styles.backBtnText}>Back</Text>
         </TouchableOpacity>
+
         <View style={styles.headerRow}>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>{t("reportProblemTitle")}</Text>
@@ -231,9 +215,9 @@ export default function NewComplaintScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* PHOTO */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("photoOfProblem")}</Text>
+
           {photoUri ? (
             <View style={styles.photoContainer}>
               <Image source={{ uri: photoUri }} style={styles.photo} />
@@ -264,6 +248,7 @@ export default function NewComplaintScreen() {
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.galleryBtn}
                 onPress={handleGallery}
@@ -278,9 +263,9 @@ export default function NewComplaintScreen() {
           )}
         </View>
 
-        {/* CATEGORY */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("complaintCategory")}</Text>
+
           <View style={styles.categoryGrid}>
             {categories.map((cat) => (
               <TouchableOpacity
@@ -307,6 +292,7 @@ export default function NewComplaintScreen() {
                     color={selectedCategory === cat.id ? "white" : cat.color}
                   />
                 </View>
+
                 <Text
                   style={[
                     styles.catLabel,
@@ -315,6 +301,7 @@ export default function NewComplaintScreen() {
                 >
                   {t(categoryLabelKeys[cat.id])}
                 </Text>
+
                 {selectedCategory === cat.id && (
                   <View
                     style={[styles.catCheck, { backgroundColor: cat.color }]}
@@ -327,7 +314,6 @@ export default function NewComplaintScreen() {
           </View>
         </View>
 
-        {/* TITLE */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("complaintTitle")}</Text>
           <TextInput
@@ -340,7 +326,6 @@ export default function NewComplaintScreen() {
           />
         </View>
 
-        {/* DESCRIPTION */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("description")}</Text>
           <TextInput
@@ -357,13 +342,14 @@ export default function NewComplaintScreen() {
           <Text style={styles.charCount}>{description.length}/500</Text>
         </View>
 
-        {/* LOCATION */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("location")}</Text>
+
           <View style={styles.locationRow}>
             <View style={styles.locationIcon}>
               <Feather name="map-pin" size={16} color="#EA580C" />
             </View>
+
             <TextInput
               style={[styles.input, styles.locationInput]}
               value={location}
@@ -372,6 +358,7 @@ export default function NewComplaintScreen() {
               placeholderTextColor="#CBD5E1"
             />
           </View>
+
           <View style={styles.wardRow}>
             <Feather name="home" size={12} color="#94A3B8" />
             <Text style={styles.wardText}>
@@ -380,14 +367,12 @@ export default function NewComplaintScreen() {
           </View>
         </View>
 
-        {/* NOTICE */}
         <View style={styles.noticeCard}>
           <Feather name="info" size={14} color="#EA580C" />
           <Text style={styles.noticeText}>{t("complaintNotice")}</Text>
         </View>
       </ScrollView>
 
-      {/* SUBMIT */}
       <View
         style={[
           styles.submitBar,
@@ -619,7 +604,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingLeft: 52,
   },
-  wardText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  wardText: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontFamily: "Inter_400Regular",
+  },
   noticeCard: {
     flexDirection: "row",
     gap: 10,

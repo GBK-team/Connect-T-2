@@ -759,6 +759,31 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
+app.get("/api/complaints/:id", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM complaints WHERE id = ?", [
+      req.params.id,
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Complaint not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      complaint: rows[0],
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Connect-T backend running on port ${PORT}`);
 });
