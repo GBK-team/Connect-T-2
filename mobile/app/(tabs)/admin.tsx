@@ -955,16 +955,71 @@ export default function AdminScreen() {
         })}
       </View>
 
-      <FlatList
-        ref={complaintListRef}
-        data={filtered}
-        extraData={filter}
-        keyExtractor={(c) => c.id}
-        renderItem={({ item }) => (
-          <DetailedComplaintCard
-            complaint={item}
-            onAction={() => setActive(item)}
-          />
+      <View style={{ padding: 14 }}>
+        <TouchableOpacity
+          style={{
+            backgroundColor: "white",
+            borderRadius: 18,
+            padding: 20,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+          onPress={() => alert("Analytics Coming Soon")}
+        >
+          <View>
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "800",
+                color: "#16A34A",
+              }}
+            >
+              View Analytics
+            </Text>
+
+            <Text
+              style={{
+                color: "#64748B",
+                marginTop: 4,
+              }}
+            >
+              Category wise complaint analysis
+            </Text>
+          </View>
+
+          <Feather name="bar-chart-2" size={28} color="#16A34A" />
+        </TouchableOpacity>
+
+        <View
+          style={{
+            backgroundColor: "#F0FDF4",
+            borderRadius: 18,
+            padding: 18,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 26,
+              fontWeight: "900",
+              color: "#16A34A",
+            }}
+          >
+            Connect-T
+          </Text>
+
+          <Text
+            style={{
+              color: "#64748B",
+              marginTop: 4,
+            }}
+          >
+            Civic services for better Ambernath
+          </Text>
+        </View>
+      </View>
         )}
         contentContainerStyle={[
           { padding: 14 },
