@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Connect T",
-    "slug": "connect-t-final",
+    "slug": "connect-t-final-2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -57,9 +57,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "13b9ba4c-7565-4214-84d8-83b831ec860c"
+        "projectId": "1dbe66ec-03ef-4507-b632-399a0d1e1bfd"
       }
     },
-    "owner": "vedantsatdive7"
+    "owner": "vedantt7"
   }
 }
