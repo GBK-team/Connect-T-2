@@ -15,23 +15,22 @@ function SuperAdminTabBar({ state, descriptors, navigation }: any) {
     { name: "jobs", icon: "briefcase", label: "Jobs" },
     { name: "broadcast", icon: "radio", label: "Broadcast" },
     { name: "reports", icon: "bar-chart-2", label: "Reports" },
-    { name: "settings", icon: "settings", label: "Settings" },
   ];
 
   return (
     <View
       style={{
         flexDirection: "row",
-        backgroundColor: "#0F172A",
+        backgroundColor: "white",
         paddingBottom: Platform.OS === "ios" ? insets.bottom : 6,
         paddingTop: 6,
         borderTopWidth: 1,
-        borderTopColor: "#1E293B",
+        borderTopColor: "#E2E8F0",
       }}
     >
-      {state.routes.map((route: any, index: number) => {
+      {state.routes.filter((r: any) => r.name !== "settings").map((route: any, index: number) => {
         const tab = tabs.find((t) => t.name === route.name) || tabs[0];
-        const isFocused = state.index === index;
+        const isFocused = state.routes[state.index]?.name === route.name;
         return (
           <TouchableOpacity
             key={route.key}
@@ -43,7 +42,7 @@ function SuperAdminTabBar({ state, descriptors, navigation }: any) {
               style={{
                 alignItems: "center",
                 backgroundColor: isFocused
-                  ? "rgba(22,163,74,0.18)"
+                  ? "rgba(22,163,74,0.12)"
                   : "transparent",
                 borderRadius: 10,
                 paddingHorizontal: 10,
@@ -53,13 +52,13 @@ function SuperAdminTabBar({ state, descriptors, navigation }: any) {
               <Feather
                 name={tab.icon as any}
                 size={20}
-                color={isFocused ? "#22C55E" : "#64748B"}
+                color={isFocused ? "#16A34A" : "#94A3B8"}
               />
               <Text
                 style={{
                   fontSize: 9,
                   fontFamily: isFocused ? "Inter_600SemiBold" : "Inter_400Regular",
-                  color: isFocused ? "#22C55E" : "#64748B",
+                  color: isFocused ? "#16A34A" : "#94A3B8",
                   marginTop: 2,
                 }}
               >

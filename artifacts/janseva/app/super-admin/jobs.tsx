@@ -7,12 +7,16 @@ import {
   Platform,
   Modal,
   Alert,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJobs } from "@/context/JobsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+
+const { width } = Dimensions.get("window");
 
 function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   return (
@@ -24,13 +28,14 @@ function SectionHeader({ title, sub }: { title: string; sub?: string }) {
 }
 
 function StatCard({ icon, label, value, color, bg }: { icon: string; label: string; value: string | number; color: string; bg: string }) {
+  const cardWidth = (width - 48) / 4;
   return (
-    <View style={{ flex: 1, backgroundColor: "white", borderRadius: 16, padding: 14, margin: 4, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
-      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: bg, alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
-        <Feather name={icon as any} size={18} color={color} />
+    <View style={{ width: cardWidth, backgroundColor: "white", borderRadius: 14, padding: 10, margin: 4, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, alignItems: "center" }}>
+      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: bg, alignItems: "center", justifyContent: "center", marginBottom: 6 }}>
+        <Feather name={icon as any} size={15} color={color} />
       </View>
-      <Text style={{ fontSize: 22, fontFamily: "Inter_700Bold", color: "#0F172A", marginBottom: 2 }}>{value}</Text>
-      <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#64748B" }}>{label}</Text>
+      <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: "#0F172A", marginBottom: 2 }}>{value}</Text>
+      <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: "#64748B", textAlign: "center" }}>{label}</Text>
     </View>
   );
 }
@@ -51,6 +56,7 @@ export default function JobsAdminScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { jobs, deleteJob, toggleJobActive } = useJobs();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "employers" | "analytics">("overview");
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [totalCitizens, setTotalCitizens] = useState<number>(0);
@@ -120,15 +126,24 @@ export default function JobsAdminScreen() {
         end={{ x: 1, y: 1 }}
         style={{ paddingTop: topPad + 12, paddingBottom: 20, paddingHorizontal: 20 }}
       >
-        <View style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start", marginBottom: 6 }}>
-            <Feather name="briefcase" size={10} color="#6EE7B7" />
-            <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#6EE7B7", marginLeft: 4, letterSpacing: 1.5 }}>JOB PORTAL CONTROL</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+          <View>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start", marginBottom: 6 }}>
+              <Feather name="briefcase" size={10} color="#6EE7B7" />
+              <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#6EE7B7", marginLeft: 4, letterSpacing: 1.5 }}>JOB PORTAL CONTROL</Text>
+            </View>
+            <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>Job Portal Admin</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>
+              {jobs.length} total posts · {totalEmployers} employers
+            </Text>
           </View>
-          <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>Job Portal Admin</Text>
-          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>
-            {jobs.length} total posts · {totalEmployers} employers
-          </Text>
+          <TouchableOpacity
+            onPress={() => router.push("/super-admin/settings")}
+            style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
+            activeOpacity={0.8}
+          >
+            <Feather name="settings" size={20} color="white" />
+          </TouchableOpacity>
         </View>
 
         <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 16, padding: 14 }}>
@@ -147,9 +162,9 @@ export default function JobsAdminScreen() {
         </View>
       </LinearGradient>
 
-      <View style={{ flexDirection: "row", backgroundColor: "#1E293B", paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
+      <View style={{ flexDirection: "row", backgroundColor: "white", paddingHorizontal: 16, paddingVertical: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: "#E2E8F0" }}>
         {(["overview", "analytics", "employers"] as const).map((tab) => (
-          <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: activeTab === tab ? "#16A34A" : "transparent", alignItems: "center" }} activeOpacity={0.8}>
+          <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={{ flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: activeTab === tab ? "#16A34A" : "#F1F5F9", alignItems: "center" }} activeOpacity={0.8}>
             <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: activeTab === tab ? "white" : "#64748B", textTransform: "capitalize" }}>
               {tab === "overview" ? "Overview" : tab === "analytics" ? "Analytics" : "Employers"}
             </Text>

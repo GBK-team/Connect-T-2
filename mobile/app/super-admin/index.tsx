@@ -30,36 +30,38 @@ function StatCard({
   color: string;
   bg: string;
 }) {
+  const cardWidth = (width - 48) / 4;
   return (
     <View
       style={{
-        flex: 1,
+        width: cardWidth,
         backgroundColor: "white",
-        borderRadius: 16,
-        padding: 14,
+        borderRadius: 14,
+        padding: 10,
         margin: 4,
         shadowColor: "#000",
         shadowOpacity: 0.06,
         shadowRadius: 8,
         elevation: 2,
+        alignItems: "center",
       }}
     >
       <View
         style={{
-          width: 36,
-          height: 36,
+          width: 32,
+          height: 32,
           borderRadius: 10,
           backgroundColor: bg,
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 8,
+          marginBottom: 6,
         }}
       >
-        <Feather name={icon as any} size={18} color={color} />
+        <Feather name={icon as any} size={15} color={color} />
       </View>
       <Text
         style={{
-          fontSize: 22,
+          fontSize: 18,
           fontFamily: "Inter_700Bold",
           color: "#0F172A",
           marginBottom: 2,
@@ -69,9 +71,10 @@ function StatCard({
       </Text>
       <Text
         style={{
-          fontSize: 11,
+          fontSize: 9,
           fontFamily: "Inter_400Regular",
           color: "#64748B",
+          textAlign: "center",
         }}
       >
         {label}
@@ -222,14 +225,14 @@ export default function SuperAdminDashboard() {
               </Text>
             </View>
             <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>
-              {user?.name?.split(" ")[0]} Dashboard
+              Tejashree's Dashboard
             </Text>
             <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>
               All Wards · AMC Ambernath · Live
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => setShowLogout(true)}
+            onPress={() => router.push("/super-admin/settings")}
             style={{
               width: 42,
               height: 42,
@@ -240,9 +243,7 @@ export default function SuperAdminDashboard() {
             }}
             activeOpacity={0.8}
           >
-            <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: "white" }}>
-              {user?.name?.charAt(0)?.toUpperCase()}
-            </Text>
+            <Feather name="settings" size={20} color="white" />
           </TouchableOpacity>
         </View>
 
