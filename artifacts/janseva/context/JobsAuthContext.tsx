@@ -113,11 +113,19 @@ export function calcProfileCompletion(user: JobsUser): number {
   return Math.round((filled.length / fields.length) * 100);
 }
 
+export interface GoogleJobsUserInfo {
+  sub: string;
+  name: string;
+  email: string;
+  picture?: string;
+}
+
 interface JobsAuthContextType {
   jobsUser: JobsUser | null;
   loading: boolean;
   registerJobs: (data: Omit<JobsUser, "id" | "createdAt">) => Promise<void>;
   loginJobs: (phone: string, role: JobsUserRole) => Promise<boolean>;
+  loginWithGoogleJobs: (googleUser: GoogleJobsUserInfo, role: JobsUserRole) => Promise<void>;
   logoutJobs: () => Promise<void>;
   updateJobsUser: (data: Partial<JobsUser>) => Promise<void>;
   addCompany: (company: Omit<CompanyProfile, "id">) => Promise<string | undefined>;
@@ -197,6 +205,34 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
+  const loginWithGoogleJobs = async (googleUser: GoogleJobsUserInfo, role: JobsUserRole): Promise<void> => {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const existing = raw ? (JSON.parse(raw) as JobsUserStore) : {};
+    const emailKey = `${googleUser.email}:${role}`;
+    if (existing[emailKey]) {
+      const user = { ...existing[emailKey], name: googleUser.name, profilePhoto: googleUser.picture, email: googleUser.email };
+      existing[emailKey] = user;
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ currentKey: emailKey }));
+      setJobsUser(user);
+      return;
+    }
+    const newUser: JobsUser = {
+      id: "GJ_" + googleUser.sub,
+      name: googleUser.name,
+      phone: "",
+      email: googleUser.email,
+      role,
+      profilePhoto: googleUser.picture,
+      avatarColor: randomColor(),
+      createdAt: new Date().toISOString(),
+    };
+    existing[emailKey] = newUser;
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ currentKey: emailKey }));
+    setJobsUser(newUser);
+  };
+
   const logoutJobs = async () => save(null);
 
   const updateJobsUser = async (data: Partial<JobsUser>) => {
@@ -220,7 +256,7 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <JobsAuthContext.Provider value={{ jobsUser, loading, registerJobs, loginJobs, logoutJobs, updateJobsUser, addCompany, updateCompany }}>
+    <JobsAuthContext.Provider value={{ jobsUser, loading, registerJobs, loginJobs, loginWithGoogleJobs, logoutJobs, updateJobsUser, addCompany, updateCompany }}>
       {children}
     </JobsAuthContext.Provider>
   );

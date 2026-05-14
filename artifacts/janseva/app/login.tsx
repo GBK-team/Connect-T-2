@@ -87,7 +87,6 @@ export default function LoginScreen() {
 
   const [regName, setRegName] = useState("");
   const [regAge, setRegAge] = useState("");
-  const [regEmail, setRegEmail] = useState("");
   const [regAddress, setRegAddress] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regWard, setRegWard] = useState("");
@@ -133,10 +132,6 @@ export default function LoginScreen() {
       setError(t("enterValidAge"));
       return;
     }
-    if (regEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) {
-      setError(t("enterValidEmail"));
-      return;
-    }
     if (!regAddress.trim()) {
       setError(t("enterAddress"));
       return;
@@ -173,7 +168,6 @@ export default function LoginScreen() {
         role: "citizen",
         ward: regWard,
         age: parseInt(regAge, 10),
-        email: regEmail.trim() || undefined,
         address: regAddress.trim(),
         notifyEmail,
         notifyWhatsapp,
@@ -305,21 +299,6 @@ export default function LoginScreen() {
         value={regAge}
         onChangeText={(v) => {
           setRegAge(v);
-        }}
-      />
-
-      <Text style={s.fieldLabel}>
-        {t("email")} <Text style={s.optional}>({t("optional")})</Text>
-      </Text>
-      <TextInput
-        style={s.input}
-        placeholder="yourname@email.com"
-        placeholderTextColor="#94A3B8"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={regEmail}
-        onChangeText={(v) => {
-          setRegEmail(v);
         }}
       />
 

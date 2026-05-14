@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Modal, FlatList,
@@ -7,9 +7,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import { useJobsAuth, JobsUserRole, randomColor } from "@/context/JobsAuthContext";
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
+
+WebBrowser.maybeCompleteAuthSession();
 
 type AuthTab = "login" | "register";
 type Step = "form" | "otp" | "success";
@@ -173,7 +177,42 @@ function DropdownPicker({ label, value, options, placeholder, onSelect, required
 export default function JobsLoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { registerJobs, loginJobs } = useJobsAuth();
+  const { registerJobs, loginJobs, loginWithGoogleJobs } = useJobsAuth();
+
+  const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId: GOOGLE_CLIENT_ID || "not-configured",
+    iosClientId: GOOGLE_CLIENT_ID || "not-configured",
+    androidClientId: GOOGLE_CLIENT_ID || "not-configured",
+  });
+
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (response?.type === "success") {
+      const { access_token } = response.params;
+      setGoogleLoading(true);
+      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${access_token}` },
+      })
+        .then((r) => r.json())
+        .then(async (userInfo) => {
+          await loginWithGoogleJobs(userInfo, role);
+          router.replace("/jobs/(tabs)" as any);
+        })
+        .catch(() => setError("Google sign-in failed. Please try again."))
+        .finally(() => setGoogleLoading(false));
+    }
+  }, [response]);
+
+  const handleGoogleSignIn = async () => {
+    if (!GOOGLE_CLIENT_ID) {
+      setError("Google Sign-In is not configured yet. Contact your admin.");
+      return;
+    }
+    setError("");
+    await promptAsync();
+  };
 
   const [tab, setTab] = useState<AuthTab>("login");
   const [role, setRole] = useState<JobsUserRole>("seeker");
@@ -192,7 +231,6 @@ export default function JobsLoginScreen() {
   // Employer-specific
   const [company, setCompany] = useState("");
   const [gstNo, setGstNo] = useState("");
-  const [email, setEmail] = useState("");
   const [location, setLocation] = useState("");
 
   const [otp, setOtp] = useState(["", "", "", ""]);
@@ -222,7 +260,6 @@ export default function JobsLoginScreen() {
     if (!name.trim()) return "Full name is required.";
     if (!company.trim()) return "Company name is required.";
     if (!location) return "Please select your location.";
-    if (!email.trim() || !email.includes("@")) return "Enter a valid email address.";
     if (phone.length !== 10) return "Enter a valid 10-digit mobile number.";
     return null;
   };
@@ -255,7 +292,6 @@ export default function JobsLoginScreen() {
           skills: skills.trim() || undefined,
           company: company.trim() || undefined,
           gstNo: gstNo.trim() || undefined,
-          email: email.trim() || undefined,
           location: location || undefined,
           avatarColor: randomColor(),
         });
@@ -464,19 +500,6 @@ export default function JobsLoginScreen() {
                       />
 
                       <View style={styles.inputWrap}>
-                        <Text style={styles.inputLabel}>Email Address <Text style={{ color: "#DC2626" }}>*</Text></Text>
-                        <TextInput
-                          style={styles.input}
-                          value={email}
-                          onChangeText={setEmail}
-                          placeholder="company@email.com"
-                          placeholderTextColor="#CBD5E1"
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                        />
-                      </View>
-
-                      <View style={styles.inputWrap}>
                         <Text style={styles.inputLabel}>Mobile Number <Text style={{ color: "#DC2626" }}>*</Text></Text>
                         <View style={styles.phoneRow}>
                           <View style={styles.phoneCode}><Text style={styles.phoneCodeText}>+91</Text></View>
@@ -566,6 +589,41 @@ export default function JobsLoginScreen() {
           )}
         </View>
 
+        <View style={styles.googleSection}>
+          <View style={styles.orRow}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>or continue with</Text>
+            <View style={styles.orLine} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleBtn, googleLoading && { opacity: 0.6 }]}
+            onPress={handleGoogleSignIn}
+            activeOpacity={0.85}
+            disabled={googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color="#EA580C" size="small" />
+            ) : (
+              <>
+                <View style={styles.googleIconWrap}>
+                  <Text style={styles.googleG}>G</Text>
+                </View>
+                <Text style={styles.googleBtnText}>Continue with Google</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {!GOOGLE_CLIENT_ID && (
+            <View style={styles.googleNote}>
+              <Feather name="info" size={12} color="#94A3B8" />
+              <Text style={styles.googleNoteText}>
+                Google Sign-In needs a Client ID — contact your admin to enable it.
+              </Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.backBtn}>
           <TouchableOpacity onPress={() => router.replace("/portal-select" as any)} style={styles.backPill}>
             <Feather name="arrow-left" size={14} color="#EA580C" />
@@ -633,6 +691,17 @@ const styles = StyleSheet.create({
   backBtn: { alignItems: "center", paddingBottom: 32 },
   backPill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "white", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5, borderColor: "#FED7AA" },
   backPillText: { fontSize: 13, color: "#EA580C", fontFamily: "Inter_600SemiBold" },
+
+  googleSection: { marginHorizontal: 16, marginBottom: 8 },
+  orRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  orLine: { flex: 1, height: 1, backgroundColor: "#E2E8F0" },
+  orText: { fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  googleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "white", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, borderWidth: 1.5, borderColor: "#E2E8F0", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  googleIconWrap: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#EA580C", alignItems: "center", justifyContent: "center" },
+  googleG: { fontSize: 15, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
+  googleBtnText: { fontSize: 15, fontWeight: "600", color: "#0F172A", fontFamily: "Inter_600SemiBold" },
+  googleNote: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8, paddingHorizontal: 4 },
+  googleNoteText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", flex: 1 },
 });
 
 const dd = StyleSheet.create({
