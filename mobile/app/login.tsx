@@ -13,22 +13,16 @@ import {
   Animated,
   Dimensions,
   useWindowDimensions,
-  Image,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
-
 import { useAuth } from "@/context/AuthContext";
 import TopShade from "@/components/TopShade";
 import { ambernathWards } from "@/data/mumbaiServices";
 import { useLanguage, languageOptions } from "@/context/LanguageContext";
-
-WebBrowser.maybeCompleteAuthSession();
 
 type AuthTab = "register" | "login";
 type RegisterStep = "form" | "otp" | "notifications" | "success";
@@ -37,46 +31,8 @@ type LoginStep = "form" | "otp";
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 44 : insets.top;
-  const { register, loginWithPhone, loginWithGoogle } = useAuth();
+  const { register, loginWithPhone } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-
-  const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: GOOGLE_CLIENT_ID || "not-configured",
-    iosClientId: GOOGLE_CLIENT_ID || "not-configured",
-    androidClientId: GOOGLE_CLIENT_ID || "not-configured",
-  });
-
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  useEffect(() => {
-    if (response?.type === "success") {
-      const { access_token } = response.params;
-      setGoogleLoading(true);
-      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${access_token}` },
-      })
-        .then((r) => r.json())
-        .then(async (userInfo) => {
-          await loginWithGoogle(userInfo);
-          router.replace("/portal-select" as any);
-        })
-        .catch(() => {
-          setError("Google sign-in failed. Please try again.");
-        })
-        .finally(() => setGoogleLoading(false));
-    }
-  }, [response]);
-
-  const handleGoogleSignIn = async () => {
-    if (!GOOGLE_CLIENT_ID) {
-      setError("Google Sign-In is not configured yet.");
-      return;
-    }
-    setError("");
-    await promptAsync();
-  };
 
   const [activeTab, setActiveTab] = useState<AuthTab>("register");
   const [loading, setLoading] = useState(false);
@@ -84,14 +40,12 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [wardModal, setWardModal] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
-  const [quickLoginUser, setQuickLoginUser] = useState<{ name: string } | null>(
-    null,
-  );
 
   const [regStep, setRegStep] = useState<RegisterStep>("form");
   const [loginStep, setLoginStep] = useState<LoginStep>("form");
 
   const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
   const [regAge, setRegAge] = useState("");
   const [regAddress, setRegAddress] = useState("");
   const [regPhone, setRegPhone] = useState("");
@@ -243,7 +197,7 @@ export default function LoginScreen() {
   };
 
   const handleRegisterFinish = async () => {
-    setLoading(true);
+    email: (regEmail.trim(), setLoading(true));
     try {
       await register({
         name: regName.trim(),
@@ -785,43 +739,6 @@ export default function LoginScreen() {
 
           {activeTab === "login" && loginStep === "form" && renderLoginForm()}
           {activeTab === "login" && loginStep === "otp" && renderOtpInput()}
-
-          <View style={s.orRow}>
-            <View style={s.orLine} />
-            <Text style={s.orText}>or continue with</Text>
-            <View style={s.orLine} />
-          </View>
-
-          <TouchableOpacity
-            style={[
-              s.googleBtn,
-              (googleLoading || !request) && { opacity: 0.6 },
-            ]}
-            onPress={handleGoogleSignIn}
-            activeOpacity={0.85}
-            disabled={googleLoading}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color="#EA580C" size="small" />
-            ) : (
-              <>
-                <View style={s.googleIconWrap}>
-                  <Text style={s.googleG}>G</Text>
-                </View>
-                <Text style={s.googleBtnText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID && (
-            <View style={s.googleNote}>
-              <Feather name="info" size={12} color="rgba(255,255,255,0.6)" />
-              <Text style={s.googleNoteText}>
-                Google Sign-In needs a Client ID — contact your admin to enable
-                it.
-              </Text>
-            </View>
-          )}
 
           <TouchableOpacity
             style={s.backPill}
