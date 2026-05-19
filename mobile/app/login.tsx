@@ -47,7 +47,7 @@ export default function LoginScreen() {
 
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
-  const [regAge, setRegAge] = useState("");
+  const [regDob, setRegDob] = useState("");
   const [regAddress, setRegAddress] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regWard, setRegWard] = useState("");
@@ -124,9 +124,8 @@ export default function LoginScreen() {
       return;
     }
 
-    const ageNum = parseInt(regAge, 10);
-    if (!regAge || isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
-      setError(t("enterValidAge"));
+    if (!regDob.trim()) {
+      setError("Please enter date of birth");
       return;
     }
 
@@ -191,7 +190,7 @@ export default function LoginScreen() {
         mobile: regPhone.trim().replace(/\D/g, ""),
         role: "citizen",
         ward: regWard,
-        age: parseInt(regAge, 10),
+        dob: regDob.trim(),
         address: regAddress.trim(),
         notifyEmail,
         notifyWhatsapp,
@@ -401,15 +400,14 @@ export default function LoginScreen() {
         autoCapitalize="none"
       />
 
-      <Text style={s.fieldLabel}>{t("age")}</Text>
+      <Text style={s.fieldLabel}>Date of Birth</Text>
       <TextInput
         style={s.input}
-        placeholder={t("enterAge")}
+        placeholder="DD/MM/YYYY"
         placeholderTextColor="#94A3B8"
-        keyboardType="number-pad"
-        maxLength={3}
-        value={regAge}
-        onChangeText={setRegAge}
+        value={regDob}
+        onChangeText={setRegDob}
+        maxLength={10}
       />
 
       <Text style={s.fieldLabel}>
@@ -644,8 +642,8 @@ export default function LoginScreen() {
           contentContainerStyle={[
             s.scroll,
             {
-              minHeight: windowHeight,
               paddingBottom: Math.max(insets.bottom, 24) + 40,
+              minHeight: windowHeight,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -740,8 +738,16 @@ export default function LoginScreen() {
         animationType="slide"
         onRequestClose={() => setWardModal(false)}
       >
-        <View style={s.modalOverlay}>
-          <View style={s.modalSheet}>
+        <TouchableOpacity
+          style={s.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setWardModal(false)}
+        >
+          <TouchableOpacity
+            style={s.modalSheet}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>{t("selectWard")}</Text>
               <TouchableOpacity onPress={() => setWardModal(false)}>
@@ -782,8 +788,8 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </LinearGradient>
   );

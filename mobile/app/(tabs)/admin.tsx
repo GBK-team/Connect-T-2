@@ -1238,23 +1238,43 @@ export default function AdminScreen() {
             </View>
 
             <View style={pStyles.section}>
-              <Text style={pStyles.sectionLabel}>WARD JURISDICTION</Text>
+              <Text style={pStyles.sectionLabel}>BACKEND & API</Text>
               <View style={pStyles.card}>
                 {[
                   {
+                    icon: "database" as const,
+                    label: "Data Storage",
+                    value: "AsyncStorage (Local)",
+                    color: "#3B82F6",
+                    bg: "#DBEAFE",
+                  },
+                  {
+                    icon: "code" as const,
+                    label: "App Version",
+                    value: "v1.0 · Latest",
+                    color: "#7C3AED",
+                    bg: "#EDE9FE",
+                  },
+                  {
+                    icon: "server" as const,
+                    label: "Server",
+                    value: "Express.js · Local",
+                    color: "#059669",
+                    bg: "#D1FAE5",
+                  },
+                  {
+                    icon: "key" as const,
+                    label: "Auth Mode",
+                    value: "OTP / Mobile Login",
+                    color: "#D97706",
+                    bg: "#FEF3C7",
+                  },
+                  {
                     icon: "home" as const,
-                    label: "Corporation",
-                    value: "Ambernath Municipal Council (AMC)",
-                  },
-                  {
-                    icon: "map" as const,
-                    label: "City",
-                    value: "Ambernath, Maharashtra",
-                  },
-                  {
-                    icon: "compass" as const,
-                    label: "Area",
-                    value: user?.ward || "Ambernath",
+                    label: "Municipality",
+                    value: "AMC Ambernath",
+                    color: "#16A34A",
+                    bg: "#DCFCE7",
                   },
                 ].map((item, idx, arr) => (
                   <View
@@ -1265,12 +1285,9 @@ export default function AdminScreen() {
                     ]}
                   >
                     <View
-                      style={[
-                        pStyles.detailIcon,
-                        { backgroundColor: "#FFEDD5" },
-                      ]}
+                      style={[pStyles.detailIcon, { backgroundColor: item.bg }]}
                     >
-                      <Feather name={item.icon} size={14} color="#EA580C" />
+                      <Feather name={item.icon} size={14} color={item.color} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={pStyles.detailLabel}>{item.label}</Text>
