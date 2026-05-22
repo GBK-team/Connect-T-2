@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NAGARSEVAK_DIRECTORY } from "@/data/nagarsevaks";
 import { useComplaints } from "@/context/ComplaintContext";
 import { useRouter } from "expo-router";
+import { useAuth } from "@/context/AuthContext";
+import { API_BASE_URL } from "@/constants/api";
 
 /*
   Full replacement based on your uploaded officers.tsx.
@@ -49,11 +51,70 @@ export default function OfficersScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { complaints } = useComplaints();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [search, setSearch] = useState("");
   const [selectedOfficer, setSelectedOfficer] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"officers" | "wards">("officers");
+  const [pendingOfficers, setPendingOfficers] = useState<any[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
 
+  async function loadPendingOfficers() {
+    try {
+      if (!user?.mobile || !user?.isSuperAdmin) {
+        return;
+      }
+
+      setLoadingPending(true);
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/auth/pending-officers?adminMobile=${user.mobile}`,
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setPendingOfficers(data.officers || []);
+      }
+    } catch (error) {
+      console.log("Pending officers load failed:", error);
+    } finally {
+      setLoadingPending(false);
+    }
+  }
+
+  async function updateApproval(
+    officerId: string,
+    status: "approved" | "rejected",
+  ) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/auth/officers/${officerId}/approval`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            adminMobile: user?.mobile,
+            status,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        await loadPendingOfficers();
+      }
+    } catch (error) {
+      console.log("Approval update failed:", error);
+    }
+  }
+
+  useEffect(() => {
+    loadPendingOfficers();
+  }, [user?.mobile, user?.isSuperAdmin]);
   const officers = NAGARSEVAK_DIRECTORY.filter((n) => n.role === "nagarsevak");
   const filteredOfficers = officers.filter(
     (o) =>
@@ -288,6 +349,124 @@ export default function OfficersScreen() {
       >
         {activeTab === "officers" ? (
           <>
+            {user?.isSuperAdmin && pendingOfficers.length > 0 && (
+              <View
+                style={{
+                  backgroundColor: "white",
+                  borderRadius: 18,
+                  padding: 16,
+                  marginBottom: 14,
+                  shadowColor: "#0F172A",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
+              >
+                <SectionHeader
+                  title="Pending Officer Approvals"
+                  sub={`${pendingOfficers.length} registrations waiting`}
+                />
+
+                {pendingOfficers.map((officer) => (
+                  <View
+                    key={officer.id}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: "#E2E8F0",
+                      borderRadius: 14,
+                      padding: 14,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 15,
+                        fontFamily: "Inter_700Bold",
+                        color: "#0F172A",
+                      }}
+                    >
+                      {officer.name}
+                    </Text>
+
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_400Regular",
+                        color: "#64748B",
+                        marginTop: 3,
+                      }}
+                    >
+                      +91 {officer.mobile}
+                    </Text>
+
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Inter_400Regular",
+                        color: "#64748B",
+                        marginTop: 3,
+                      }}
+                    >
+                      {officer.ward || "Ward not assigned"}
+                    </Text>
+
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        marginTop: 12,
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => updateApproval(officer.id, "approved")}
+                        style={{
+                          flex: 1,
+                          backgroundColor: "#16A34A",
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          marginRight: 8,
+                          alignItems: "center",
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={{
+                            color: "white",
+                            fontFamily: "Inter_600SemiBold",
+                            fontSize: 12,
+                          }}
+                        >
+                          Approve
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => updateApproval(officer.id, "rejected")}
+                        style={{
+                          flex: 1,
+                          backgroundColor: "#DC2626",
+                          paddingVertical: 10,
+                          borderRadius: 10,
+                          alignItems: "center",
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={{
+                            color: "white",
+                            fontFamily: "Inter_600SemiBold",
+                            fontSize: 12,
+                          }}
+                        >
+                          Reject
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
             <View
               style={{
                 flexDirection: "row",
