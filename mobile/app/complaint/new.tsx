@@ -147,13 +147,14 @@ export default function NewComplaintScreen() {
     const wardCode =
       user?.wardCode || normalizeWardCodeFromWard(user?.ward) || null;
 
-    if (!user?.ward || !wardCode) {
-      Alert.alert(
-        "Ward Required",
-        "Ward is missing from your profile. Please register/login again and select your ward.",
-      );
-      return;
-    }
+    /*
+Backend now supports:
+- auto ward detection
+- auto officer assignment
+
+So we allow complaint submission
+even if ward is temporarily missing.
+*/
 
     try {
       setSubmitting(true);
