@@ -7,6 +7,7 @@ import React, {
 } from "react";
 
 import { API_BASE_URL } from "@/constants/api";
+import { useAuth } from "@/context/AuthContext";
 
 export type ComplaintStatus =
   | "submitted"
@@ -61,14 +62,18 @@ type NewComplaintData = Omit<
 interface ComplaintContextType {
   complaints: Complaint[];
   loading: boolean;
+
   addComplaint: (data: NewComplaintData) => Promise<Complaint>;
+
   updateStatus: (
     id: string,
     status: ComplaintStatus,
     note?: string,
     updatedBy?: string,
   ) => Promise<void>;
+
   getComplaintById: (id: string) => Complaint | undefined;
+
   refreshComplaints: () => Promise<void>;
 }
 
@@ -91,43 +96,85 @@ function buildTimeline(
 function normalizeComplaint(item: any): Complaint {
   const createdAt =
     item.created_at || item.createdAt || new Date().toISOString();
+
   const updatedAt = item.updated_at || item.updatedAt || createdAt;
+
   const status: ComplaintStatus = item.status || "submitted";
 
   return {
     id: String(item.id),
+
     title: item.title || "",
+
     description: item.description || "",
+
     category: item.category || "other",
+
     photoUri: item.photo_url || item.photoUri || "",
+
     location: item.location || "",
+
     ward: item.ward || "",
+
     status,
+
     createdAt,
+
     updatedAt,
+
     timeline:
       Array.isArray(item.timeline) && item.timeline.length > 0
-        ? item.timeline
+        ? item.timeline.map((t: any) => ({
+            status: t.status,
+            timestamp: t.created_at || t.timestamp,
+            note: t.note,
+            updatedBy: t.updated_by || t.updatedBy,
+          }))
         : buildTimeline(status, createdAt),
+
     assignedTo: item.assigned_to || item.assignedTo,
+
     resolvedNote: item.resolved_note || item.resolvedNote,
+
     userName: item.user_name || item.userName,
+
     userMobile: item.user_mobile || item.userMobile,
+
     userAddress: item.user_address || item.userAddress,
+
     userAge: item.user_age || item.userAge,
+
     userEmail: item.user_email || item.userEmail,
   };
 }
 
 export function ComplaintProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   const refreshComplaints = async () => {
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/api/complaints`);
+      let url = `${API_BASE_URL}/api/complaints`;
+
+      if (user?.role === "citizen") {
+        url += `?role=citizen&mobile=${encodeURIComponent(user.mobile)}`;
+      }
+
+      if (user?.role === "nagarsevak") {
+        url += `?role=nagarsevak&ward=${encodeURIComponent(user.ward || "")}`;
+      }
+
+      if (user?.role === "super_admin") {
+        url += `?role=super_admin`;
+      }
+
+      const response = await fetch(url);
+
       const data = await response.json();
 
       if (!response.ok || !data.success) {
@@ -143,15 +190,22 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    refreshComplaints();
-  }, []);
+    if (user) {
+      refreshComplaints();
+    } else {
+      setComplaints([]);
+      setLoading(false);
+    }
+  }, [user]);
 
   const addComplaint = async (data: NewComplaintData): Promise<Complaint> => {
     const response = await fetch(`${API_BASE_URL}/api/complaints`, {
       method: "POST",
+
       headers: {
         "Content-Type": "application/json",
       },
+
       body: JSON.stringify(data),
     });
 
@@ -161,20 +215,20 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
       throw new Error(result.message || "Failed to create complaint");
     }
 
-    const now = new Date().toISOString();
-
-    const complaint: Complaint = normalizeComplaint({
-      ...data,
-      id: result.complaintId || result.complaint?.id,
-      status: "submitted",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    setComplaints((prev) => [complaint, ...prev]);
     await refreshComplaints();
 
-    return complaint;
+    const created = complaints.find(
+      (c) => c.id === (result.complaintId || result.complaint?.id),
+    ) || {
+      ...data,
+      id: result.complaintId || result.complaint?.id || Date.now().toString(),
+      status: "submitted" as ComplaintStatus,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      timeline: buildTimeline("submitted", new Date().toISOString()),
+    };
+
+    return created;
   };
 
   const updateStatus = async (
@@ -186,14 +240,16 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
     const response = await fetch(
       `${API_BASE_URL}/api/complaints/${id}/status`,
       {
-        method: "PUT",
+        method: "PATCH",
+
         headers: {
           "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
           status,
           note,
-          updatedBy,
+          updated_by: updatedBy || user?.name || "Officer",
         }),
       },
     );
@@ -215,10 +271,15 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
     <ComplaintContext.Provider
       value={{
         complaints,
+
         loading,
+
         addComplaint,
+
         updateStatus,
+
         getComplaintById,
+
         refreshComplaints,
       }}
     >
