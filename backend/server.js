@@ -6,6 +6,9 @@ const mysql = require("mysql2/promise");
 
 const app = express();
 
+const SERVER_VERSION = "backend-server-wardfix-v2";
+console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
+
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
@@ -120,6 +123,16 @@ app.get("/api/health", async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+app.get("/api/server-info", (req, res) => {
+  res.json({
+    success: true,
+    serverVersion: SERVER_VERSION,
+    serverFile: "backend/server.js",
+    runtimeFile: __filename,
+    cwd: process.cwd(),
+  });
 });
 
 /* USERS */
