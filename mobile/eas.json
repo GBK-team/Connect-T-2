@@ -1,25 +1,25 @@
-cd /workspace/mobile
-
-cat > eas.json <<'EOF'
 {
+  "cli": {
+    "appVersionSource": "local"
+  },
   "build": {
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://connect-t-2.onrender.com",
-        "NODE_ENV": "production"
+        "EXPO_PUBLIC_API_URL": "https://connect-t-2.onrender.com"
       }
     },
     "production": {
+      "environment": "production",
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://connect-t-2.onrender.com",
-        "NODE_ENV": "production"
+        "EXPO_PUBLIC_API_URL": "https://connect-t-2.onrender.com"
       }
     }
   },
@@ -27,4 +27,3 @@ cat > eas.json <<'EOF'
     "production": {}
   }
 }
-EOF
