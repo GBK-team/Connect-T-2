@@ -23,18 +23,34 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 
 const categoryLabelKeys: Record<string, string> = {
-  roads: "roads", water: "waterSupply", electricity: "electricity", garbage: "garbage",
-  drainage: "drainage", streetlight: "streetLight", encroachment: "encroachment", other: "other",
+  roads: "roads",
+  water: "waterSupply",
+  electricity: "electricity",
+  garbage: "garbage",
+  drainage: "drainage",
+  streetlight: "streetLight",
+  encroachment: "encroachment",
+  other: "other",
 };
 
-const categories: { id: ComplaintCategory; icon: string; color: string; bg: string }[] = [
+const categories: {
+  id: ComplaintCategory;
+  icon: string;
+  color: string;
+  bg: string;
+}[] = [
   { id: "roads", icon: "truck", color: "#92400E", bg: "#FEF3C7" },
   { id: "water", icon: "droplet", color: "#0369A1", bg: "#BAE6FD" },
   { id: "electricity", icon: "zap", color: "#D97706", bg: "#FEF3C7" },
   { id: "garbage", icon: "trash-2", color: "#059669", bg: "#D1FAE5" },
   { id: "drainage", icon: "git-merge", color: "#0EA5E9", bg: "#FFF7ED" },
   { id: "streetlight", icon: "sun", color: "#7C3AED", bg: "#EDE9FE" },
-  { id: "encroachment", icon: "alert-triangle", color: "#DC2626", bg: "#FEE2E2" },
+  {
+    id: "encroachment",
+    icon: "alert-triangle",
+    color: "#DC2626",
+    bg: "#FEE2E2",
+  },
   { id: "other", icon: "more-horizontal", color: "#475569", bg: "#F1F5F9" },
 ];
 
@@ -47,20 +63,31 @@ export default function NewComplaintScreen() {
   const { t } = useLanguage();
 
   const [photoUri, setPhotoUri] = useState<string | undefined>();
-  const [selectedCategory, setSelectedCategory] = useState<ComplaintCategory | null>(null);
+  const [selectedCategory, setSelectedCategory] =
+    useState<ComplaintCategory | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [contactNumber, setContactNumber] = useState(user?.mobile || "");
   const [submitting, setSubmitting] = useState(false);
   const [detectingLoc, setDetectingLoc] = useState(false);
-  const [locStatus, setLocStatus] = useState<"idle" | "ok" | "outside" | "denied">("idle");
+  const [locStatus, setLocStatus] = useState<
+    "idle" | "ok" | "outside" | "denied"
+  >("idle");
 
-  const AMBERNATH_BOUNDS = { minLat: 19.08, maxLat: 19.23, minLng: 73.13, maxLng: 73.25 };
+  const AMBERNATH_BOUNDS = {
+    minLat: 19.08,
+    maxLat: 19.23,
+    minLng: 73.13,
+    maxLng: 73.25,
+  };
 
   const detectLocation = async () => {
     if (Platform.OS === "web") {
-      Alert.alert("Not available", "Location detection is not available on web. Please enter manually.");
+      Alert.alert(
+        "Not available",
+        "Location detection is not available on web. Please enter manually.",
+      );
       return;
     }
     setDetectingLoc(true);
@@ -72,12 +99,15 @@ export default function NewComplaintScreen() {
         setDetectingLoc(false);
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
       const { latitude, longitude } = pos.coords;
-      const inBounds = (
-        latitude >= AMBERNATH_BOUNDS.minLat && latitude <= AMBERNATH_BOUNDS.maxLat &&
-        longitude >= AMBERNATH_BOUNDS.minLng && longitude <= AMBERNATH_BOUNDS.maxLng
-      );
+      const inBounds =
+        latitude >= AMBERNATH_BOUNDS.minLat &&
+        latitude <= AMBERNATH_BOUNDS.maxLat &&
+        longitude >= AMBERNATH_BOUNDS.minLng &&
+        longitude <= AMBERNATH_BOUNDS.maxLng;
       if (!inBounds) {
         setLocStatus("outside");
         setDetectingLoc(false);
@@ -85,12 +115,22 @@ export default function NewComplaintScreen() {
       }
       const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
       const addr = rev[0];
-      const locString = [addr?.street, addr?.district, addr?.city || "Ambernath"]
-        .filter(Boolean).join(", ");
-      setLocation(locString || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+      const locString = [
+        addr?.street,
+        addr?.district,
+        addr?.city || "Ambernath",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      setLocation(
+        locString || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      );
       setLocStatus("ok");
     } catch {
-      Alert.alert("Error", "Could not detect location. Please enter it manually.");
+      Alert.alert(
+        "Error",
+        "Could not detect location. Please enter it manually.",
+      );
     } finally {
       setDetectingLoc(false);
     }
@@ -135,56 +175,95 @@ export default function NewComplaintScreen() {
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
+
     if (!selectedCategory) {
       Alert.alert(t("selectCategoryAlert"), t("selectCategoryMsg"));
       return;
     }
+
     if (!title.trim()) {
       Alert.alert(t("addTitleAlert"), t("addTitleMsg"));
       return;
     }
+
     if (!description.trim()) {
       Alert.alert(t("addDescAlert"), t("addDescMsg"));
       return;
     }
+
     const cleanContact = contactNumber.trim().replace(/\D/g, "");
+
     if (cleanContact.length !== 10) {
-      Alert.alert("Contact Required", "Please enter your 10-digit contact number so we can reach you.");
+      Alert.alert(
+        "Contact Required",
+        "Please enter your 10-digit contact number so we can reach you.",
+      );
       return;
     }
+
     if (!location.trim()) {
-      Alert.alert("Location Required", "Please enter the location or tap 'Detect Location'.");
+      Alert.alert(
+        "Location Required",
+        "Please enter the location or tap 'Detect Location'.",
+      );
       return;
     }
+
     if (locStatus === "outside") {
-      Alert.alert("Outside Ambernath", "Complaints can only be filed for locations within Ambernath city limits.");
+      Alert.alert(
+        "Outside Ambernath",
+        "Complaints can only be filed for locations within Ambernath city limits.",
+      );
       return;
     }
 
     setSubmitting(true);
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
 
-    setTimeout(() => {
-      const complaint = addComplaint({
+    try {
+      if (Platform.OS !== "web") {
+        await Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+      }
+
+      const complaint = await addComplaint({
         title: title.trim(),
         description: description.trim(),
         category: selectedCategory,
         photoUri,
-        location,
-        ward: user?.ward || "Ward 1 — Shivaji Chowk",
+        location: location.trim(),
+
+        // Real ward_code / officer assignment will be fixed in the next backend-routing step.
+        ward: user?.ward?.trim() || "Ward Pending",
+
         userId: user?.id,
         userName: user?.name,
-        userMobile: user?.mobile,
+        userMobile: cleanContact,
         userAddress: user?.address,
         userAge: user?.age,
         userEmail: user?.email,
       });
 
+      router.replace({
+        pathname: "/complaint/[id]",
+        params: {
+          id: complaint.id,
+          fresh: "1",
+        },
+      });
+    } catch (error) {
+      console.error("Complaint submit failed", error);
+
+      Alert.alert(
+        "Submission Failed",
+        error instanceof Error
+          ? error.message
+          : "Could not submit complaint. Please try again.",
+      );
+    } finally {
       setSubmitting(false);
-      router.replace({ pathname: "/complaint/[id]", params: { id: complaint.id, fresh: "1" } });
-    }, 800);
+    }
   };
 
   return (
@@ -195,7 +274,11 @@ export default function NewComplaintScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.8}
+        >
           <Feather name="chevron-left" size={20} color="white" />
           <Text style={styles.backBtnText}>Back</Text>
         </TouchableOpacity>
@@ -209,7 +292,10 @@ export default function NewComplaintScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 100 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom, 8) + 100 },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -219,23 +305,42 @@ export default function NewComplaintScreen() {
           {photoUri ? (
             <View style={styles.photoContainer}>
               <Image source={{ uri: photoUri }} style={styles.photo} />
-              <TouchableOpacity style={styles.retakeBtn} onPress={handleCamera} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.retakeBtn}
+                onPress={handleCamera}
+                activeOpacity={0.8}
+              >
                 <Feather name="refresh-cw" size={14} color="white" />
                 <Text style={styles.retakeBtnText}>{t("retake")}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.photoButtons}>
-              <TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}>
-                <LinearGradient colors={["#EA580C", "#FB923C"]} style={styles.cameraBtnGrad}>
+              <TouchableOpacity
+                style={styles.cameraBtn}
+                onPress={handleCamera}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={["#EA580C", "#FB923C"]}
+                  style={styles.cameraBtnGrad}
+                >
                   <Feather name="camera" size={24} color="white" />
                   <Text style={styles.cameraBtnText}>{t("takePhoto")}</Text>
-                  <Text style={styles.cameraBtnSub}>{t("clickPhotoOfProblem")}</Text>
+                  <Text style={styles.cameraBtnSub}>
+                    {t("clickPhotoOfProblem")}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.galleryBtn} onPress={handleGallery} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={styles.galleryBtn}
+                onPress={handleGallery}
+                activeOpacity={0.85}
+              >
                 <Feather name="image" size={18} color="#EA580C" />
-                <Text style={styles.galleryBtnText}>{t("chooseFromGallery")}</Text>
+                <Text style={styles.galleryBtnText}>
+                  {t("chooseFromGallery")}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -255,24 +360,33 @@ export default function NewComplaintScreen() {
                 onPress={() => setSelectedCategory(cat.id)}
                 activeOpacity={0.8}
               >
-                <View style={[
-                  styles.catIconWrap,
-                  { backgroundColor: selectedCategory === cat.id ? cat.color : cat.bg },
-                ]}>
+                <View
+                  style={[
+                    styles.catIconWrap,
+                    {
+                      backgroundColor:
+                        selectedCategory === cat.id ? cat.color : cat.bg,
+                    },
+                  ]}
+                >
                   <Feather
                     name={cat.icon as any}
                     size={18}
                     color={selectedCategory === cat.id ? "white" : cat.color}
                   />
                 </View>
-                <Text style={[
-                  styles.catLabel,
-                  selectedCategory === cat.id && { color: cat.color },
-                ]}>
+                <Text
+                  style={[
+                    styles.catLabel,
+                    selectedCategory === cat.id && { color: cat.color },
+                  ]}
+                >
                   {t(categoryLabelKeys[cat.id])}
                 </Text>
                 {selectedCategory === cat.id && (
-                  <View style={[styles.catCheck, { backgroundColor: cat.color }]}>
+                  <View
+                    style={[styles.catCheck, { backgroundColor: cat.color }]}
+                  >
                     <Feather name="check" size={8} color="white" />
                   </View>
                 )}
@@ -333,19 +447,26 @@ export default function NewComplaintScreen() {
           {locStatus === "outside" && (
             <View style={styles.locWarning}>
               <Feather name="alert-circle" size={13} color="#DC2626" />
-              <Text style={styles.locWarningText}>Your location is outside Ambernath. Only complaints within Ambernath are accepted.</Text>
+              <Text style={styles.locWarningText}>
+                Your location is outside Ambernath. Only complaints within
+                Ambernath are accepted.
+              </Text>
             </View>
           )}
           {locStatus === "denied" && (
             <View style={styles.locWarning}>
               <Feather name="alert-circle" size={13} color="#D97706" />
-              <Text style={styles.locWarningText}>Location permission denied. Enter manually below.</Text>
+              <Text style={styles.locWarningText}>
+                Location permission denied. Enter manually below.
+              </Text>
             </View>
           )}
           {locStatus === "ok" && (
             <View style={styles.locSuccess}>
               <Feather name="check-circle" size={13} color="#059669" />
-              <Text style={styles.locSuccessText}>Location detected within Ambernath</Text>
+              <Text style={styles.locSuccessText}>
+                Location detected within Ambernath
+              </Text>
             </View>
           )}
 
@@ -356,12 +477,17 @@ export default function NewComplaintScreen() {
             <TextInput
               style={[styles.input, styles.locationInput]}
               value={location}
-              onChangeText={v => { setLocation(v); if (locStatus === "ok") setLocStatus("idle"); }}
+              onChangeText={(v) => {
+                setLocation(v);
+                if (locStatus === "ok") setLocStatus("idle");
+              }}
               placeholder="Enter exact location / landmark"
               placeholderTextColor="#CBD5E1"
             />
           </View>
-          <Text style={styles.wardText}>Ward: {user?.ward || "Auto-detected based on location"}</Text>
+          <Text style={styles.wardText}>
+            Ward: {user?.ward || "Auto-detected based on location"}
+          </Text>
         </View>
 
         {/* CONTACT */}
@@ -381,20 +507,25 @@ export default function NewComplaintScreen() {
               maxLength={10}
             />
           </View>
-          <Text style={[styles.wardText, { marginTop: 6 }]}>Nagarsevak may contact you for resolution updates</Text>
+          <Text style={[styles.wardText, { marginTop: 6 }]}>
+            Nagarsevak may contact you for resolution updates
+          </Text>
         </View>
 
         {/* NOTICE */}
         <View style={styles.noticeCard}>
           <Feather name="info" size={14} color="#EA580C" />
-          <Text style={styles.noticeText}>
-            {t("complaintNotice")}
-          </Text>
+          <Text style={styles.noticeText}>{t("complaintNotice")}</Text>
         </View>
       </ScrollView>
 
       {/* SUBMIT */}
-      <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}>
+      <View
+        style={[
+          styles.submitBar,
+          { paddingBottom: Math.max(insets.bottom, 8) + 16 },
+        ]}
+      >
         <TouchableOpacity
           style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
           onPress={handleSubmit}
@@ -440,11 +571,26 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   root: { flex: 1, backgroundColor: "#ebeffc" },
-  header: { paddingHorizontal: 20, paddingBottom: 18, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 20, fontWeight: "800", color: "white", fontFamily: "Inter_700Bold" },
-  headerSub: { fontSize: 11, color: "rgba(255,255,255,0.65)", fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "white",
+    fontFamily: "Inter_700Bold",
+  },
+  headerSub: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.65)",
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
   scroll: { flex: 1 },
   content: { padding: 16 },
   section: { marginBottom: 20 },
@@ -471,8 +617,17 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     gap: 8,
   },
-  cameraBtnText: { fontSize: 16, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" },
-  cameraBtnSub: { fontSize: 12, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular" },
+  cameraBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "white",
+    fontFamily: "Inter_700Bold",
+  },
+  cameraBtnSub: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Inter_400Regular",
+  },
   galleryBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -484,8 +639,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FFEDD5",
   },
-  galleryBtnText: { fontSize: 13, fontWeight: "700", color: "#EA580C", fontFamily: "Inter_600SemiBold" },
-  photoContainer: { borderRadius: 16, overflow: "hidden", position: "relative" },
+  galleryBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#EA580C",
+    fontFamily: "Inter_600SemiBold",
+  },
+  photoContainer: {
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
+  },
   photo: { width: "100%", height: 200, borderRadius: 16 },
   retakeBtn: {
     position: "absolute",
@@ -499,7 +663,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  retakeBtnText: { fontSize: 12, color: "white", fontWeight: "700", fontFamily: "Inter_600SemiBold" },
+  retakeBtnText: {
+    fontSize: 12,
+    color: "white",
+    fontWeight: "700",
+    fontFamily: "Inter_600SemiBold",
+  },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   categoryItem: {
     width: "22%",
@@ -557,7 +726,13 @@ const styles = StyleSheet.create({
     height: 110,
     paddingTop: 13,
   },
-  charCount: { fontSize: 10, color: "#CBD5E1", textAlign: "right", marginTop: 4, fontFamily: "Inter_400Regular" },
+  charCount: {
+    fontSize: 10,
+    color: "#CBD5E1",
+    textAlign: "right",
+    marginTop: 4,
+    fontFamily: "Inter_400Regular",
+  },
   locationRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   locationIcon: {
     width: 44,
@@ -576,17 +751,57 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingLeft: 52,
   },
-  wardText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 8 },
-  detectBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FFEDD5",
-    borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14,
+  wardText: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontFamily: "Inter_400Regular",
+    marginTop: 8,
   },
-  detectBtnText: { fontSize: 14, color: "#EA580C", fontFamily: "Inter_600SemiBold" },
-  locWarning: { flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: "#FEE2E2", padding: 10, borderRadius: 10, marginTop: 8 },
-  locWarningText: { flex: 1, fontSize: 11, color: "#991B1B", fontFamily: "Inter_400Regular" },
-  locSuccess: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#D1FAE5", padding: 8, borderRadius: 10, marginTop: 8 },
-  locSuccessText: { fontSize: 11, color: "#065F46", fontFamily: "Inter_400Regular" },
+  detectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FFEDD5",
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  detectBtnText: {
+    fontSize: 14,
+    color: "#EA580C",
+    fontFamily: "Inter_600SemiBold",
+  },
+  locWarning: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    backgroundColor: "#FEE2E2",
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  locWarningText: {
+    flex: 1,
+    fontSize: 11,
+    color: "#991B1B",
+    fontFamily: "Inter_400Regular",
+  },
+  locSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#D1FAE5",
+    padding: 8,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  locSuccessText: {
+    fontSize: 11,
+    color: "#065F46",
+    fontFamily: "Inter_400Regular",
+  },
   noticeCard: {
     flexDirection: "row",
     gap: 10,
@@ -597,7 +812,13 @@ const styles = StyleSheet.create({
     borderColor: "#FFEDD5",
     alignItems: "flex-start",
   },
-  noticeText: { flex: 1, fontSize: 12, color: "#EA580C", fontFamily: "Inter_400Regular", lineHeight: 18 },
+  noticeText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#EA580C",
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
   submitBar: {
     position: "absolute",
     bottom: 0,
@@ -625,5 +846,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  submitBtnText: { fontSize: 16, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" },
+  submitBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "white",
+    fontFamily: "Inter_700Bold",
+  },
 });

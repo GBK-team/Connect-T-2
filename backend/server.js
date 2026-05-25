@@ -23,22 +23,87 @@ const db = mysql.createPool({
 const createId = (prefix) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-function getOfficerIdByWardCode(wardCode) {
-  if (!wardCode) return null;
+const WARD_OFFICER_MAP = {
+  "1A": "NS002",
+  "1B": "NS003",
+  "2A": "NS004",
+  "2B": "NS005",
+  "3A": "NS006",
+  "3B": "NS007",
+  "4A": "NS008",
+  "4B": "NS009",
+  "4C": "NS010",
+  "5A": "NS011",
+  "5B": "NS012",
+  "6A": "NS013",
+  "6B": "NS014",
+  "7A": "NS015",
+  "7B": "NS016",
+  "8A": "NS017",
+  "8B": "NS018",
+  "9A": "NS019",
+  "9B": "NS020",
+  "10A": "NS021",
+  "10B": "NS022",
+  "11A": "NS023",
+  "11B": "NS024",
+  "12A": "NS025",
+  "12B": "NS026",
+  "13A": "NS027",
+  "13B": "NS028",
+  "14A": "NS029",
+  "14B": "NS030",
+  "15A": "NS031",
+  "15B": "NS032",
+  "16A": "NS033",
+  "16B": "NS034",
+  "17A": "NS035",
+  "17B": "NS036",
+  "18A": "NS037",
+  "18B": "NS038",
+  "19A": "NS039",
+  "19B": "NS040",
+  "20A": "NS041",
+  "20B": "NS042",
+  "21A": "NS043",
+  "21B": "NS044",
+  "22A": "NS045",
+  "22B": "NS046",
+  "23A": "NS047",
+  "23B": "NS048",
+  "24A": "NS049",
+  "24B": "NS050",
+  "25A": "NS051",
+  "25B": "NS052",
+  "26A": "NS053",
+  "26B": "NS054",
+  "27A": "NS055",
+  "27B": "NS056",
+  "28A": "NS057",
+  "28B": "NS058",
+  "29A": "NS059",
+  "29B": "NS060",
+};
 
-  const match = String(wardCode)
+function normalizeWardCode(value) {
+  if (!value) return null;
+
+  const match = String(value)
     .trim()
-    .match(/^(\d+)(A|B)$/i);
+    .toUpperCase()
+    .match(/(\d{1,2})\s*([ABC])/);
+
   if (!match) return null;
 
-  const wardNo = Number(match[1]);
-  const side = match[2].toUpperCase();
+  return `${Number(match[1])}${match[2]}`;
+}
 
-  if (wardNo < 1 || wardNo > 29) return null;
+function getOfficerIdByWardCode(wardCode) {
+  const normalizedWardCode = normalizeWardCode(wardCode);
 
-  const officerNumber = 1 + (wardNo - 1) * 2 + (side === "A" ? 1 : 2);
+  if (!normalizedWardCode) return null;
 
-  return `NS${String(officerNumber).padStart(3, "0")}`;
+  return WARD_OFFICER_MAP[normalizedWardCode] || null;
 }
 
 app.get("/", (req, res) => {
@@ -266,8 +331,11 @@ app.post("/api/complaints", async (req, res) => {
       });
     }
 
+    const finalWardCode =
+      normalizeWardCode(ward_code) || normalizeWardCode(ward);
+
     const finalAssignedOfficerId =
-      assigned_officer_id || getOfficerIdByWardCode(ward_code);
+      assigned_officer_id || getOfficerIdByWardCode(finalWardCode);
 
     await db.query(
       `INSERT INTO complaints
@@ -302,7 +370,7 @@ app.post("/api/complaints", async (req, res) => {
     res.status(201).json({
       success: true,
       complaintId: id,
-      ward_code: ward_code || null,
+      ward_code: finalWardCode || null,
       assigned_officer_id: finalAssignedOfficerId || null,
     });
   } catch (err) {
