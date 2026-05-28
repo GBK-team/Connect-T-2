@@ -12,13 +12,19 @@ workflows:
     scripts:
       - name: Show exact source commit
         script: |
+          echo "CM_BUILD_DIR=$CM_BUILD_DIR"
+          cd "$CM_BUILD_DIR"
           pwd
           git branch --show-current || true
           git rev-parse HEAD
           git log --oneline -8
+          ls -la
+          ls -la mobile
+          ls -la mobile/android
 
       - name: Verify latest UI source is present
         script: |
+          cd "$CM_BUILD_DIR"
           grep -R "Hiring Overview" -n "mobile/app/jobs/(tabs)/index.tsx"
           grep -R "Find trusted local work" -n "mobile/app/jobs/(tabs)/index.tsx"
           grep -R "Connect T Control Center" -n mobile/app/super-admin-login.tsx
@@ -26,6 +32,7 @@ workflows:
 
       - name: Clean old build outputs
         script: |
+          cd "$CM_BUILD_DIR"
           rm -rf mobile/node_modules
           rm -rf mobile/android/app/build
           rm -rf mobile/android/build
@@ -34,7 +41,7 @@ workflows:
 
       - name: Install Node dependencies
         script: |
-          cd mobile
+          cd "$CM_BUILD_DIR/mobile"
           npm ci || npm install
 
       - name: Install Android SDK packages
@@ -54,12 +61,14 @@ workflows:
 
       - name: Create local.properties
         script: |
-          cd mobile/android
+          cd "$CM_BUILD_DIR/mobile/android"
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           cat local.properties
+          ls -la
 
       - name: Verify Gradle ABI split config
         script: |
+          cd "$CM_BUILD_DIR"
           grep -n "splits\|abi\|universalApk\|abiFilters" mobile/android/app/build.gradle || true
           grep -q "universalApk false" mobile/android/app/build.gradle
           grep -q 'include "arm64-v8a"' mobile/android/app/build.gradle
@@ -70,18 +79,20 @@ workflows:
 
       - name: TypeScript check
         script: |
-          cd mobile
+          cd "$CM_BUILD_DIR/mobile"
           npx tsc --noEmit -p tsconfig.json
 
       - name: Build release APK
         script: |
-          cd mobile/android
+          cd "$CM_BUILD_DIR/mobile/android"
+          pwd
+          ls -la
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --max-workers=2 --stacktrace
 
       - name: Inspect APK ABI and size
         script: |
-          cd mobile
+          cd "$CM_BUILD_DIR/mobile"
           python3 - <<'PY'
           from pathlib import Path
           import zipfile
@@ -108,11 +119,12 @@ workflows:
 
       - name: Build release AAB
         script: |
-          cd mobile/android
+          cd "$CM_BUILD_DIR/mobile/android"
           ./gradlew :app:bundleRelease --no-daemon --max-workers=2 --stacktrace
 
       - name: List final outputs
         script: |
+          cd "$CM_BUILD_DIR"
           echo "=== APK ==="
           find mobile/android/app/build/outputs/apk -type f -name "*.apk" -printf "%s %p\n" | sort -nr || true
           echo "=== AAB ==="
