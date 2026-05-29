@@ -51,6 +51,14 @@ jobs:
         run: |
           npm ci || npm install
 
+
+      - name: Force Hermes compiler path
+        working-directory: mobile
+        run: |
+          node scripts/ensure-hermesc.js
+          ls -lh node_modules/react-native/sdks/hermesc/linux64-bin/hermesc
+          node_modules/react-native/sdks/hermesc/linux64-bin/hermesc -version || true
+
       - name: Verify latest UI source
         run: |
           grep -R "Hiring Overview" -n "mobile/app/jobs/(tabs)/index.tsx"
