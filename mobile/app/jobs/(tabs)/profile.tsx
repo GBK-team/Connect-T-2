@@ -136,7 +136,7 @@ export default function JobsProfileScreen() {
   // Seeker fields
   const [eName, setEName] = useState(jobsUser?.name || "");
   const [eEmail, setEEmail] = useState(jobsUser?.email || "");
-  const [eAge, setEAge] = useState(jobsUser?.age || "");
+  const [eDob, setEDob] = useState(jobsUser?.dob || jobsUser?.age || "");
   const [eQual, setEQual] = useState(jobsUser?.qualification || "");
   const [eSkills, setESkills] = useState(jobsUser?.skills || "");
   const [eAbout, setEAbout] = useState(jobsUser?.about || "");
@@ -189,7 +189,7 @@ export default function JobsProfileScreen() {
   const handleSave = async () => {
     if (!eName.trim()) { Alert.alert("Name is required"); return; }
     await updateJobsUser({
-      name: eName.trim(), email: eEmail.trim(), age: eAge.trim(),
+      name: eName.trim(), email: eEmail.trim(), dob: eDob.trim(),
       qualification: eQual.trim(), skills: eSkills.trim(), about: eAbout.trim(),
       currentStatus: eStatus as CurrentStatus || undefined,
       currentCompany: eStatus === "employed" ? eCurrentCompany.trim() : "",
@@ -212,7 +212,7 @@ export default function JobsProfileScreen() {
   };
 
   const openEdit = () => {
-    setEName(jobsUser.name || ""); setEEmail(jobsUser.email || ""); setEAge(jobsUser.age || "");
+    setEName(jobsUser.name || ""); setEEmail(jobsUser.email || ""); setEDob(jobsUser.dob || jobsUser.age || "");
     setEQual(jobsUser.qualification || ""); setESkills(jobsUser.skills || ""); setEAbout(jobsUser.about || "");
     setEStatus(jobsUser.currentStatus || ""); setECurrentCompany(jobsUser.currentCompany || "");
     setECurrentRole(jobsUser.currentRole || ""); setEExperience(jobsUser.experience || "");
@@ -516,7 +516,7 @@ export default function JobsProfileScreen() {
           <>
             <SectionCard title="Personal Information" icon="user">
               <InfoRow icon="user" label="Full Name" value={jobsUser.name} />
-              <InfoRow icon="calendar" label="Age" value={jobsUser.age ? `${jobsUser.age} years` : undefined} />
+              <InfoRow icon="calendar" label="Date of Birth" value={jobsUser.dob || jobsUser.age || undefined} />
               <InfoRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} />
               <InfoRow icon="mail" label="Email" value={jobsUser.email} />
               <InfoRow icon="map-pin" label="Location" value={jobsUser.location} />
@@ -657,7 +657,7 @@ export default function JobsProfileScreen() {
                 <EditField label="Full Name *" value={eName} onChange={setEName} placeholder="Your full name" />
                 <EditField label="Email Address" value={eEmail} onChange={setEEmail} placeholder="you@email.com" keyboardType="email-address" />
                 <Text style={cs.editSection}>Profile Details</Text>
-                <EditField label="Age" value={eAge} onChange={setEAge} placeholder="Age" keyboardType="number-pad" />
+                <EditField label="Date of Birth" value={eDob} onChange={setEDob} placeholder="DD/MM/YYYY" keyboardType="default" />
                 <EditField label="Qualification" value={eQual} onChange={setEQual} placeholder="Highest qualification" />
                 <EditField label="Skills" value={eSkills} onChange={setESkills} placeholder="Comma separated skills" />
                 <EditField label="About / Objective" value={eAbout} onChange={setEAbout} placeholder="Write a short intro" multiline />

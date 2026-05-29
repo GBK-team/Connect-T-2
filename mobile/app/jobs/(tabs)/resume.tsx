@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { useJobsAuth, calcProfileCompletion } from "@/context/JobsAuthContext";
 
 const SECTIONS = [
-  { key: "personal", label: "Personal Info", icon: "user" as const, fields: ["name", "email", "age", "location", "languages"] },
+  { key: "personal", label: "Personal Info", icon: "user" as const, fields: ["name", "email", "dob", "location", "languages"] },
   { key: "status",   label: "Work Status",   icon: "briefcase" as const, fields: ["currentStatus", "currentCompany", "currentRole", "experience"] },
   { key: "education",label: "Education",      icon: "book-open" as const, fields: ["qualification", "collegeName", "fieldOfStudy"] },
   { key: "skills",   label: "Skills",         icon: "zap" as const, fields: ["skills"] },

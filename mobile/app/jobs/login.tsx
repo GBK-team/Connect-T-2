@@ -283,7 +283,7 @@ export default function JobsLoginScreen() {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
 
-  const [age, setAge] = useState("");
+  const [dob, setDob] = useState("");
   const [qualification, setQualification] = useState("");
   const [skills, setSkills] = useState("");
 
@@ -334,7 +334,7 @@ export default function JobsLoginScreen() {
 
   const validateSeeker = () => {
     if (!name.trim()) return "Full name is required.";
-    if (!age) return "Please select your age.";
+    if (!dob.trim()) return "Please enter your date of birth.";
     if (phone.length !== 10) return "Enter a valid 10-digit mobile number.";
     if (!qualification) return "Please select your qualification.";
     return null;
@@ -424,7 +424,7 @@ export default function JobsLoginScreen() {
           name: name.trim(),
           phone,
           role,
-          age: age || undefined,
+          dob: dob.trim() || undefined,
           qualification: qualification || undefined,
           skills: skills.trim() || undefined,
           company: company.trim() || undefined,
@@ -623,11 +623,11 @@ export default function JobsLoginScreen() {
       </View>
 
       <DropdownPicker
-        label="Age"
-        value={age}
+        label="Date of Birth"
+        value={dob}
         options={AGE_OPTIONS}
-        placeholder="Select your age"
-        onSelect={setAge}
+        placeholder="DD/MM/YYYY"
+        onSelect={setDob}
         required
       />
 
@@ -801,7 +801,7 @@ export default function JobsLoginScreen() {
             style={[styles.otpBox, digit && styles.otpBoxFilled]}
             value={digit}
             onChangeText={(value) => setOtpDigit(index, value)}
-            keyboardType="number-pad"
+            keyboardType="default"
             maxLength={1}
             textAlign="center"
           />

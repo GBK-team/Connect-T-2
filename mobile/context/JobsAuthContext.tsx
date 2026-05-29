@@ -12,7 +12,8 @@ export interface JobsUser {
   avatarColor: string;
   createdAt: string;
   // Seeker profile
-  age?: string;
+  dob?: string;
+  age?: string; // legacy only
   qualification?: string;
   skills?: string;
   email?: string;
@@ -71,7 +72,7 @@ export interface ProfileField {
 
 export const SEEKER_PROFILE_FIELDS: ProfileField[] = [
   { key: "name",           label: "Full Name",            weight: 1 },
-  { key: "age",            label: "Age",                  weight: 1 },
+  { key: "dob",            label: "Date of Birth",        weight: 1 },
   { key: "phone",          label: "Mobile Number",        weight: 1 },
   { key: "qualification",  label: "Qualification",        weight: 1 },
   { key: "email",          label: "Email Address",        weight: 1 },
