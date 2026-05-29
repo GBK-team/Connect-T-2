@@ -21,71 +21,116 @@ import { useJobsAuth } from "@/context/JobsAuthContext";
 
 function timeLabel(value?: string) {
   if (!value) return "";
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function cleanPhone(value?: string) {
+  return String(value || "").replace(/\D/g, "").slice(-10);
 }
 
 export default function JobChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ employerId?: string }>();
+  const params = useLocalSearchParams<{
+    employerId?: string;
+    jobId?: string;
+    peerName?: string;
+  }>();
   const { jobs, addJobMessage } = useJobs() as any;
   const { jobsUser } = useJobsAuth();
   const [text, setText] = useState("");
 
-  const employerJobs = useMemo(
-    () => jobs.filter((job: any) => job.employerId === params.employerId),
-    [jobs, params.employerId],
-  );
+  const peerId = String(params.employerId || "");
+  const currentUserId = jobsUser?.id || "visitor";
 
-  const job = employerJobs[0];
-  const messages = job?.messages ?? [];
-  const employerContact = job?.employerWhatsApp || job?.employerPhone || "";
+  const job = useMemo(() => {
+    if (params.jobId) {
+      const byId = jobs.find((item: any) => item.id === params.jobId);
+      if (byId) return byId;
+    }
+
+    if (!jobsUser) {
+      return jobs.find((item: any) => item.employerId === peerId) || null;
+    }
+
+    if (jobsUser.role === "employer") {
+      return (
+        jobs.find(
+          (item: any) =>
+            item.employerId === jobsUser.id &&
+            item.applicants?.includes(peerId),
+        ) || null
+      );
+    }
+
+    return jobs.find((item: any) => item.employerId === peerId) || null;
+  }, [jobs, jobsUser, params.jobId, peerId]);
+
+  const visibleMessages = useMemo(() => {
+    const all = job?.messages || [];
+
+    if (!peerId) return all;
+
+    return all.filter((message: any) => {
+      const from = String(message.from || "");
+      const to = String(message.to || "");
+
+      if (!to) return from === currentUserId || from === peerId;
+      return (
+        (from === currentUserId && to === peerId) ||
+        (from === peerId && to === currentUserId)
+      );
+    });
+  }, [job?.messages, peerId, currentUserId]);
+
+  const peerName =
+    String(params.peerName || "").trim() ||
+    (jobsUser?.role === "employer"
+      ? `Applicant ${peerId.slice(-4)}`
+      : job?.employerName || "Employer");
+
+  const peerContact =
+    jobsUser?.role === "employer"
+      ? job?.applications?.find((app: any) => app.seekerId === peerId)?.seekerPhone
+      : job?.employerWhatsApp || job?.employerPhone;
+
   const topPad = (Platform.OS === "web" ? 54 : insets.top) + 14;
 
   const sendMessage = async () => {
     const message = text.trim();
-
     if (!message) return;
 
-    if (!job) {
-      Alert.alert("No chat found");
+    if (!job || !peerId) {
+      Alert.alert("No chat found", "Open this chat again from the job or applicant screen.");
       return;
     }
 
-    addJobMessage(job.id, {
-      from: jobsUser?.id || "visitor",
-      text: message,
-      createdAt: new Date().toISOString(),
-    });
-
-    setText("");
+    try {
+      await addJobMessage(job.id, {
+        from: currentUserId,
+        to: peerId,
+        text: message,
+        createdAt: new Date().toISOString(),
+      });
+      setText("");
+    } catch (err: any) {
+      Alert.alert("Message failed", err?.message || "Please try again.");
+    }
   };
 
   const openWhatsApp = async () => {
-    const phone = String(employerContact).replace(/[^\d+]/g, "");
+    const phone = cleanPhone(peerContact);
 
     if (!phone) {
-      Alert.alert("Contact unavailable", "Employer WhatsApp number is not available.");
+      Alert.alert("Contact unavailable", "WhatsApp number is not available for this chat.");
       return;
     }
 
-    const url = `https://wa.me/${phone.replace("+", "")}?text=${encodeURIComponent(
-      `Hi, I’m interested in ${job?.title ?? "your job post"}.`,
+    const url = `https://wa.me/91${phone}?text=${encodeURIComponent(
+      `Hi, this is regarding ${job?.title ?? "your Connect T job application"}.`,
     )}`;
-
-    const can = await Linking.canOpenURL(url);
-
-    if (!can) {
-      Alert.alert("WhatsApp not available");
-      return;
-    }
 
     await Linking.openURL(url);
   };
@@ -96,17 +141,13 @@ export default function JobChatScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <LinearGradient
-        colors={["#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C"]}
+        colors={["#064E3B", "#047857", "#059669", "#10B981"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[s.header, { paddingTop: topPad }]}
       >
         <View style={s.headerTop}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={s.backBtn}
-            activeOpacity={0.84}
-          >
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.84}>
             <Feather name="chevron-left" size={22} color="white" />
           </TouchableOpacity>
 
@@ -118,15 +159,13 @@ export default function JobChatScreen() {
 
         <View style={s.heroRow}>
           <View style={s.heroIcon}>
-            <Feather name="message-circle" size={27} color="#EA580C" />
+            <Feather name="message-circle" size={27} color="#047857" />
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={s.headerTitle} numberOfLines={1}>
-              Chat Employer
-            </Text>
+            <Text style={s.headerTitle} numberOfLines={1}>{peerName}</Text>
             <Text style={s.headerSub} numberOfLines={2}>
-              {job ? `${job.company} · ${job.title}` : `Employer ID: ${params.employerId || "—"}`}
+              {job ? `${job.company} · ${job.title}` : "Connect T Job Portal conversation"}
             </Text>
           </View>
         </View>
@@ -134,28 +173,23 @@ export default function JobChatScreen() {
 
       <ScrollView
         style={s.messagesScroll}
-        contentContainerStyle={[
-          s.messagesContent,
-          {
-            paddingBottom: 18,
-          },
-        ]}
+        contentContainerStyle={s.messagesContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <View style={s.emptyCard}>
             <View style={s.emptyIcon}>
-              <Feather name="message-circle" size={34} color="#EA580C" />
+              <Feather name="message-circle" size={34} color="#047857" />
             </View>
             <Text style={s.emptyTitle}>Start the conversation</Text>
             <Text style={s.emptyText}>
-              Send a message to the employer or open WhatsApp for direct contact.
+              Send a message in Connect T or use WhatsApp for direct contact.
             </Text>
           </View>
         ) : (
-          messages.map((message: any, index: number) => {
-            const mine = message.from === jobsUser?.id;
+          visibleMessages.map((message: any, index: number) => {
+            const mine = message.from === currentUserId;
 
             return (
               <View
@@ -179,14 +213,7 @@ export default function JobChatScreen() {
         )}
       </ScrollView>
 
-      <View
-        style={[
-          s.footer,
-          {
-            paddingBottom: Math.max(insets.bottom, 8) + 8,
-          },
-        ]}
-      >
+      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}>
         <View style={s.inputRow}>
           <TextInput
             style={s.input}
@@ -209,14 +236,14 @@ export default function JobChatScreen() {
         </View>
 
         <TouchableOpacity
-          style={[s.whatsappBtn, !employerContact && s.whatsappBtnDisabled]}
+          style={[s.whatsappBtn, !cleanPhone(peerContact) && s.whatsappBtnDisabled]}
           activeOpacity={0.85}
           onPress={openWhatsApp}
-          disabled={!employerContact}
+          disabled={!cleanPhone(peerContact)}
         >
           <Feather name="message-circle" size={16} color="white" />
           <Text style={s.whatsappText}>
-            {employerContact ? "Open WhatsApp" : "WhatsApp unavailable"}
+            {cleanPhone(peerContact) ? "Open WhatsApp" : "WhatsApp unavailable"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -225,17 +252,14 @@ export default function JobChatScreen() {
 }
 
 const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#FFF7ED",
-  },
+  root: { flex: 1, backgroundColor: "#F6FAF8" },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 24,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     overflow: "hidden",
-    shadowColor: "#9A3412",
+    shadowColor: "#064E3B",
     shadowOpacity: 0.18,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
@@ -264,17 +288,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  headerBadgeText: {
-    fontSize: 11,
-    color: "white",
-    fontFamily: "Inter_700Bold",
-  },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginTop: 22,
-  },
+  headerBadgeText: { fontSize: 11, color: "white", fontFamily: "Inter_700Bold" },
+  heroRow: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 22 },
   heroIcon: {
     width: 72,
     height: 72,
@@ -302,14 +317,8 @@ const s = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     lineHeight: 18,
   },
-
-  messagesScroll: {
-    flex: 1,
-  },
-  messagesContent: {
-    flexGrow: 1,
-    padding: 16,
-  },
+  messagesScroll: { flex: 1 },
+  messagesContent: { flexGrow: 1, padding: 16, paddingBottom: 18 },
   emptyCard: {
     marginTop: 28,
     backgroundColor: "white",
@@ -318,23 +327,23 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: "center",
     gap: 11,
-    shadowColor: "#9A3412",
+    shadowColor: "#064E3B",
     shadowOpacity: 0.07,
     shadowRadius: 13,
     shadowOffset: { width: 0, height: 5 },
     elevation: 4,
     borderWidth: 1,
-    borderColor: "rgba(254,215,170,0.5)",
+    borderColor: "rgba(167,243,208,0.6)",
   },
   emptyIcon: {
     width: 76,
     height: 76,
     borderRadius: 25,
-    backgroundColor: "#FFF7ED",
+    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: "#FED7AA",
+    borderColor: "#A7F3D0",
   },
   emptyTitle: {
     fontSize: 18,
@@ -350,59 +359,32 @@ const s = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  messageWrap: {
-    marginBottom: 10,
-  },
-  myWrap: {
-    alignItems: "flex-end",
-  },
-  otherWrap: {
-    alignItems: "flex-start",
-  },
-  messageBubble: {
-    maxWidth: "82%",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-  },
-  myBubble: {
-    backgroundColor: "#EA580C",
-    borderTopRightRadius: 6,
-  },
+  messageWrap: { marginBottom: 10 },
+  myWrap: { alignItems: "flex-end" },
+  otherWrap: { alignItems: "flex-start" },
+  messageBubble: { maxWidth: "82%", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  myBubble: { backgroundColor: "#047857", borderTopRightRadius: 6 },
   otherBubble: {
     backgroundColor: "white",
     borderTopLeftRadius: 6,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  messageText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 19,
-  },
-  myMessageText: {
-    color: "white",
-  },
-  otherMessageText: {
-    color: "#0F172A",
-  },
+  messageText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
+  myMessageText: { color: "white" },
+  otherMessageText: { color: "#0F172A" },
   messageTime: {
     fontSize: 9,
     fontFamily: "Inter_400Regular",
     marginTop: 5,
     alignSelf: "flex-end",
   },
-  myTime: {
-    color: "rgba(255,255,255,0.7)",
-  },
-  otherTime: {
-    color: "#94A3B8",
-  },
-
+  myTime: { color: "rgba(255,255,255,0.7)" },
+  otherTime: { color: "#94A3B8" },
   footer: {
     backgroundColor: "white",
     borderTopWidth: 1,
-    borderTopColor: "#FED7AA",
+    borderTopColor: "#D1FAE5",
     paddingTop: 12,
     paddingHorizontal: 16,
     shadowColor: "#0F172A",
@@ -411,11 +393,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     elevation: 10,
   },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-  },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   input: {
     flex: 1,
     maxHeight: 106,
@@ -436,11 +414,9 @@ const s = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EA580C",
+    backgroundColor: "#047857",
   },
-  sendBtnDisabled: {
-    opacity: 0.45,
-  },
+  sendBtnDisabled: { opacity: 0.45 },
   whatsappBtn: {
     marginTop: 10,
     borderRadius: 18,
@@ -451,9 +427,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  whatsappBtnDisabled: {
-    opacity: 0.45,
-  },
+  whatsappBtnDisabled: { opacity: 0.45 },
   whatsappText: {
     color: "white",
     fontSize: 13,
