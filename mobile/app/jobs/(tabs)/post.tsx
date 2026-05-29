@@ -1,863 +1,695 @@
 import React, { useMemo, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Platform, Alert, ActivityIndicator, Modal,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJobs, categoryConfig, typeConfig, JobCategory, JobType } from "@/context/JobsContext";
-import { useJobsAuth } from "@/context/JobsAuthContext";
 import { useRouter } from "expo-router";
 
-const categories = Object.entries(categoryConfig).map(([id, cfg]) => ({ id: id as JobCategory, ...cfg }));
-const types = Object.entries(typeConfig).map(([id, cfg]) => ({ id: id as JobType, ...cfg }));
+import { useJobs, categoryConfig, typeConfig, JobCategory, JobType } from "@/context/JobsContext";
+import { useJobsAuth } from "@/context/JobsAuthContext";
 
-// ─── Category Dropdown ────────────────────────────────────────────────────────
-function CategoryDropdown({
-  value, customLabel, onSelect, onCustomChange,
-}: {
-  value: JobCategory;
-  customLabel: string;
-  onSelect: (id: JobCategory) => void;
-  onCustomChange: (text: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = categories.find((c) => c.id === value);
-  const displayLabel = value === "other" && customLabel.trim() ? customLabel : selected?.label ?? "Select Category";
+const categories = Object.entries(categoryConfig).map(([id, cfg]) => ({
+  id: id as JobCategory,
+  ...cfg,
+}));
 
-  return (
-    <View>
-      {/* Trigger button */}
-      <TouchableOpacity
-        style={styles.dropdownBtn}
-        activeOpacity={0.85}
-        onPress={() => setOpen(true)}
-      >
-        {selected && value !== "other" && (
-          <View style={[styles.dropdownIcon, { backgroundColor: selected.bg }]}>
-            <Feather name={selected.icon as any} size={14} color={selected.color} />
-          </View>
-        )}
-        {value === "other" && (
-          <View style={[styles.dropdownIcon, { backgroundColor: "#F1F5F9" }]}>
-            <Feather name="edit-3" size={14} color="#64748B" />
-          </View>
-        )}
-        <Text style={styles.dropdownBtnText} numberOfLines={1}>{displayLabel}</Text>
-        <Feather name="chevron-down" size={16} color="#94A3B8" />
-      </TouchableOpacity>
+const jobTypes = Object.entries(typeConfig).map(([id, cfg]) => ({
+  id: id as JobType,
+  ...cfg,
+}));
 
-      {/* Manual input when "Other" is selected */}
-      {value === "other" && (
-        <TextInput
-          style={[styles.input, { marginTop: 8 }]}
-          value={customLabel}
-          onChangeText={onCustomChange}
-          placeholder="Type your job category (e.g. Agriculture, Tailoring…)"
-          placeholderTextColor="#CBD5E1"
-        />
-      )}
+const shifts = [
+  "Day Shift",
+  "Morning Shift",
+  "Evening Shift",
+  "Night Shift",
+  "Rotational Shift",
+];
 
-      {/* Dropdown modal */}
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
-          <View style={styles.dropdownList}>
-            <View style={styles.dropdownListHeader}>
-              <Text style={styles.dropdownListTitle}>Select Job Category</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} style={styles.dropdownClose}>
-                <Feather name="x" size={16} color="#64748B" />
-              </TouchableOpacity>
-            </View>
+const jobModes = ["On-site", "Hybrid", "Remote", "Field Work"];
+const joiningOptions = ["Immediate", "Within 7 days", "Within 15 days", "Within 30 days"];
+const weeklyOffOptions = ["Sunday", "Saturday & Sunday", "Rotational", "No fixed off"];
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
-              {categories.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.dropdownItem, value === c.id && styles.dropdownItemActive]}
-                  activeOpacity={0.75}
-                  onPress={() => { onSelect(c.id); setOpen(false); }}
-                >
-                  <View style={[styles.dropdownItemIcon, { backgroundColor: c.bg }]}>
-                    <Feather name={c.icon as any} size={16} color={c.color} />
-                  </View>
-                  <Text style={[styles.dropdownItemText, value === c.id && { color: "#EA580C", fontFamily: "Inter_600SemiBold" }]}>
-                    {c.label}
-                  </Text>
-                  {value === c.id && <Feather name="check" size={14} color="#EA580C" />}
-                </TouchableOpacity>
-              ))}
-
-              {/* Manual / Other option */}
-              <TouchableOpacity
-                style={[styles.dropdownItem, value === "other" && styles.dropdownItemActive]}
-                activeOpacity={0.75}
-                onPress={() => { onSelect("other"); setOpen(false); }}
-              >
-                <View style={[styles.dropdownItemIcon, { backgroundColor: "#F1F5F9" }]}>
-                  <Feather name="edit-3" size={16} color="#64748B" />
-                </View>
-                <Text style={[styles.dropdownItemText, value === "other" && { color: "#EA580C", fontFamily: "Inter_600SemiBold" }]}>
-                  Other / Type Manually
-                </Text>
-                {value === "other" && <Feather name="check" size={14} color="#EA580C" />}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </View>
-  );
+function wordCount(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function CompanyDropdown({
-  companies,
-  selectedCompanyId,
-  onSelect,
-}: {
-  companies: { id: string; name: string }[];
-  selectedCompanyId: string;
-  onSelect: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = companies.find((c) => c.id === selectedCompanyId) ?? companies[0];
-
-  return (
-    <View>
-      <TouchableOpacity style={styles.dropdownBtn} activeOpacity={0.85} onPress={() => setOpen(true)}>
-        <View style={[styles.dropdownIcon, { backgroundColor: "#FFF7ED" }]}>
-          <Feather name="briefcase" size={14} color="#C2410C" />
-        </View>
-        <Text style={styles.dropdownBtnText} numberOfLines={1}>
-          {selected?.name || "Select Company"}
-        </Text>
-        <Feather name="chevron-down" size={16} color="#94A3B8" />
-      </TouchableOpacity>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
-          <View style={styles.dropdownList}>
-            <View style={styles.dropdownListHeader}>
-              <Text style={styles.dropdownListTitle}>Choose Company</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} style={styles.dropdownClose}>
-                <Feather name="x" size={16} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 280 }}>
-              {companies.map((company) => (
-                <TouchableOpacity
-                  key={company.id}
-                  style={[styles.dropdownItem, selectedCompanyId === company.id && styles.dropdownItemActive]}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    onSelect(company.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Feather name="home" size={16} color={selectedCompanyId === company.id ? "#EA580C" : "#94A3B8"} />
-                  <Text style={[styles.dropdownItemText, selectedCompanyId === company.id && { color: "#EA580C", fontFamily: "Inter_600SemiBold" }]}>
-                    {company.name}
-                  </Text>
-                  {selectedCompanyId === company.id && <Feather name="check" size={14} color="#EA580C" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </View>
-  );
+function cleanMoney(value: string) {
+  return value.replace(/[^\d]/g, "").slice(0, 7);
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
-export default function PostJobScreen() {
+function validDate(value: string) {
+  if (!value.trim()) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+
+  const [y, m, d] = value.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+export default function EmployerPostJobScreen() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const router = useRouter();
   const { jobsUser } = useJobsAuth();
   const { addJob } = useJobs();
-  const router = useRouter();
+
+  const [submitting, setSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<JobCategory>("manufacturing");
-  const [customCategory, setCustomCategory] = useState("");
   const [type, setType] = useState<JobType>("full-time");
-  const [salary, setSalary] = useState("");
-  const [location, setLocation] = useState("Ambernath");
+  const [shift, setShift] = useState("Day Shift");
+  const [jobMode, setJobMode] = useState("On-site");
+
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
   const [openings, setOpenings] = useState("1");
+
+  const [location, setLocation] = useState("");
+  const [address, setAddress] = useState("");
+  const [workStartTime, setWorkStartTime] = useState("");
+  const [workEndTime, setWorkEndTime] = useState("");
+  const [workingDays, setWorkingDays] = useState("Monday to Saturday");
+  const [weeklyOff, setWeeklyOff] = useState("Sunday");
+
+  const [experienceRequired, setExperienceRequired] = useState("");
+  const [educationRequired, setEducationRequired] = useState("");
+  const [skillsRequired, setSkillsRequired] = useState("");
   const [description, setDescription] = useState("");
   const [requirements, setRequirements] = useState("");
-  const [contactNo, setContactNo] = useState(jobsUser?.whatsapp || jobsUser?.phone || "");
-  const [submitting, setSubmitting] = useState(false);
-  const [posted, setPosted] = useState(false);
-  const [postedTitle, setPostedTitle] = useState("");
-  const [selectedCompanyId, setSelectedCompanyId] = useState("");
-  const companies = jobsUser?.companies?.length
-    ? jobsUser!.companies
-    : jobsUser?.company
-      ? [{
-          id: "primary",
-          name: jobsUser?.company,
-          type: jobsUser?.companyType,
-          size: jobsUser?.companySize,
-          industry: jobsUser?.industry,
-          website: jobsUser?.website,
-          description: jobsUser?.companyDescription,
-          address: jobsUser?.address,
-          pincode: jobsUser?.pincode,
-          whatsapp: jobsUser?.whatsapp,
-          yearEstablished: jobsUser?.yearEstablished,
-          contactPerson: jobsUser?.contactPerson,
-          gstNo: jobsUser?.gstNo,
-        }]
-      : [];
-  const showCompanyPicker = companies.length > 1;
-  const defaultCompanyId = companies[0]?.id || "";
-  const activeCompanyId = useMemo(() => selectedCompanyId || defaultCompanyId, [selectedCompanyId, defaultCompanyId]);
+  const [benefits, setBenefits] = useState("");
+  const [joiningPreference, setJoiningPreference] = useState("Immediate");
+  const [lastDateToApply, setLastDateToApply] = useState("");
+  const [urgentHiring, setUrgentHiring] = useState(false);
 
-  if (!jobsUser || jobsUser.role !== "employer") {
-    return (
-      <View style={styles.restricted}>
-        <Feather name="lock" size={44} color="#CBD5E1" />
-        <Text style={styles.restrictedTitle}>Employers Only</Text>
-        <Text style={styles.restrictedSub}>Only employer accounts can post jobs.</Text>
-      </View>
-    );
-  }
+  const descriptionWords = wordCount(description);
+  const requirementsWords = wordCount(requirements);
+  const benefitsWords = wordCount(benefits);
 
-  if (posted) {
-    return (
-      <View style={styles.successScreen}>
-        <LinearGradient
-          colors={["#C2410C", "#EA580C", "#F97316", "#FB923C"]}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={styles.successIconWrap}
-        >
-          <Feather name="check" size={48} color="white" />
-        </LinearGradient>
-        <Text style={styles.successTitle}>Posted Successfully!</Text>
-        <Text style={styles.successSub}>
-          <Text style={{ fontFamily: "Inter_600SemiBold", color: "#EA580C" }}>{postedTitle}</Text>
-          {"\n"}is now live and visible to job seekers.
-        </Text>
-        <TouchableOpacity
-          style={styles.successBtn}
-          activeOpacity={0.85}
-          onPress={() => router.replace("/jobs/(tabs)" as any)}
-        >
-          <LinearGradient
-            colors={["#C2410C", "#EA580C", "#F97316"]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={styles.successBtnGrad}
-          >
-            <Feather name="home" size={16} color="white" />
-            <Text style={styles.successBtnText}>Go to Dashboard</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.successSecondaryBtn}
-          activeOpacity={0.75}
-          onPress={() => {
-            setPosted(false);
-            setTitle(""); setSalary(""); setDescription(""); setRequirements("");
-            setLocation("Ambernath"); setOpenings("1"); setCategory("manufacturing"); setCustomCategory("");
-          }}
-        >
-          <Text style={styles.successSecondaryText}>Post Another Job</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const companyName = useMemo(() => {
+    return jobsUser?.company || jobsUser?.companies?.[0]?.name || "Company";
+  }, [jobsUser]);
+
+  const salaryText = useMemo(() => {
+    if (salaryMin && salaryMax) return `₹${salaryMin} - ₹${salaryMax}`;
+    if (salaryMin) return `₹${salaryMin}+`;
+    if (salaryMax) return `Up to ₹${salaryMax}`;
+    return "";
+  }, [salaryMin, salaryMax]);
+
+  const validate = () => {
+    const minSalary = Number(salaryMin || 0);
+    const maxSalary = Number(salaryMax || 0);
+    const openingCount = Number(openings || 0);
+
+    if (!jobsUser || jobsUser.role !== "employer") {
+      return "Only employer accounts can post jobs.";
+    }
+
+    if (title.trim().length < 3) {
+      return "Job title must be at least 3 characters.";
+    }
+
+    if (!salaryMin && !salaryMax) {
+      return "Enter salary minimum or maximum.";
+    }
+
+    if (salaryMin && salaryMax && minSalary > maxSalary) {
+      return "Minimum salary cannot be greater than maximum salary.";
+    }
+
+    if (!location.trim() || location.trim().length < 3) {
+      return "Enter job location.";
+    }
+
+    if (!address.trim() || address.trim().length < 8) {
+      return "Enter full job address.";
+    }
+
+    if (openingCount < 1 || openingCount > 99) {
+      return "Openings must be between 1 and 99.";
+    }
+
+    if (!workingDays.trim()) {
+      return "Enter working days.";
+    }
+
+    if (!weeklyOff.trim()) {
+      return "Enter weekly off.";
+    }
+
+    if (descriptionWords < 5 || descriptionWords > 100) {
+      return "Description must be minimum 5 words and maximum 100 words.";
+    }
+
+    if (requirements.trim() && requirementsWords > 100) {
+      return "Requirements must be maximum 100 words.";
+    }
+
+    if (benefits.trim() && benefitsWords > 80) {
+      return "Benefits must be maximum 80 words.";
+    }
+
+    if (!validDate(lastDateToApply)) {
+      return "Last date must be in YYYY-MM-DD format.";
+    }
+
+    return "";
+  };
+
+  const resetForm = () => {
+    setTitle("");
+    setSalaryMin("");
+    setSalaryMax("");
+    setOpenings("1");
+    setLocation("");
+    setAddress("");
+    setWorkStartTime("");
+    setWorkEndTime("");
+    setWorkingDays("Monday to Saturday");
+    setWeeklyOff("Sunday");
+    setExperienceRequired("");
+    setEducationRequired("");
+    setSkillsRequired("");
+    setDescription("");
+    setRequirements("");
+    setBenefits("");
+    setJoiningPreference("Immediate");
+    setLastDateToApply("");
+    setUrgentHiring(false);
+  };
 
   const handleSubmit = async () => {
     if (submitting) return;
-    if (!title.trim()) { Alert.alert("Enter job title"); return; }
-    if (category === "other" && !customCategory.trim()) { Alert.alert("Enter your custom job category"); return; }
-    if (!salary.trim()) { Alert.alert("Enter salary range"); return; }
-    if (!description.trim()) { Alert.alert("Enter job description"); return; }
-    if (!requirements.trim()) { Alert.alert("Enter requirements"); return; }
+
+    const message = validate();
+
+    if (message) {
+      Alert.alert("Check job details", message);
+      return;
+    }
 
     setSubmitting(true);
+
     try {
-      await new Promise((r) => setTimeout(r, 100));
-      const selectedCompany = companies.find((c) => c.id === activeCompanyId) || companies[0];
-      if (!selectedCompany) {
-        Alert.alert("Add a company first");
-        return;
-      }
-      addJob({
-        employerId: jobsUser.id,
-        employerName: jobsUser.name,
-        company: selectedCompany.name,
-        employerPhone: jobsUser.phone,
-        employerWhatsApp: contactNo.trim() || jobsUser?.whatsapp || jobsUser.phone,
+      await addJob({
+        employerId: jobsUser!.id,
+        employerName: jobsUser!.name,
+        employerPhone: jobsUser!.phone,
+        employerWhatsApp: jobsUser!.whatsapp || jobsUser!.phone,
+        company: companyName,
         title: title.trim(),
         category,
         type,
-        salary: salary.trim(),
+        shift,
+        jobMode,
+        salary: salaryText,
+        salaryMin: salaryMin ? Number(salaryMin) : undefined,
+        salaryMax: salaryMax ? Number(salaryMax) : undefined,
         location: location.trim(),
-        openings: parseInt(openings) || 1,
+        address: address.trim(),
+        workStartTime: workStartTime.trim() || undefined,
+        workEndTime: workEndTime.trim() || undefined,
+        workingDays: workingDays.trim(),
+        weeklyOff: weeklyOff.trim(),
+        openings: Number(openings),
         description: description.trim(),
         requirements: requirements.trim(),
+        experienceRequired: experienceRequired.trim() || undefined,
+        educationRequired: educationRequired.trim() || undefined,
+        skillsRequired: skillsRequired.trim() || undefined,
+        benefits: benefits.trim() || undefined,
+        joiningPreference,
+        lastDateToApply: lastDateToApply.trim() || undefined,
+        urgentHiring,
       });
-      setPostedTitle(title.trim());
-      setPosted(true);
-    } catch {
-      Alert.alert("Unable to post job. Please try again.");
+
+      Alert.alert("Job posted", "Your job has been saved in MySQL and is now visible to job seekers.");
+      resetForm();
+      router.replace("/jobs/(tabs)" as any);
+    } catch (err: any) {
+      Alert.alert("Unable to post job", err?.message || "Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (!jobsUser || jobsUser.role !== "employer") {
+    return (
+      <View style={styles.emptyRoot}>
+        <Feather name="lock" size={34} color="#EA580C" />
+        <Text style={styles.emptyTitle}>Employer access required</Text>
+        <Text style={styles.emptyText}>Please login as an employer to post jobs.</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.root}>
-      <LinearGradient
-        colors={["#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: topPad + 14 }]}
-      >
-        <View style={styles.headerTop}>
-          <TouchableOpacity
-            style={styles.headerBack}
-            onPress={() => router.replace("/jobs/(tabs)" as any)}
-            activeOpacity={0.84}
-          >
-            <Feather name="chevron-left" size={22} color="white" />
-          </TouchableOpacity>
+    <LinearGradient colors={["#FFF7ED", "#FFFFFF"]} style={styles.root}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 110 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Feather name="arrow-left" size={18} color="#C2410C" />
+            </TouchableOpacity>
 
-          <View style={styles.headerBadge}>
-            <Feather name="briefcase" size={11} color="#FED7AA" />
-            <Text style={styles.headerBadgeText}>Employer</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kicker}>Employer Dashboard</Text>
+              <Text style={styles.title}>Post New Job</Text>
+              <Text style={styles.subtitle}>{companyName}</Text>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.headerHero}>
-          <View style={styles.headerIcon}>
-            <Feather name="upload-cloud" size={26} color="#EA580C" />
-          </View>
-          <Text style={styles.headerTitle}>Post a Job</Text>
-          <Text style={styles.headerSub}>
-            Create a clean listing and reach local candidates faster
-          </Text>
-        </View>
-      </LinearGradient>
+          <Card title="Basic Job Details" icon="briefcase">
+            <Input label="Job Title *" value={title} onChangeText={setTitle} placeholder="Machine Operator, Sales Executive..." />
 
-      {showCompanyPicker && (
-        <View style={styles.field}>
-          <Text style={styles.label}>Select Company *</Text>
-          <CompanyDropdown companies={companies} selectedCompanyId={activeCompanyId} onSelect={setSelectedCompanyId} />
-        </View>
-      )}
+            <Label text="Category" />
+            <ChipGrid>
+              {categories.slice(0, 8).map((item) => (
+                <Chip
+                  key={item.id}
+                  label={item.label}
+                  active={category === item.id}
+                  onPress={() => setCategory(item.id)}
+                />
+              ))}
+            </ChipGrid>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[
-          styles.form,
-          {
-            paddingTop: showCompanyPicker ? 6 : 18,
-            paddingBottom: Math.max(insets.bottom, 8) + 100,
-          },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.field}>
-          <Text style={styles.label}>Job Title *</Text>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="e.g. Factory Operator, Sales Executive"
-            placeholderTextColor="#CBD5E1"
-          />
-        </View>
+            <Label text="Job Type" />
+            <ChipGrid>
+              {jobTypes.map((item) => (
+                <Chip
+                  key={item.id}
+                  label={item.label}
+                  active={type === item.id}
+                  onPress={() => setType(item.id)}
+                />
+              ))}
+            </ChipGrid>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Job Category *</Text>
-          <CategoryDropdown
-            value={category}
-            customLabel={customCategory}
-            onSelect={setCategory}
-            onCustomChange={setCustomCategory}
-          />
-        </View>
+            <Label text="Urgency" />
+            <TouchableOpacity
+              style={[styles.urgentBox, urgentHiring && styles.urgentBoxActive]}
+              onPress={() => setUrgentHiring((v) => !v)}
+              activeOpacity={0.85}
+            >
+              <Feather name={urgentHiring ? "zap" : "clock"} size={16} color={urgentHiring ? "#FFFFFF" : "#EA580C"} />
+              <Text style={[styles.urgentText, urgentHiring && styles.urgentTextActive]}>
+                {urgentHiring ? "Urgent Hiring Enabled" : "Mark as Urgent Hiring"}
+              </Text>
+            </TouchableOpacity>
+          </Card>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Job Type *</Text>
-          <View style={styles.typeRow}>
-            {types.map((t) => (
-              <TouchableOpacity
-                key={t.id}
-                style={[styles.typeChip, type === t.id && { backgroundColor: "#EA580C", borderColor: "#EA580C" }]}
-                onPress={() => setType(t.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.typeChipText, type === t.id && { color: "white" }]}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+          <Card title="Salary & Openings" icon="credit-card">
+            <View style={styles.twoCol}>
+              <Input
+                label="Min Salary"
+                value={salaryMin}
+                onChangeText={(v) => setSalaryMin(cleanMoney(v))}
+                placeholder="15000"
+                keyboardType="number-pad"
+              />
+              <Input
+                label="Max Salary"
+                value={salaryMax}
+                onChangeText={(v) => setSalaryMax(cleanMoney(v))}
+                placeholder="25000"
+                keyboardType="number-pad"
+              />
+            </View>
 
-        <View style={styles.row}>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>Salary *</Text>
-            <TextInput
-              style={styles.input}
-              value={salary}
-              onChangeText={setSalary}
-              placeholder="e.g. ₹12,000–₹18,000/mo"
-              placeholderTextColor="#CBD5E1"
-            />
-          </View>
-          <View style={[styles.field, { width: 90 }]}>
-            <Text style={styles.label}>Openings</Text>
-            <TextInput
-              style={styles.input}
+            <Input
+              label="Openings *"
               value={openings}
-              onChangeText={(v) => setOpenings(v.replace(/\D/g, ""))}
+              onChangeText={(v) => setOpenings(v.replace(/\D/g, "").slice(0, 2))}
               placeholder="1"
-              placeholderTextColor="#CBD5E1"
               keyboardType="number-pad"
-              maxLength={2}
             />
-          </View>
-        </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>WhatsApp Contact No *</Text>
-          <TextInput style={styles.input} value={contactNo} onChangeText={setContactNo} placeholder="Enter WhatsApp number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" />
-        </View>
+            {!!salaryText && <Text style={styles.previewText}>Salary preview: {salaryText}</Text>}
+          </Card>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Location *</Text>
-          <TextInput
-            style={styles.input}
-            value={location}
-            onChangeText={setLocation}
-            placeholder="e.g. MIDC Ambernath"
-            placeholderTextColor="#CBD5E1"
-          />
-        </View>
+          <Card title="Timing & Shift" icon="clock">
+            <Label text="Shift" />
+            <ChipGrid>
+              {shifts.map((item) => (
+                <Chip key={item} label={item} active={shift === item} onPress={() => setShift(item)} />
+              ))}
+            </ChipGrid>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Job Description *</Text>
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Describe the job role and responsibilities…"
-            placeholderTextColor="#CBD5E1"
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
+            <Label text="Job Mode" />
+            <ChipGrid>
+              {jobModes.map((item) => (
+                <Chip key={item} label={item} active={jobMode === item} onPress={() => setJobMode(item)} />
+              ))}
+            </ChipGrid>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Requirements *</Text>
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            value={requirements}
-            onChangeText={setRequirements}
-            placeholder="Qualifications, experience, skills needed…"
-            placeholderTextColor="#CBD5E1"
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-        </View>
+            <View style={styles.twoCol}>
+              <Input label="Start Time" value={workStartTime} onChangeText={setWorkStartTime} placeholder="09:00 AM" />
+              <Input label="End Time" value={workEndTime} onChangeText={setWorkEndTime} placeholder="06:00 PM" />
+            </View>
 
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} activeOpacity={0.85} disabled={submitting}>
-          <LinearGradient
-            colors={["#C2410C", "#EA580C", "#FB923C"]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={styles.submitGrad}
+            <Input label="Working Days *" value={workingDays} onChangeText={setWorkingDays} placeholder="Monday to Saturday" />
+
+            <Label text="Weekly Off" />
+            <ChipGrid>
+              {weeklyOffOptions.map((item) => (
+                <Chip key={item} label={item} active={weeklyOff === item} onPress={() => setWeeklyOff(item)} />
+              ))}
+            </ChipGrid>
+          </Card>
+
+          <Card title="Location" icon="map-pin">
+            <Input label="Job Location *" value={location} onChangeText={setLocation} placeholder="MIDC Ambernath, Station Road..." />
+            <Input label="Full Address *" value={address} onChangeText={setAddress} placeholder="Complete workplace address" multiline />
+          </Card>
+
+          <Card title="Candidate Requirements" icon="user-check">
+            <Input label="Experience Required" value={experienceRequired} onChangeText={setExperienceRequired} placeholder="Fresher / 1-2 years / 3+ years" />
+            <Input label="Education Required" value={educationRequired} onChangeText={setEducationRequired} placeholder="10th Pass, ITI, Graduate..." />
+            <Input label="Skills Required" value={skillsRequired} onChangeText={setSkillsRequired} placeholder="Computer, Sales, Machine handling..." multiline />
+            <Input label="Requirements" value={requirements} onChangeText={setRequirements} placeholder="Maximum 100 words" multiline />
+            <Text style={styles.helperText}>{requirementsWords} / 100 words</Text>
+          </Card>
+
+          <Card title="Job Description" icon="file-text">
+            <Input
+              label="Description *"
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Minimum 5 words and maximum 100 words"
+              multiline
+            />
+            <Text style={styles.helperText}>{descriptionWords} / 100 words · minimum 5 words</Text>
+
+            <Input label="Benefits" value={benefits} onChangeText={setBenefits} placeholder="PF, ESIC, overtime, food, transport..." multiline />
+            <Text style={styles.helperText}>{benefitsWords} / 80 words</Text>
+          </Card>
+
+          <Card title="Application Settings" icon="calendar">
+            <Label text="Joining Preference" />
+            <ChipGrid>
+              {joiningOptions.map((item) => (
+                <Chip key={item} label={item} active={joiningPreference === item} onPress={() => setJoiningPreference(item)} />
+              ))}
+            </ChipGrid>
+
+            <Input
+              label="Last Date To Apply"
+              value={lastDateToApply}
+              onChangeText={setLastDateToApply}
+              placeholder="YYYY-MM-DD"
+              keyboardType="numbers-and-punctuation"
+            />
+          </Card>
+
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={submitting}
+            activeOpacity={0.9}
           >
-            {submitting ? <ActivityIndicator color="white" /> : (
-              <><Feather name="upload" size={18} color="white" /><Text style={styles.submitText}>Post Job</Text></>
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.submitText}>Post Job</Text>
+                <Feather name="send" size={18} color="#FFFFFF" />
+              </>
             )}
-          </LinearGradient>
-        </TouchableOpacity>
-      </ScrollView>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
+  );
+}
+
+function Card({ title, icon, children }: { title: string; icon: keyof typeof Feather.glyphMap; children: React.ReactNode }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTitleRow}>
+        <View style={styles.cardIcon}>
+          <Feather name={icon} size={17} color="#EA580C" />
+        </View>
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+      {children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#FFF7ED",
-  },
+function Label({ text }: { text: string }) {
+  return <Text style={styles.label}>{text}</Text>;
+}
 
+function Input(props: React.ComponentProps<typeof TextInput> & { label: string }) {
+  const { label, multiline, style, ...rest } = props;
+
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        {...rest}
+        multiline={multiline}
+        style={[styles.input, multiline && styles.textArea, style]}
+        placeholderTextColor="#94A3B8"
+      />
+    </View>
+  );
+}
+
+function ChipGrid({ children }: { children: React.ReactNode }) {
+  return <View style={styles.chipGrid}>{children}</View>;
+}
+
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.chip, active && styles.chipActive]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  content: { paddingHorizontal: 16, gap: 14 },
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 38,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    overflow: "hidden",
-    shadowColor: "#9A3412",
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  headerTop: {
-    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
+    paddingBottom: 2,
   },
-  headerBack: {
+  backBtn: {
     width: 42,
     height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: 16,
+    backgroundColor: "#FFF7ED",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
   },
-  headerBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  headerBadgeText: {
+  kicker: {
     fontSize: 11,
-    color: "white",
-    fontFamily: "Inter_700Bold",
+    color: "#EA580C",
+    fontFamily: "Inter_800ExtraBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
-  headerHero: {
-    alignItems: "center",
-    paddingTop: 24,
-  },
-  headerIcon: {
-    width: 74,
-    height: 74,
-    borderRadius: 26,
-    backgroundColor: "white",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  headerTitle: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: "white",
-    fontFamily: "Inter_700Bold",
+  title: {
+    fontSize: 26,
+    color: "#0F172A",
+    fontFamily: "Inter_800ExtraBold",
     letterSpacing: -0.5,
-    textAlign: "center",
   },
-  headerSub: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: "Inter_400Regular",
-    marginTop: 7,
-    textAlign: "center",
-    lineHeight: 19,
-    paddingHorizontal: 8,
+  subtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "#64748B",
+    fontFamily: "Inter_600SemiBold",
   },
-
-  form: {
-    paddingHorizontal: 16,
-  },
-  field: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: "white",
-    borderRadius: 22,
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     padding: 15,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
     shadowColor: "#9A3412",
     shadowOpacity: 0.07,
-    shadowRadius: 12,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(254,215,170,0.5)",
+    elevation: 3,
+    gap: 11,
   },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 2,
+  },
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: "#FFF7ED",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 15,
+    color: "#0F172A",
+    fontFamily: "Inter_800ExtraBold",
+  },
+  inputGroup: { flex: 1, gap: 7 },
   label: {
     fontSize: 12,
-    fontWeight: "900",
     color: "#334155",
-    fontFamily: "Inter_700Bold",
-    marginBottom: 9,
-    letterSpacing: 0.1,
+    fontFamily: "Inter_800ExtraBold",
   },
-
-  companySelectRow: {
+  input: {
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: "#0F172A",
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  textArea: {
+    minHeight: 92,
+    textAlignVertical: "top",
+  },
+  twoCol: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  chipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    paddingRight: 8,
   },
-  companySelectChip: {
+  chip: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: "#FED7AA",
-    backgroundColor: "white",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  companySelectChipActive: {
+  chipActive: {
     backgroundColor: "#EA580C",
     borderColor: "#EA580C",
   },
-  companySelectText: {
-    fontSize: 13,
-    color: "#92400E",
-    fontFamily: "Inter_500Medium",
+  chipText: {
+    fontSize: 12,
+    color: "#475569",
+    fontFamily: "Inter_700Bold",
   },
-  companySelectTextActive: {
-    color: "white",
+  chipTextActive: {
+    color: "#FFFFFF",
   },
-
-  input: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 14,
-    color: "#0F172A",
-    fontFamily: "Inter_400Regular",
+  urgentBox: {
     minHeight: 50,
-  },
-  textarea: {
-    minHeight: 106,
-    paddingTop: 13,
-    lineHeight: 19,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-    marginHorizontal: 16,
-  },
-  typeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 9,
-  },
-  typeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: "#FED7AA",
+    borderRadius: 16,
     backgroundColor: "#FFF7ED",
-  },
-  typeChipText: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    color: "#92400E",
-  },
-
-  submitBtn: {
-    borderRadius: 20,
-    overflow: "hidden",
-    marginTop: 4,
-    marginHorizontal: 16,
-    shadowColor: "#EA580C",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-  },
-  submitGrad: {
+    borderWidth: 1,
+    borderColor: "#FED7AA",
     flexDirection: "row",
     alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 14,
+  },
+  urgentBoxActive: {
+    backgroundColor: "#EA580C",
+    borderColor: "#EA580C",
+  },
+  urgentText: {
+    color: "#EA580C",
+    fontSize: 13,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  urgentTextActive: {
+    color: "#FFFFFF",
+  },
+  previewText: {
+    fontSize: 12,
+    color: "#047857",
+    fontFamily: "Inter_800ExtraBold",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 14,
+  },
+  helperText: {
+    marginTop: -4,
+    fontSize: 11,
+    color: "#64748B",
+    fontFamily: "Inter_500Medium",
+  },
+  submitBtn: {
+    height: 58,
+    borderRadius: 20,
+    backgroundColor: "#10B981",
+    alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
+    flexDirection: "row",
     gap: 10,
+    shadowColor: "#047857",
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  submitBtnDisabled: {
+    opacity: 0.65,
   },
   submitText: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "white",
-    fontFamily: "Inter_700Bold",
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontFamily: "Inter_800ExtraBold",
   },
-
-  restricted: {
+  emptyRoot: {
     flex: 1,
+    backgroundColor: "#FFF7ED",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    backgroundColor: "#FFF7ED",
-    paddingHorizontal: 26,
+    padding: 24,
   },
-  restrictedTitle: {
-    fontSize: 21,
-    fontWeight: "900",
+  emptyTitle: {
+    marginTop: 14,
+    fontSize: 20,
     color: "#0F172A",
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
+    fontFamily: "Inter_800ExtraBold",
   },
-  restrictedSub: {
-    fontSize: 14,
+  emptyText: {
+    marginTop: 6,
+    textAlign: "center",
     color: "#64748B",
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-
-  successScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFF7ED",
-    paddingHorizontal: 32,
-    gap: 16,
-  },
-  successIconWrap: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-    shadowColor: "#059669",
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  successTitle: {
-    fontSize: 27,
-    fontWeight: "900",
-    color: "#0F172A",
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-  },
-  successSub: {
-    fontSize: 15,
-    color: "#64748B",
-    fontFamily: "Inter_400Regular",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  successBtn: {
-    borderRadius: 18,
-    overflow: "hidden",
-    width: "100%",
-    marginTop: 8,
-  },
-  successBtnGrad: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    gap: 10,
-  },
-  successBtnText: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "white",
-    fontFamily: "Inter_700Bold",
-  },
-  successSecondaryBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  successSecondaryText: {
-    fontSize: 14,
-    color: "#EA580C",
-    fontFamily: "Inter_700Bold",
-    textDecorationLine: "underline",
-  },
-
-  dropdownBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    minHeight: 50,
-    width: "100%",
-  },
-  dropdownIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  dropdownBtnText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#0F172A",
-    fontFamily: "Inter_400Regular",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15,23,42,0.48)",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  dropdownList: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  dropdownListHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 18,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  dropdownListTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#0F172A",
-    fontFamily: "Inter_700Bold",
-  },
-  dropdownClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dropdownItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8FAFC",
-  },
-  dropdownItemActive: {
-    backgroundColor: "#FFF7ED",
-  },
-  dropdownItemIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dropdownItemText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#334155",
-    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
 });

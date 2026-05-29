@@ -44,6 +44,12 @@ export interface Job {
   title: string;
   category: JobCategory;
   type: JobType;
+  shift?: string;
+  jobMode?: string;
+  workStartTime?: string;
+  workEndTime?: string;
+  workingDays?: string;
+  weeklyOff?: string;
   salary: string;
   salaryMin?: number;
   salaryMax?: number;
@@ -54,6 +60,13 @@ export interface Job {
   distanceKm?: number | null;
   description: string;
   requirements: string;
+  experienceRequired?: string;
+  educationRequired?: string;
+  skillsRequired?: string;
+  benefits?: string;
+  joiningPreference?: string;
+  lastDateToApply?: string;
+  urgentHiring?: boolean;
   openings: number;
   applicants: string[];
   messages: JobMessage[];
@@ -126,6 +139,12 @@ function normalizeJob(raw: any, apps: JobApplication[] = [], previous?: Job): Jo
     title: raw.title || "Untitled Job",
     category: asCategory(raw.category),
     type: asType(raw.type),
+    shift: raw.shift || undefined,
+    jobMode: raw.jobMode || raw.job_mode || undefined,
+    workStartTime: raw.workStartTime || raw.work_start_time || undefined,
+    workEndTime: raw.workEndTime || raw.work_end_time || undefined,
+    workingDays: raw.workingDays || raw.working_days || undefined,
+    weeklyOff: raw.weeklyOff || raw.weekly_off || undefined,
     salary: raw.salary || raw.salaryText || raw.salary_text || "Salary not specified",
     salaryMin: raw.salaryMin || raw.salary_min,
     salaryMax: raw.salaryMax || raw.salary_max,
@@ -136,6 +155,13 @@ function normalizeJob(raw: any, apps: JobApplication[] = [], previous?: Job): Jo
     distanceKm: raw.distanceKm ?? raw.distance_km ?? null,
     description: raw.description || "",
     requirements: raw.requirements || "",
+    experienceRequired: raw.experienceRequired || raw.experience_required || undefined,
+    educationRequired: raw.educationRequired || raw.education_required || undefined,
+    skillsRequired: raw.skillsRequired || raw.skills_required || undefined,
+    benefits: raw.benefits || undefined,
+    joiningPreference: raw.joiningPreference || raw.joining_preference || undefined,
+    lastDateToApply: raw.lastDateToApply || raw.last_date_to_apply || undefined,
+    urgentHiring: !!(raw.urgentHiring || raw.urgent_hiring),
     openings: Number(raw.openings || 1),
     applicants,
     messages: previous?.messages || [],
@@ -259,6 +285,12 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         title: data.title,
         category: data.category,
         type: data.type,
+        shift: data.shift,
+        jobMode: data.jobMode,
+        workStartTime: data.workStartTime,
+        workEndTime: data.workEndTime,
+        workingDays: data.workingDays,
+        weeklyOff: data.weeklyOff,
         salary: data.salary,
         salaryMin: data.salaryMin,
         salaryMax: data.salaryMax,
@@ -268,8 +300,15 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         longitude: data.longitude,
         description: data.description,
         requirements: data.requirements,
+        experienceRequired: data.experienceRequired,
+        educationRequired: data.educationRequired,
+        skillsRequired: data.skillsRequired,
+        benefits: data.benefits,
+        joiningPreference: data.joiningPreference,
+        lastDateToApply: data.lastDateToApply,
         openings: data.openings,
         allowMessaging: true,
+        urgentHiring: !!data.urgentHiring,
       });
 
       const created = normalizeJob(res.job, []);
