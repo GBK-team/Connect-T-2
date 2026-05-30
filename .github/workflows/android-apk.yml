@@ -24,7 +24,6 @@ jobs:
     env:
       EXPO_PUBLIC_API_URL: https://connect-t-2.onrender.com
       NODE_ENV: production
-      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
 
     steps:
       - name: Checkout repository
@@ -58,9 +57,16 @@ jobs:
         working-directory: mobile/android
         run: chmod +x ./gradlew
 
-      - name: Build release APK with Gradle
+      - name: Build standalone test APK with Gradle
         working-directory: mobile/android
-        run: ./gradlew clean :app:assembleRelease --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
+        run: >
+          ./gradlew clean :app:assembleRelease
+          --no-daemon
+          --stacktrace
+          -PreactNativeArchitectures=arm64-v8a
+          -Pandroid.enableMinifyInReleaseBuilds=false
+          -Pandroid.enableShrinkResourcesInReleaseBuilds=false
+          -Pandroid.enablePngCrunchInReleaseBuilds=false
 
       - name: List APK outputs
         if: always()
@@ -69,7 +75,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: connect-t-native-release-apk
+          name: connect-t-native-test-apk
           path: mobile/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -79,8 +85,9 @@ jobs:
         run: |
           echo "## Connect-T Native Android APK Build" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Build type: Gradle release APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build type: Gradle release APK for testing" >> "$GITHUB_STEP_SUMMARY"
           echo "Backend: https://connect-t-2.onrender.com" >> "$GITHUB_STEP_SUMMARY"
           echo "Architecture: arm64-v8a" >> "$GITHUB_STEP_SUMMARY"
+          echo "Minify/shrink: disabled for test APK reliability" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download the APK from the workflow Artifacts section: connect-t-native-release-apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the APK from the workflow Artifacts section: connect-t-native-test-apk" >> "$GITHUB_STEP_SUMMARY"
