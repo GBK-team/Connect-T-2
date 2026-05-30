@@ -51,6 +51,7 @@ const FIELD_BY_COLUMN = Object.fromEntries(
 
 let pool = null;
 let ensurePromise = null;
+let patchHealthInstalled = false;
 
 function cleanValue(value) {
   if (value === undefined) return undefined;
@@ -296,7 +297,35 @@ try {
   const originalPost = express.application.post;
   const originalPatch = express.application.patch;
 
+  function installPatchHealth(app) {
+    if (patchHealthInstalled || !app || typeof app.get !== "function") return;
+    patchHealthInstalled = true;
+
+    originalGet.call(app, "/api/job-portal/patch-health", async function jobPortalPatchHealth(req, res) {
+      try {
+        await ensureExtraColumns();
+        const status = await getPatchColumnStatus();
+        res.json({
+          success: true,
+          patch: "jobPortalProfilePatch",
+          active: true,
+          extraFields: Object.keys(EXTRA_FIELDS),
+          ...status,
+        });
+      } catch (err) {
+        res.status(500).json({
+          success: false,
+          patch: "jobPortalProfilePatch",
+          active: true,
+          error: err.message,
+        });
+      }
+    });
+  }
+
   express.application.get = function patchedGet(path, ...handlers) {
+    installPatchHealth(this);
+
     if (path === "/api/job-portal/users/:id") {
       handlers = handlers.map((handler) => async function jobPortalGetUserPatch(req, res, next) {
         wrapUserJson(res);
@@ -308,6 +337,8 @@ try {
   };
 
   express.application.post = function patchedPost(path, ...handlers) {
+    installPatchHealth(this);
+
     if (path === "/api/job-portal/register") {
       handlers = handlers.map((handler) => async function jobPortalRegisterPatch(req, res, next) {
         if (!req.body.id) req.body.id = createClientId(req.body.role);
@@ -333,6 +364,8 @@ try {
   };
 
   express.application.patch = function patchedPatch(path, ...handlers) {
+    installPatchHealth(this);
+
     if (path === "/api/job-portal/users/:id") {
       handlers = handlers.map((handler) => async function jobPortalPatchUserPatch(req, res, next) {
         await updateExtraFields(req.params.id, req.body);
@@ -350,27 +383,6 @@ try {
 
     return originalPatch.call(this, path, ...handlers);
   };
-
-  express.application.get.call(express.application, "/api/job-portal/patch-health", async function jobPortalPatchHealth(req, res) {
-    try {
-      await ensureExtraColumns();
-      const status = await getPatchColumnStatus();
-      res.json({
-        success: true,
-        patch: "jobPortalProfilePatch",
-        active: true,
-        extraFields: Object.keys(EXTRA_FIELDS),
-        ...status,
-      });
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-        patch: "jobPortalProfilePatch",
-        active: true,
-        error: err.message,
-      });
-    }
-  });
 
   console.log("[JobPortalPatch] Profile field persistence patch active");
 } catch (err) {
