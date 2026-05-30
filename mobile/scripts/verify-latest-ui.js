@@ -27,7 +27,7 @@ function mustNotInclude(file, markers) {
 mustInclude("app/login.tsx", ["Email Address", "Date of Birth"]);
 mustNotInclude("app/login.tsx", ["regAge"]);
 
-mustInclude("app/jobs/login.tsx", ["Connect T Jobs", "Date of Birth"]);
+mustInclude("app/jobs/login.tsx", ["CONNECT T JOB PORTAL", "Date of Birth"]);
 mustNotInclude("app/jobs/login.tsx", ['label="Age"', "Please select your age", "Select your age"]);
 
 mustInclude("super-admin-login.tsx".startsWith("x") ? "x" : "app/super-admin-login.tsx", ["Connect T Control Center", "Open Super Admin Dashboard"]);
