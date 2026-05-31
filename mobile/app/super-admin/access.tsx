@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,6 +24,28 @@ function cleanMobile(value: string) {
   return value.replace(/\D/g, "").slice(0, 10);
 }
 
+type NoticeTone = "info" | "success" | "danger";
+
+function NoticeModal({ visible, title, message, tone = "info", onClose }: { visible: boolean; title: string; message: string; tone?: NoticeTone; onClose: () => void }) {
+  const color = tone === "success" ? "#16A34A" : tone === "danger" ? "#DC2626" : "#16A34A";
+  const bg = tone === "success" ? "#DCFCE7" : tone === "danger" ? "#FEE2E2" : "#F0FDF4";
+  const icon = tone === "success" ? "check-circle" : tone === "danger" ? "alert-circle" : "info";
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.noticeOverlay}>
+        <View style={styles.noticeCard}>
+          <View style={[styles.noticeIcon, { backgroundColor: bg }]}><Feather name={icon as any} size={27} color={color} /></View>
+          <Text style={styles.noticeTitle}>{title}</Text>
+          <Text style={styles.noticeText}>{message}</Text>
+          <TouchableOpacity style={[styles.noticeBtn, { backgroundColor: color }]} onPress={onClose} activeOpacity={0.85}>
+            <Text style={styles.noticeBtnText}>OK</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function SuperAdminAccessScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -41,6 +63,7 @@ export default function SuperAdminAccessScreen() {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<{ visible: boolean; title: string; message: string; tone: NoticeTone }>({ visible: false, title: "", message: "", tone: "info" });
 
   const activeCount = useMemo(
     () => accessCodes.filter((item) => item.status === "active").length,
@@ -52,17 +75,26 @@ export default function SuperAdminAccessScreen() {
     [accessCodes],
   );
 
+  const showNotice = (titleText: string, messageText: string, tone: NoticeTone = "info") => {
+    setNotice({ visible: true, title: titleText, message: messageText, tone });
+  };
+
+  const handleBack = () => {
+    if (router.canGoBack?.()) router.back();
+    else router.replace("/super-admin" as any);
+  };
+
   const handleCreate = async () => {
     const finalName = name.trim();
     const finalMobile = cleanMobile(mobile);
 
     if (!finalName) {
-      Alert.alert("Name required", "Enter the person name.");
+      showNotice("Name required", "Enter the person name.");
       return;
     }
 
     if (finalMobile.length !== 10) {
-      Alert.alert("Mobile required", "Enter a valid 10 digit mobile number.");
+      showNotice("Mobile required", "Enter a valid 10 digit mobile number.");
       return;
     }
 
@@ -78,15 +110,16 @@ export default function SuperAdminAccessScreen() {
       setName("");
       setMobile("");
 
-      Alert.alert(
+      showNotice(
         "Access ID Generated",
         `Name: ${created.name}\nMobile: ${created.mobile}\nUnique ID: ${created.accessCode}`,
+        "success",
       );
     } catch (e: any) {
-      Alert.alert(
+      showNotice(
         "Could not create access",
-        e?.message ||
-          "Database setup may be pending. Please create the super_admin_access_codes table.",
+        e?.message || "Database setup may be pending. Please create the super_admin_access_codes table.",
+        "danger",
       );
     } finally {
       setSubmitting(false);
@@ -99,11 +132,9 @@ export default function SuperAdminAccessScreen() {
   ) => {
     try {
       await updateAccessStatus(id, nextStatus);
+      showNotice("Access updated", nextStatus === "active" ? "Access ID has been activated." : "Access ID has been revoked.", "success");
     } catch (e: any) {
-      Alert.alert(
-        "Update failed",
-        e?.message || "Could not update access status.",
-      );
+      showNotice("Update failed", e?.message || "Could not update access status.", "danger");
     }
   };
 
@@ -135,7 +166,7 @@ export default function SuperAdminAccessScreen() {
           <View style={styles.header}>
             <TouchableOpacity
               style={styles.backBtn}
-              onPress={() => router.back()}
+              onPress={handleBack}
               activeOpacity={0.8}
             >
               <Feather name="arrow-left" size={18} color="#16A34A" />
@@ -307,6 +338,7 @@ export default function SuperAdminAccessScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <NoticeModal visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
     </View>
   );
 }
@@ -418,6 +450,7 @@ const styles = StyleSheet.create({
   },
   cardTitleText: {
     flex: 1,
+    minWidth: 0,
   },
   cardTitle: {
     fontSize: 16,
@@ -534,6 +567,7 @@ const styles = StyleSheet.create({
   },
   accessBody: {
     flex: 1,
+    minWidth: 0,
   },
   accessName: {
     fontSize: 14,
@@ -581,4 +615,11 @@ const styles = StyleSheet.create({
   activateText: {
     color: "#16A34A",
   },
+  noticeOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 22 },
+  noticeCard: { width: "100%", maxWidth: 340, backgroundColor: "white", borderRadius: 24, padding: 22, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 12 },
+  noticeIcon: { width: 58, height: 58, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 12 },
+  noticeTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900", textAlign: "center" },
+  noticeText: { marginTop: 6, fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 19, textAlign: "center" },
+  noticeBtn: { marginTop: 18, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 28, alignItems: "center" },
+  noticeBtnText: { fontSize: 13, color: "white", fontFamily: "Inter_700Bold" },
 });
