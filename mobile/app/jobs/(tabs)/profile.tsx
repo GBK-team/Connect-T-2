@@ -2,12 +2,14 @@ import React, { useMemo, useState } from "react";
 import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { calcProfileCompletion, CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
+import { useJobs } from "@/context/JobsContext";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -36,7 +38,7 @@ function validEmail(value?: string) {
 }
 
 function Section({ title, icon, children }: { title: string; icon: keyof typeof Feather.glyphMap; children: React.ReactNode }) {
-  return <View style={s.card}><View style={s.sectionHead}><View style={s.sectionIcon}><Feather name={icon} size={16} color={ORANGE} /></View><Text style={s.sectionTitle}>{title}</Text></View>{children}</View>;
+  return <View style={s.section}><Text style={s.sectionLabel}>{title.toUpperCase()}</Text><View style={s.card}><View style={s.formHead}><View style={s.formIcon}><Feather name={icon} size={16} color={ORANGE} /></View><Text style={s.formTitle}>{title}</Text></View>{children}</View></View>;
 }
 function Input(props: React.ComponentProps<typeof TextInput> & { label: string; helper?: string }) {
   const { label, helper, multiline, style, ...rest } = props;
@@ -48,11 +50,19 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 function DobEditor({ day, month, year, setDay, setMonth, setYear }: { day: string; month: string; year: string; setDay: (v: string) => void; setMonth: (v: string) => void; setYear: (v: string) => void }) {
   return <View style={s.inputGroup}><Text style={s.label}>Date of Birth</Text><View style={s.dobRow}><TextInput value={day} onChangeText={(v) => setDay(v.replace(/\D/g, "").slice(0, 2))} placeholder="DD" keyboardType="number-pad" maxLength={2} style={s.dobInput} placeholderTextColor="#94A3B8" /><TextInput value={month} onChangeText={(v) => setMonth(v.replace(/\D/g, "").slice(0, 2))} placeholder="MM" keyboardType="number-pad" maxLength={2} style={s.dobInput} placeholderTextColor="#94A3B8" /><TextInput value={year} onChangeText={(v) => setYear(v.replace(/\D/g, "").slice(0, 4))} placeholder="YYYY" keyboardType="number-pad" maxLength={4} style={[s.dobInput, { flex: 1.35 }]} placeholderTextColor="#94A3B8" /></View><Text style={s.helper}>Same DOB format as citizen registration</Text></View>;
 }
+function ActionRow({ icon, label, sub, color, bg, onPress, border }: { icon: keyof typeof Feather.glyphMap; label: string; sub: string; color: string; bg: string; onPress: () => void; border?: boolean }) {
+  return <TouchableOpacity style={[s.actionRow, border && s.rowBorder]} onPress={onPress} activeOpacity={0.82}><View style={[s.actionIcon, { backgroundColor: bg }]}><Feather name={icon} size={16} color={color} /></View><View style={{ flex: 1 }}><Text style={s.actionLabel}>{label}</Text><Text style={s.actionSub}>{sub}</Text></View><Feather name="chevron-right" size={16} color="#CBD5E1" /></TouchableOpacity>;
+}
+function DetailRow({ icon, label, value, border = true }: { icon: keyof typeof Feather.glyphMap; label: string; value?: string; border?: boolean }) {
+  return <View style={[s.actionRow, border && s.rowBorder]}><View style={[s.actionIcon, { backgroundColor: "#FFF7ED" }]}><Feather name={icon} size={15} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.actionSub}>{label}</Text><Text style={s.actionLabel} numberOfLines={2}>{value || "Not added"}</Text></View></View>;
+}
 
 export default function JobPortalProfileScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 56 : insets.top;
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { jobsUser, updateJobsUser, logoutJobs } = useJobsAuth();
+  const { jobs } = useJobs();
   const [saving, setSaving] = useState(false);
 
   const dob = normalizeDobForInputs(jobsUser?.dob);
@@ -88,9 +98,15 @@ export default function JobPortalProfileScreen() {
   const [pincode, setPincode] = useState(jobsUser?.pincode || "");
   const [companyDescription, setCompanyDescription] = useState(jobsUser?.companyDescription || jobsUser?.companies?.[0]?.description || "");
 
-  const completion = useMemo(() => (jobsUser ? calcProfileCompletion({ ...jobsUser, profilePhoto, currentStatus, qualification, skills, about, experience, location, languages } as JobsUser) : 0), [jobsUser, profilePhoto, currentStatus, qualification, skills, about, experience, location, languages]);
-  const isEmployer = jobsUser?.role === "employer";
   if (!jobsUser) return null;
+  const isEmployer = jobsUser.role === "employer";
+  const completion = isEmployer ? 100 : calcProfileCompletion({ ...jobsUser, profilePhoto, currentStatus, qualification, skills, about, experience, location, languages } as JobsUser);
+  const appliedCount = jobs.filter((job) => job.applicants.includes(jobsUser.id)).length;
+  const hiredCount = jobs.filter((job) => job.hired.includes(jobsUser.id)).length;
+  const employerJobs = jobs.filter((job) => job.employerId === jobsUser.id);
+  const employerApplicants = employerJobs.reduce((sum, job) => sum + job.applicants.length, 0);
+  const roleText = isEmployer ? "Employer" : "Job Seeker";
+  const roleSub = isEmployer ? "नियोक्ता" : "रोजगार साधक";
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -119,19 +135,48 @@ export default function JobPortalProfileScreen() {
 
   const confirmLogout = () => Alert.alert("Logout", "Logout from Job Portal?", [{ text: "Cancel", style: "cancel" }, { text: "Logout", style: "destructive", onPress: logoutJobs }]);
 
+  const quickActions = isEmployer
+    ? [
+        { icon: "plus-circle" as const, label: "Post Job", sub: "Create a new job listing", color: ORANGE, bg: "#FFF7ED", onPress: () => router.push("/jobs/(tabs)/post" as any) },
+        { icon: "briefcase" as const, label: "My Jobs", sub: "View active jobs and applicants", color: "#2563EB", bg: "#EFF6FF", onPress: () => router.push("/jobs/status?status=active" as any) },
+        { icon: "message-circle" as const, label: "Messages", sub: "Chat with applicants", color: "#7C3AED", bg: "#F5F3FF", onPress: () => router.push("/jobs/(tabs)/messages" as any) },
+      ]
+    : [
+        { icon: "search" as const, label: "Search Jobs", sub: "Find nearby verified jobs", color: ORANGE, bg: "#FFF7ED", onPress: () => router.push("/jobs/search" as any) },
+        { icon: "check-circle" as const, label: "Applied Jobs", sub: "Track applications", color: "#2563EB", bg: "#EFF6FF", onPress: () => router.push("/jobs/(tabs)/applied" as any) },
+        { icon: "file-text" as const, label: "Resume Builder", sub: "Create resume from profile", color: "#7C3AED", bg: "#F5F3FF", onPress: () => router.push("/jobs/resume" as any) },
+      ];
+
   return (
     <View style={s.root}>
-      <LinearGradient colors={[DARK, ORANGE, "#F97316", "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad + 12 }]}> 
-        <TopShade height={120} /><DecorativeCircles />
-        <View style={s.headerRow}><TouchableOpacity style={s.avatarWrap} onPress={pickPhoto} activeOpacity={0.84}>{profilePhoto ? <Image source={{ uri: profilePhoto }} style={s.avatarImg} /> : <Text style={s.avatarText}>{initials(name)}</Text>}<View style={s.cameraDot}><Feather name="camera" size={11} color={ORANGE} /></View></TouchableOpacity><View style={{ flex: 1, minWidth: 0 }}><View style={s.headerPill}><Text style={s.headerPillText}>{isEmployer ? "EMPLOYER PROFILE" : "JOB SEEKER PROFILE"}</Text></View><Text style={s.headerTitle} numberOfLines={1}>{name || jobsUser.name}</Text><Text style={s.headerSub} numberOfLines={1}>+91 {jobsUser.phone}{email ? ` · ${email}` : ""}</Text></View></View>
-        {!isEmployer && <View style={s.progressWrap}><View style={s.progressTrack}><View style={[s.progressFill, { width: `${completion}%` as any }]} /></View><Text style={s.progressText}>{completion}%</Text></View>}
+      <LinearGradient colors={[DARK, ORANGE, "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad + 12 }]}> 
+        <TopShade height={116} /><DecorativeCircles />
+        <View style={s.headerContent}>
+          <TouchableOpacity style={s.avatarWrap} onPress={pickPhoto} activeOpacity={0.84}>{profilePhoto ? <Image source={{ uri: profilePhoto }} style={s.avatarImg} /> : <Text style={s.avatarText}>{initials(name)}</Text>}<View style={s.cameraDot}><Feather name="camera" size={11} color={ORANGE} /></View></TouchableOpacity>
+          <View style={s.headerText}>
+            <Text style={s.userName} numberOfLines={1}>{name || jobsUser.name}</Text>
+            <View style={s.rolePillRow}><View style={s.rolePill}><Feather name={isEmployer ? "briefcase" : "user"} size={11} color="rgba(255,255,255,0.9)" /><Text style={s.rolePillText}>{roleText}</Text></View><Text style={s.roleSub}>{roleSub}</Text></View>
+            <TouchableOpacity style={s.switchPortalBtn} onPress={() => router.replace("/(tabs)" as any)} activeOpacity={0.85}><Feather name="home" size={12} color={ORANGE} /><Text style={s.switchPortalText}>Switch to Civic Service</Text></TouchableOpacity>
+            <View style={s.infoRow}><View style={s.infoChipRow}><Feather name="phone" size={10} color="rgba(255,255,255,0.58)" /><Text style={s.infoChipText}>+91 {jobsUser.phone}</Text></View><View style={s.infoChipRow}><Feather name="map-pin" size={10} color="rgba(255,255,255,0.58)" /><Text style={s.infoChipText}>{location || address || "Ambernath"}</Text></View></View>
+          </View>
+        </View>
+        <View style={s.statsRow}>{isEmployer ? <><View style={s.statItem}><Text style={s.statNum}>{employerJobs.length}</Text><Text style={s.statLabel}>Jobs</Text></View><View style={s.statDiv} /><View style={s.statItem}><Text style={[s.statNum, { color: "#FDE68A" }]}>{employerApplicants}</Text><Text style={s.statLabel}>Applicants</Text></View><View style={s.statDiv} /><View style={s.statItem}><Text style={[s.statNum, { color: "#6EE7B7" }]}>{employerJobs.filter((j) => j.active).length}</Text><Text style={s.statLabel}>Active</Text></View></> : <><View style={s.statItem}><Text style={s.statNum}>{completion}%</Text><Text style={s.statLabel}>Profile</Text></View><View style={s.statDiv} /><View style={s.statItem}><Text style={[s.statNum, { color: "#FDE68A" }]}>{appliedCount}</Text><Text style={s.statLabel}>Applied</Text></View><View style={s.statDiv} /><View style={s.statItem}><Text style={[s.statNum, { color: "#6EE7B7" }]}>{hiredCount}</Text><Text style={s.statLabel}>Hired</Text></View></>}</View>
       </LinearGradient>
+
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 104 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={s.section}><Text style={s.sectionLabel}>PORTAL SWITCH</Text><TouchableOpacity style={s.portalSwitchCard} onPress={() => router.replace("/(tabs)" as any)} activeOpacity={0.86}><View style={s.portalSwitchIcon}><Feather name="home" size={20} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.portalSwitchTitle}>Switch to Civic Service</Text><Text style={s.portalSwitchSub}>Open complaints, news, services and civic profile</Text></View><Feather name="chevron-right" size={18} color={ORANGE} /></TouchableOpacity></View>
+
+          <View style={s.section}><Text style={s.sectionLabel}>QUICK ACTIONS</Text><View style={s.card}>{quickActions.map((item, idx) => <ActionRow key={item.label} {...item} border={idx < quickActions.length - 1} />)}</View></View>
+
+          <View style={s.section}><Text style={s.sectionLabel}>ACCOUNT DETAILS</Text><View style={s.card}>{isEmployer ? <><DetailRow icon="user" label="Owner / HR Name" value={name} /><DetailRow icon="briefcase" label="Company" value={company} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="message-circle" label="WhatsApp" value={cleanPhone(whatsapp) ? `+91 ${cleanPhone(whatsapp)}` : "Not added"} /><DetailRow icon="map-pin" label="Address" value={address} border={false} /></> : <><DetailRow icon="user" label="Full Name" value={name} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="map-pin" label="Location" value={location} /><DetailRow icon="award" label="Qualification" value={qualification} /><DetailRow icon="tool" label="Skills" value={skills} border={false} /></>}</View></View>
+
           <Section title="Basic Details" icon="user"><Input label={isEmployer ? "Owner / HR Name" : "Full Name"} value={name} onChangeText={setName} placeholder="Full name" /><Input label="Email" value={email} onChangeText={setEmail} placeholder="you@email.com" keyboardType="email-address" autoCapitalize="none" />{!isEmployer && <DobEditor day={day} month={month} year={year} setDay={setDay} setMonth={setMonth} setYear={setYear} />}</Section>
-          {isEmployer ? <><Section title="Company Details" icon="briefcase"><Input label="Company / Business Name" value={company} onChangeText={setCompany} placeholder="Company name" /><Input label="Contact Person" value={contactPerson} onChangeText={setContactPerson} placeholder="Owner / HR / Manager" /><Input label="WhatsApp Number" value={whatsapp} onChangeText={(v) => setWhatsapp(cleanPhone(v))} placeholder="WhatsApp contact" keyboardType="phone-pad" maxLength={10} /><Input label="Industry" value={industry} onChangeText={setIndustry} placeholder="Manufacturing, Retail, IT..." /><Input label="GST / Business Registration" value={gstNo} onChangeText={setGstNo} placeholder="Optional" autoCapitalize="characters" /><Input label="Company Type" value={companyType} onChangeText={setCompanyType} placeholder="Private, Proprietorship, Shop..." /><Input label="Company Size" value={companySize} onChangeText={setCompanySize} placeholder="1-10, 11-50, 50+ employees" /><Input label="Year Established" value={yearEstablished} onChangeText={(v) => setYearEstablished(v.replace(/\D/g, "").slice(0, 4))} placeholder="2020" keyboardType="number-pad" maxLength={4} /><Input label="Website" value={website} onChangeText={setWebsite} placeholder="https://..." autoCapitalize="none" /></Section><Section title="Address & Trust Info" icon="map-pin"><Input label="Full Address" value={address} onChangeText={setAddress} placeholder="Complete business address" multiline /><Input label="Pincode" value={pincode} onChangeText={(v) => setPincode(v.replace(/\D/g, "").slice(0, 6))} placeholder="421501" keyboardType="number-pad" maxLength={6} /><Input label="Company Description" value={companyDescription} onChangeText={setCompanyDescription} placeholder="About your company" multiline helper={`${countWords(companyDescription)} / 100 words`} /></Section></> : <><Section title="Career Profile" icon="briefcase"><Input label="Location" value={location} onChangeText={setLocation} placeholder="Ambernath East / West" /><Input label="Qualification" value={qualification} onChangeText={setQualification} placeholder="10th, 12th, ITI, Graduate..." /><Input label="Skills" value={skills} onChangeText={setSkills} placeholder="Computer, Sales, Driving..." multiline /><Text style={s.label}>Current Status</Text><View style={s.chipRow}>{(["unemployed", "employed", "student", "fresher"] as CurrentStatus[]).map((item) => <Chip key={item} label={item === "unemployed" ? "Unemployed" : item === "employed" ? "Employed" : item === "student" ? "Student" : "Fresher"} active={currentStatus === item} onPress={() => setCurrentStatus(item)} />)}</View>{currentStatus !== "fresher" && <Input label="Experience" value={experience} onChangeText={setExperience} placeholder="Fresher / 1 year / 3 years..." />}<Input label="Languages Known" value={languages} onChangeText={setLanguages} placeholder="Marathi, Hindi, English..." /><Input label="About / Objective" value={about} onChangeText={setAbout} placeholder="Short career objective" multiline helper={`${countWords(about)} / 80 words`} /></Section>{currentStatus === "employed" && <Section title="Current Work" icon="activity"><Input label="Current Company" value={currentCompany} onChangeText={setCurrentCompany} placeholder="Company name" /><Input label="Current Role" value={currentRole} onChangeText={setCurrentRole} placeholder="Role / designation" /></Section>}{currentStatus === "student" && <Section title="Student Details" icon="book-open"><Input label="College Name" value={collegeName} onChangeText={setCollegeName} placeholder="College / institute" /><Input label="Field of Study" value={fieldOfStudy} onChangeText={setFieldOfStudy} placeholder="Commerce, ITI, Engineering..." /></Section>}<Section title="Previous Work" icon="clock"><Input label="Previous Company" value={previousCompany} onChangeText={setPreviousCompany} placeholder="Optional" /><Input label="Previous Role" value={previousRole} onChangeText={setPreviousRole} placeholder="Optional" /></Section></>}
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnDisabled]} onPress={saveProfile} disabled={saving} activeOpacity={0.9}><Text style={s.saveBtnText}>{saving ? "Saving..." : "Save Profile"}</Text><Feather name="check-circle" size={18} color="white" /></TouchableOpacity>
-          <TouchableOpacity style={s.logoutBtn} onPress={confirmLogout} activeOpacity={0.82}><Feather name="log-out" size={16} color="#DC2626" /><Text style={s.logoutText}>Logout from Job Portal</Text></TouchableOpacity>
+
+          {isEmployer ? <><Section title="Company Details" icon="briefcase"><Input label="Company / Business Name" value={company} onChangeText={setCompany} placeholder="Company name" /><Input label="Contact Person" value={contactPerson} onChangeText={setContactPerson} placeholder="Owner / HR / Manager" /><Input label="WhatsApp Number" value={whatsapp} onChangeText={(v) => setWhatsapp(cleanPhone(v))} placeholder="WhatsApp contact" keyboardType="phone-pad" maxLength={10} /><Input label="Industry" value={industry} onChangeText={setIndustry} placeholder="Manufacturing, Retail, IT..." /><Input label="GST / Business Registration" value={gstNo} onChangeText={setGstNo} placeholder="Optional" autoCapitalize="characters" /><Input label="Company Type" value={companyType} onChangeText={setCompanyType} placeholder="Private, Proprietorship, Shop..." /><Input label="Company Size" value={companySize} onChangeText={setCompanySize} placeholder="1-10, 11-50, 50+ employees" /><Input label="Year Established" value={yearEstablished} onChangeText={(v) => setYearEstablished(v.replace(/\D/g, "").slice(0, 4))} placeholder="2020" keyboardType="number-pad" maxLength={4} /><Input label="Website" value={website} onChangeText={setWebsite} placeholder="https://..." autoCapitalize="none" /></Section><Section title="Address & Trust Info" icon="map-pin"><Input label="Full Address" value={address} onChangeText={setAddress} placeholder="Complete business address" multiline /><Input label="Pincode" value={pincode} onChangeText={(v) => setPincode(v.replace(/\D/g, "").slice(0, 6))} placeholder="421501" keyboardType="number-pad" maxLength={6} /><Input label="Company Description" value={companyDescription} onChangeText={setCompanyDescription} placeholder="About your company" multiline helper={`${countWords(companyDescription)} / 100 words`} /></Section></> : <><Section title="Candidate Profile" icon="briefcase"><Input label="Location" value={location} onChangeText={setLocation} placeholder="Ambernath East, MIDC..." /><Input label="Qualification" value={qualification} onChangeText={setQualification} placeholder="10th, ITI, Graduate..." /><Input label="Skills" value={skills} onChangeText={setSkills} placeholder="Computer, Sales, Machine handling..." multiline /><View style={s.inputGroup}><Text style={s.label}>Current Status</Text><View style={s.chipRow}>{(["unemployed", "employed", "student", "fresher"] as CurrentStatus[]).map((item) => <Chip key={item} label={item.charAt(0).toUpperCase() + item.slice(1)} active={currentStatus === item} onPress={() => setCurrentStatus(item)} />)}</View></View>{currentStatus !== "fresher" && <Input label="Experience" value={experience} onChangeText={setExperience} placeholder="Fresher / 1 year / 3 years" />}<Input label="Languages Known" value={languages} onChangeText={setLanguages} placeholder="Marathi, Hindi, English" /><Input label="About / Objective" value={about} onChangeText={setAbout} placeholder="Short career summary" multiline helper={`${countWords(about)} / 80 words`} /></Section>{currentStatus === "employed" && <Section title="Current Work" icon="briefcase"><Input label="Current Company" value={currentCompany} onChangeText={setCurrentCompany} placeholder="Company name" /><Input label="Current Role" value={currentRole} onChangeText={setCurrentRole} placeholder="Job role" /></Section>}{currentStatus === "student" && <Section title="Student Details" icon="book-open"><Input label="College Name" value={collegeName} onChangeText={setCollegeName} placeholder="College name" /><Input label="Field of Study" value={fieldOfStudy} onChangeText={setFieldOfStudy} placeholder="Commerce, ITI, Engineering..." /></Section>}<Section title="Previous Work" icon="clock"><Input label="Previous Company" value={previousCompany} onChangeText={setPreviousCompany} placeholder="Optional" /><Input label="Previous Role" value={previousRole} onChangeText={setPreviousRole} placeholder="Optional" /></Section></>}
+
+          <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.65 }]} onPress={saveProfile} disabled={saving} activeOpacity={0.88}><LinearGradient colors={[DARK, ORANGE, "#F97316"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveGrad}><Feather name="check" size={17} color="white" /><Text style={s.saveText}>{saving ? "Saving..." : "Save Profile"}</Text></LinearGradient></TouchableOpacity>
+          <TouchableOpacity style={s.logoutBtn} onPress={confirmLogout} activeOpacity={0.85}><View style={s.logoutInner}><Feather name="log-out" size={18} color="#DC2626" /><Text style={s.logoutText}>Logout from Job Portal</Text></View></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -140,14 +185,60 @@ export default function JobPortalProfileScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  header: { paddingHorizontal: 20, paddingBottom: 22, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, shadowColor: DARK, shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10, overflow: "hidden" },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 13 },
-  avatarWrap: { width: 70, height: 70, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.45)" },
-  avatarImg: { width: 70, height: 70, borderRadius: 24 }, avatarText: { fontSize: 23, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900" }, cameraDot: { position: "absolute", right: -5, bottom: -5, width: 27, height: 27, borderRadius: 14, backgroundColor: "white", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FED7AA" },
-  headerPill: { alignSelf: "flex-start", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", paddingHorizontal: 9, paddingVertical: 5, marginBottom: 5 }, headerPillText: { color: "white", fontSize: 8.8, letterSpacing: 0.8, fontFamily: "Inter_700Bold" }, headerTitle: { fontSize: 22, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900", letterSpacing: -0.35 }, headerSub: { marginTop: 3, fontSize: 11.5, color: "rgba(255,255,255,0.78)", fontFamily: "Inter_400Regular" },
-  progressWrap: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 15 }, progressTrack: { flex: 1, height: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.3)", overflow: "hidden" }, progressFill: { height: "100%", backgroundColor: "#FFEDD5", borderRadius: 999 }, progressText: { minWidth: 36, textAlign: "right", color: "white", fontSize: 12, fontFamily: "Inter_700Bold" },
-  content: { padding: 16, gap: 12 }, card: { backgroundColor: "white", borderRadius: 18, padding: 14, gap: 11, borderWidth: 1, borderColor: "rgba(254,215,170,0.9)", shadowColor: DARK, shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, sectionHead: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 1 }, sectionIcon: { width: 36, height: 36, borderRadius: 13, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FED7AA" }, sectionTitle: { flex: 1, fontSize: 14, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  inputGroup: { gap: 6 }, label: { fontSize: 11, color: "#334155", fontFamily: "Inter_700Bold" }, input: { minHeight: 48, borderRadius: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13, paddingVertical: 10, color: "#0F172A", fontSize: 13, fontFamily: "Inter_600SemiBold" }, textArea: { minHeight: 86, textAlignVertical: "top" }, helper: { marginTop: -2, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_500Medium" }, dobRow: { flexDirection: "row", gap: 9 }, dobInput: { flex: 1, height: 48, borderRadius: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", textAlign: "center", color: "#0F172A", fontSize: 13, fontFamily: "Inter_700Bold" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, chip: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0" }, chipActive: { backgroundColor: ORANGE, borderColor: ORANGE }, chipText: { fontSize: 11.5, color: "#475569", fontFamily: "Inter_700Bold" }, chipTextActive: { color: "white" },
-  saveBtn: { height: 54, borderRadius: 17, backgroundColor: ORANGE, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, shadowColor: DARK, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 }, saveBtnDisabled: { opacity: 0.62 }, saveBtnText: { color: "white", fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "900" }, logoutBtn: { height: 50, borderRadius: 16, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, logoutText: { color: "#DC2626", fontSize: 12.5, fontFamily: "Inter_700Bold", fontWeight: "900" },
+  header: { paddingHorizontal: 20, paddingBottom: 14, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
+  headerContent: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 12 },
+  avatarWrap: { width: 92, height: 92, borderRadius: 46, backgroundColor: "rgba(255,255,255,0.15)", borderWidth: 3, borderColor: "rgba(255,255,255,0.45)", alignItems: "center", justifyContent: "center" },
+  avatarImg: { width: 86, height: 86, borderRadius: 43 },
+  avatarText: { fontSize: 32, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
+  cameraDot: { position: "absolute", right: -1, bottom: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: "white", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" },
+  headerText: { flex: 1, gap: 4 },
+  userName: { fontSize: 18, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+  rolePillRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rolePill: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.15)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  rolePillText: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.9)", fontFamily: "Inter_700Bold" },
+  roleSub: { fontSize: 11, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular" },
+  switchPortalBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "white", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, marginTop: 8 },
+  switchPortalText: { fontSize: 12, color: ORANGE, fontFamily: "Inter_700Bold", fontWeight: "900" },
+  infoRow: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 2 },
+  infoChipRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  infoChipText: { fontSize: 10.5, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular" },
+  statsRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, padding: 10, alignItems: "center" },
+  statItem: { flex: 1, alignItems: "center" },
+  statNum: { fontSize: 24, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
+  statLabel: { fontSize: 10, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular", marginTop: 2 },
+  statDiv: { width: 1, height: 32, backgroundColor: "rgba(255,255,255,0.2)" },
+  content: { padding: 16 },
+  section: { marginBottom: 20 },
+  sectionLabel: { fontSize: 10, fontWeight: "700", color: "#94A3B8", letterSpacing: 1.2, fontFamily: "Inter_600SemiBold", marginBottom: 8, paddingLeft: 2 },
+  card: { backgroundColor: "white", borderRadius: 18, overflow: "hidden", shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  portalSwitchCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "white", borderRadius: 18, padding: 16, borderWidth: 1, borderColor: "#FED7AA", shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  portalSwitchIcon: { width: 44, height: 44, borderRadius: 15, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FED7AA" },
+  portalSwitchTitle: { fontSize: 14, fontWeight: "900", color: "#0F172A", fontFamily: "Inter_700Bold" },
+  portalSwitchSub: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 16, marginTop: 2 },
+  actionRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: "#F8FAFC" },
+  actionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  actionLabel: { fontSize: 13, fontWeight: "700", color: "#0F172A", fontFamily: "Inter_600SemiBold" },
+  actionSub: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 1 },
+  formHead: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4 },
+  formIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", alignItems: "center", justifyContent: "center" },
+  formTitle: { fontSize: 13.5, fontFamily: "Inter_700Bold", fontWeight: "900", color: "#0F172A" },
+  inputGroup: { paddingHorizontal: 14, paddingTop: 10, gap: 6 },
+  label: { fontSize: 11, color: "#334155", fontFamily: "Inter_700Bold" },
+  input: { minHeight: 48, borderRadius: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13, paddingVertical: 10, color: "#0F172A", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  textArea: { minHeight: 86, textAlignVertical: "top" },
+  helper: { fontSize: 10.5, color: "#64748B", fontFamily: "Inter_400Regular" },
+  dobRow: { flexDirection: "row", gap: 8 },
+  dobInput: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, color: "#0F172A", fontSize: 13, fontFamily: "Inter_700Bold", textAlign: "center" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0" },
+  chipActive: { backgroundColor: ORANGE, borderColor: ORANGE },
+  chipText: { fontSize: 11.5, color: "#475569", fontFamily: "Inter_700Bold" },
+  chipTextActive: { color: "white" },
+  saveBtn: { borderRadius: 16, overflow: "hidden", marginBottom: 12 },
+  saveGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, paddingVertical: 14 },
+  saveText: { color: "white", fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "900" },
+  logoutBtn: { backgroundColor: "#FEE2E2", borderRadius: 16, borderWidth: 1.5, borderColor: "#FECACA", marginBottom: 8 },
+  logoutInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
+  logoutText: { fontSize: 15, fontWeight: "700", color: "#DC2626", fontFamily: "Inter_700Bold" },
 });
