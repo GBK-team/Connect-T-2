@@ -16,12 +16,12 @@ const ORANGE = "#EA580C";
 const DARK = "#C2410C";
 const BG = "#ebeffc";
 
-type ChatMessage = { id?: string; from: string; to?: string; text: string; createdAt: string; readAt?: string | null; localImageUri?: string };
+type ChatMessage = { id?: string; from: string; to?: string; text: string; createdAt: string; readAt?: string | null; localImageUri?: string; mediaUrl?: string | null; messageType?: string };
 
 function timeLabel(value?: string) { if (!value) return ""; const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 function cleanPhone(value?: string) { return String(value || "").replace(/\D/g, "").slice(-10); }
 function goBack(router: any) { if (router.canGoBack?.()) router.back(); else router.replace("/jobs/(tabs)" as any); }
-function normalizeMessage(raw: any): ChatMessage { return { id: String(raw.id || ""), from: String(raw.sender_id || raw.senderId || raw.from || ""), to: raw.receiver_id || raw.receiverId || raw.to, text: String(raw.message || raw.text || ""), createdAt: raw.created_at || raw.createdAt || new Date().toISOString(), readAt: raw.read_at || raw.readAt || null }; }
+function normalizeMessage(raw: any): ChatMessage { return { id: String(raw.id || ""), from: String(raw.sender_id || raw.senderId || raw.from || ""), to: raw.receiver_id || raw.receiverId || raw.to, text: String(raw.message || raw.text || ""), createdAt: raw.created_at || raw.createdAt || new Date().toISOString(), readAt: raw.read_at || raw.readAt || null, mediaUrl: raw.media_url || raw.mediaUrl || null, messageType: raw.message_type || raw.messageType || "text" }; }
 
 function AppNotice({ visible, title, message, onClose }: { visible: boolean; title: string; message: string; onClose: () => void }) {
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={s.noticeOverlay}><View style={s.noticeCard}><View style={s.noticeIcon}><Feather name="info" size={24} color={ORANGE} /></View><Text style={s.noticeTitle}>{title}</Text><Text style={s.noticeMsg}>{message}</Text><TouchableOpacity style={s.noticeOk} onPress={onClose}><Text style={s.noticeOkText}>OK</Text></TouchableOpacity></View></View></Modal>;
@@ -84,15 +84,15 @@ export default function JobChatScreen() {
 
   const postMessage = async (bodyText: string, localImageUri?: string) => {
     const message = bodyText.trim();
-    if (!message) return;
+    if (!message && !localImageUri) return;
     if (!job || !peerId) { show("No chat found", "Open this chat again from the job or applicant screen."); return; }
-    const temp: ChatMessage = { id: `local_${Date.now()}`, from: currentUserId, to: peerId, text: message, createdAt: new Date().toISOString(), localImageUri };
+    const temp: ChatMessage = { id: `local_${Date.now()}`, from: currentUserId, to: peerId, text: message || "Photo", createdAt: new Date().toISOString(), localImageUri, mediaUrl: localImageUri || null, messageType: localImageUri ? "image" : "text" };
     setMessages((prev) => [...prev, temp]);
     setText("");
     try {
-      const res = await apiPost<{ success: boolean; message: any }>("/api/job-portal/messages", { jobId: job.id, senderId: currentUserId, receiverId: peerId, message });
+      const res = await apiPost<{ success: boolean; message: any }>("/api/job-portal/messages", { jobId: job.id, senderId: currentUserId, receiverId: peerId, message: message || "Photo", messageType: localImageUri ? "image" : "text", mediaUrl: localImageUri || undefined });
       const saved = normalizeMessage(res.message);
-      setMessages((prev) => prev.map((m) => m.id === temp.id ? { ...saved, localImageUri } : m));
+      setMessages((prev) => prev.map((m) => m.id === temp.id ? { ...saved, localImageUri: localImageUri || saved.mediaUrl || undefined } : m));
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== temp.id));
       show("Message failed", err?.message || "Please try again.");
@@ -105,7 +105,7 @@ export default function JobChatScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) { show("Permission needed", "Please allow gallery access to attach an image."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: false, quality: 0.55 });
-    if (!result.canceled && result.assets?.[0]?.uri) await postMessage("Photo shared", result.assets[0].uri);
+    if (!result.canceled && result.assets?.[0]?.uri) await postMessage("Photo", result.assets[0].uri);
   };
 
   const openWhatsApp = async () => {
@@ -122,7 +122,7 @@ export default function JobChatScreen() {
     try {
       await apiDelete(`/api/job-portal/messages/${id}?userId=${encodeURIComponent(currentUserId)}&mode=${mode}`);
       if (mode === "unsend") setMessages((prev) => prev.filter((m) => m.id !== id));
-      else setMessages((prev) => prev.map((m) => m.id === id ? { ...m, text: "[deleted]", localImageUri: undefined } : m));
+      else setMessages((prev) => prev.map((m) => m.id === id ? { ...m, text: "[deleted]", localImageUri: undefined, mediaUrl: null } : m));
     } catch (err: any) {
       show("Action failed", err?.message || "Please try again.");
     }
@@ -140,7 +140,7 @@ export default function JobChatScreen() {
       </LinearGradient>
 
       <ScrollView style={s.messagesScroll} contentContainerStyle={s.messagesContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {visibleMessages.length === 0 ? <View style={s.emptyCard}><View style={s.emptyIcon}><Feather name="message-circle" size={34} color={ORANGE} /></View><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyText}>Send a message in Connect T or use WhatsApp for direct contact.</Text></View> : visibleMessages.map((message: ChatMessage, index: number) => { const mine = message.from === currentUserId; const deleted = message.text === "[deleted]"; return <TouchableOpacity key={`${message.id || message.createdAt || "message"}-${index}`} activeOpacity={0.82} onLongPress={() => setSelected(message)} style={[s.messageWrap, mine ? s.myWrap : s.otherWrap]}><View style={[s.messageBubble, mine ? s.myBubble : s.otherBubble]}>{!!message.localImageUri && <Image source={{ uri: message.localImageUri }} style={s.msgImage} />}<Text style={[s.messageText, mine ? s.myMessageText : s.otherMessageText, deleted && s.deletedText]}>{deleted ? "Message deleted" : message.text}</Text><View style={s.messageMeta}><Text style={[s.messageTime, mine ? s.myTime : s.otherTime]}>{timeLabel(message.createdAt)}</Text>{mine && <Text style={[s.messageTime, s.myTime]}>{message.readAt ? "Seen" : "Sent"}</Text>}</View></View></TouchableOpacity>; })}
+        {visibleMessages.length === 0 ? <View style={s.emptyCard}><View style={s.emptyIcon}><Feather name="message-circle" size={34} color={ORANGE} /></View><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyText}>Send a message in Connect T or use WhatsApp for direct contact.</Text></View> : visibleMessages.map((message: ChatMessage, index: number) => { const mine = message.from === currentUserId; const deleted = message.text === "[deleted]"; const imageUri = message.localImageUri || message.mediaUrl || undefined; return <TouchableOpacity key={`${message.id || message.createdAt || "message"}-${index}`} activeOpacity={0.82} onLongPress={() => setSelected(message)} style={[s.messageWrap, mine ? s.myWrap : s.otherWrap]}><View style={[s.messageBubble, mine ? s.myBubble : s.otherBubble]}>{!!imageUri && !deleted && <Image source={{ uri: imageUri }} style={s.msgImage} />}<Text style={[s.messageText, mine ? s.myMessageText : s.otherMessageText, deleted && s.deletedText]}>{deleted ? "Message deleted" : message.text}</Text><View style={s.messageMeta}><Text style={[s.messageTime, mine ? s.myTime : s.otherTime]}>{timeLabel(message.createdAt)}</Text>{mine && <Text style={[s.messageTime, s.myTime]}>{message.readAt ? "Seen" : "Sent"}</Text>}</View></View></TouchableOpacity>; })}
       </ScrollView>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}> 
