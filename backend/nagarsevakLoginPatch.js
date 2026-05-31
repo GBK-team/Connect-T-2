@@ -28,6 +28,10 @@ function getPool() {
   return pool;
 }
 
+function mobileSql(column) {
+  return `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column},''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), 10)`;
+}
+
 async function nagarsevakLogin(req, res) {
   try {
     const db = getPool();
@@ -44,7 +48,7 @@ async function nagarsevakLogin(req, res) {
       `SELECT *
        FROM users
        WHERE role = 'nagarsevak'
-         AND RIGHT(REGEXP_REPLACE(COALESCE(mobile,''), '[^0-9]', ''), 10) = ?
+         AND ${mobileSql("mobile")} = ?
        ORDER BY created_at DESC
        LIMIT 1`,
       [mobile],
