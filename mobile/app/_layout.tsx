@@ -76,20 +76,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const [splashDone, setSplashDone] = useState(false);
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (!loading && user) {
-      setSplashDone(true);
-      if (isSuperAdminUser(user)) {
-        staticRouter.replace("/super-admin" as any);
-      } else if (user.role === "nagarsevak") {
-        staticRouter.replace("/(tabs)/admin" as any);
-      } else {
-        staticRouter.replace("/(tabs)" as any);
-      }
-    }
-  }, [user, loading]);
+  const { user } = useAuth();
 
   const handleFinish = async (portal: SplashPortal) => {
     setSplashDone(true);
@@ -117,7 +104,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    staticRouter.replace(user ? "/(tabs)" : "/login");
+    staticRouter.replace("/portal-select" as any);
   };
 
   return (
