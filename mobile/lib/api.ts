@@ -1,5 +1,10 @@
 import { apiUrl } from "@/constants/api";
 
+const GET_CACHE_TTL_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 15_000;
+const getCache = new Map<string, { at: number; data: unknown }>();
+const inFlightGets = new Map<string, Promise<unknown>>();
+
 async function readError(res: Response, fallback: string) {
   const text = await res.text().catch(() => "");
   if (!text) return fallback;
@@ -12,25 +17,74 @@ async function readError(res: Response, fallback: string) {
   }
 }
 
+function cacheKey(path: string) {
+  return apiUrl(path);
+}
+
+function clearGetCache() {
+  getCache.clear();
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function request<T = any>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(apiUrl(path), {
-    method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const url = apiUrl(path);
+  const key = cacheKey(path);
 
-  if (!res.ok) {
-    throw new Error(await readError(res, `${method} ${path} failed with ${res.status}`));
+  if (method === "GET") {
+    const cached = getCache.get(key);
+    if (cached && Date.now() - cached.at < GET_CACHE_TTL_MS) {
+      return cached.data as T;
+    }
+
+    const pending = inFlightGets.get(key);
+    if (pending) return pending as Promise<T>;
+  } else {
+    clearGetCache();
   }
 
-  if (res.status === 204) return {} as T;
+  const promise = (async () => {
+    const res = await fetchWithTimeout(url, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
 
-  const text = await res.text().catch(() => "");
-  return (text ? JSON.parse(text) : {}) as T;
+    if (!res.ok) {
+      throw new Error(await readError(res, `${method} ${path} failed with ${res.status}`));
+    }
+
+    if (res.status === 204) return {} as T;
+
+    const text = await res.text().catch(() => "");
+    const data = (text ? JSON.parse(text) : {}) as T;
+
+    if (method === "GET") {
+      getCache.set(key, { at: Date.now(), data });
+    }
+
+    return data;
+  })();
+
+  if (method === "GET") {
+    inFlightGets.set(key, promise);
+    promise.finally(() => inFlightGets.delete(key));
+  }
+
+  return promise;
 }
 
 export async function apiGet<T = any>(path: string): Promise<T> {
