@@ -51,11 +51,6 @@ export default function PortalSelectScreen() {
             <View style={styles.portalArrow}><Feather name="arrow-right" size={14} color="#EA580C" /></View>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.adminLink} onPress={() => router.push("/secret-access" as any)} activeOpacity={0.75}>
-          <Feather name="shield" size={13} color="rgba(255,255,255,0.68)" />
-          <Text style={styles.adminText}>Admin Access</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -67,7 +62,7 @@ const styles = StyleSheet.create({
   logoRow: { alignItems: "center", marginBottom: 36 },
   appName: { fontSize: 28, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.5, marginBottom: 6 },
   subtitle: { fontSize: 13, color: "rgba(255,255,255,0.72)", fontFamily: "Inter_400Regular", textAlign: "center" },
-  portalRow: { flexDirection: "row", gap: 12, width: "100%", marginBottom: 22 },
+  portalRow: { flexDirection: "row", gap: 12, width: "100%" },
   portalCard: {
     flex: 1,
     backgroundColor: "white",
@@ -85,8 +80,6 @@ const styles = StyleSheet.create({
   portalTitle: { fontSize: 15, fontWeight: "900", color: "#0F172A", fontFamily: "Inter_700Bold", lineHeight: 20 },
   portalSub: { fontSize: 10.5, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 14 },
   portalArrow: { marginTop: 4, width: 28, height: 28, borderRadius: 14, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" },
-  adminLink: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderColor: "rgba(255,255,255,0.14)" },
-  adminText: { fontSize: 11, color: "rgba(255,255,255,0.72)", fontFamily: "Inter_600SemiBold" },
 });
 
 const ps = StyleSheet.create({
