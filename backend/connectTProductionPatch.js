@@ -2,8 +2,7 @@
  * Connect-T production safety patch
  *
  * Loaded before backend/server.js. It adds compatibility routes used by the
- * mobile app and makes Nagarsevak ward availability checks ignore stale
- * pending/rejected rows so wards are not falsely marked as taken.
+ * mobile app and hardens high-risk flows without rewriting the large server.
  */
 
 const otpSessions = new Map();
@@ -29,6 +28,10 @@ function makeNagarsevakId() {
   return `NS${Date.now()}`;
 }
 
+function makeOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
   return res.status(status).json(payload);
@@ -46,6 +49,33 @@ function cleanOtpSessions() {
   }
 }
 
+async function sendFast2Sms(mobile, otp) {
+  const apiKey = String(process.env.FAST2SMS_API_KEY || "").trim();
+  if (!apiKey) return { skipped: true };
+
+  const smsRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+    method: "POST",
+    headers: {
+      authorization: apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      route: "q",
+      message: `Your Connect T OTP is ${otp}. Valid for 5 minutes. Do not share with anyone.`,
+      language: "english",
+      flash: "0",
+      numbers: mobile,
+    }),
+  });
+
+  const data = await smsRes.json().catch(() => ({}));
+  if (!smsRes.ok || data?.return === false) {
+    throw new Error(data?.message?.[0] || data?.message || "SMS provider failed");
+  }
+
+  return data;
+}
+
 async function sendOtpAlias(req, res) {
   try {
     const mobile = normalizeMobile(req.body?.phone || req.body?.mobile);
@@ -55,21 +85,30 @@ async function sendOtpAlias(req, res) {
     }
 
     cleanOtpSessions();
+    const otp = makeOtp();
     const sessionToken = `otp_${mobile}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    await sendFast2Sms(mobile, otp);
+
     otpSessions.set(sessionToken, {
       mobile,
-      otp: process.env.DEV_OTP_CODE || "123456",
+      otp,
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
 
-    return sendJson(res, 200, {
+    const response = {
       success: true,
       sessionToken,
       message: "OTP sent successfully",
-      devOtp: process.env.NODE_ENV === "production" ? undefined : (process.env.DEV_OTP_CODE || "123456"),
-    });
+    };
+
+    if (process.env.NODE_ENV !== "production" && !process.env.FAST2SMS_API_KEY) {
+      response.devOtp = otp;
+    }
+
+    return sendJson(res, 200, response);
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message });
+    return sendJson(res, 500, { success: false, error: err.message || "Failed to send OTP" });
   }
 }
 
@@ -80,8 +119,7 @@ async function verifyOtpAlias(req, res) {
 
     cleanOtpSessions();
     const session = otpSessions.get(sessionToken);
-    const demoOtp = process.env.DEV_OTP_CODE || "123456";
-    const valid = !!session && (otp === session.otp || otp === demoOtp || otp === "1234");
+    const valid = !!session && otp === session.otp;
 
     if (!valid) {
       return sendJson(res, 400, { valid: false, success: false, error: "Invalid or expired OTP" });
@@ -91,6 +129,57 @@ async function verifyOtpAlias(req, res) {
     return sendJson(res, 200, { valid: true, success: true, mobile: session.mobile });
   } catch (err) {
     return sendJson(res, 500, { valid: false, success: false, error: err.message });
+  }
+}
+
+async function complaintsList(req, res) {
+  try {
+    const db = getPool();
+    const { ward, ward_code, assigned_officer_id, status, category, user_id } = req.query;
+    const cleanUserMobile = normalizeMobile(req.query.user_mobile);
+    let sql = "SELECT * FROM complaints WHERE 1=1";
+    const params = [];
+
+    if (ward) {
+      sql += " AND ward = ?";
+      params.push(ward);
+    }
+
+    if (ward_code) {
+      sql += " AND UPPER(ward_code) = UPPER(?)";
+      params.push(ward_code);
+    }
+
+    if (assigned_officer_id) {
+      sql += " AND assigned_officer_id = ?";
+      params.push(assigned_officer_id);
+    }
+
+    if (status) {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+
+    if (category) {
+      sql += " AND category = ?";
+      params.push(category);
+    }
+
+    if (user_id) {
+      sql += " AND user_id = ?";
+      params.push(user_id);
+    }
+
+    if (cleanUserMobile) {
+      sql += " AND RIGHT(REGEXP_REPLACE(COALESCE(user_mobile,''), '[^0-9]', ''), 10) = ?";
+      params.push(cleanUserMobile);
+    }
+
+    sql += " ORDER BY created_at DESC";
+    const [rows] = await db.query(sql, params);
+    return sendJson(res, 200, { success: true, complaints: rows });
+  } catch (err) {
+    return sendJson(res, 500, { success: false, error: err.message });
   }
 }
 
@@ -226,6 +315,42 @@ async function nagarsevakRegister(req, res) {
   }
 }
 
+async function deleteJobMessage(req, res) {
+  try {
+    const db = getPool();
+    const messageId = String(req.params.id || "").trim();
+    const userId = String(req.query.userId || req.body?.userId || req.body?.senderId || "").trim();
+    const mode = String(req.query.mode || req.body?.mode || "delete").trim();
+
+    if (!messageId || !userId) {
+      return sendJson(res, 400, { success: false, error: "message id and userId are required" });
+    }
+
+    const [rows] = await db.query("SELECT * FROM job_portal_messages WHERE id = ? LIMIT 1", [messageId]);
+    if (!rows.length) return sendJson(res, 404, { success: false, error: "Message not found" });
+
+    const message = rows[0];
+    if (mode === "unsend") {
+      if (message.sender_id !== userId) {
+        return sendJson(res, 403, { success: false, error: "Only sender can unsend this message" });
+      }
+      if (message.read_at) {
+        return sendJson(res, 409, { success: false, error: "Seen messages cannot be unsent" });
+      }
+      await db.query("DELETE FROM job_portal_messages WHERE id = ?", [messageId]);
+      return sendJson(res, 200, { success: true, mode: "unsend" });
+    }
+
+    await db.query(
+      "UPDATE job_portal_messages SET message = '[deleted]' WHERE id = ? AND (sender_id = ? OR receiver_id = ?)",
+      [messageId, userId, userId],
+    );
+    return sendJson(res, 200, { success: true, mode: "delete" });
+  } catch (err) {
+    return sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
 try {
   const mysql = require("mysql2/promise");
   const originalCreatePool = mysql.createPool;
@@ -242,16 +367,22 @@ try {
   const express = require("express");
   const originalGet = express.application.get;
   const originalPost = express.application.post;
+  const originalDelete = express.application.delete;
 
   function installCompatibilityRoutes(app) {
     if (routesInstalled) return;
     routesInstalled = true;
     originalPost.call(app, "/api/send-otp", sendOtpAlias);
     originalPost.call(app, "/api/verify-otp", verifyOtpAlias);
+    originalDelete.call(app, "/api/job-portal/messages/:id", deleteJobMessage);
   }
 
   express.application.get = function patchedGet(path, ...handlers) {
     installCompatibilityRoutes(this);
+
+    if (path === "/api/complaints") {
+      originalGet.call(this, path, complaintsList);
+    }
 
     if (path === "/api/auth/ward-check") {
       originalGet.call(this, path, nagarsevakWardCheck);
@@ -270,7 +401,7 @@ try {
     return originalPost.call(this, path, ...handlers);
   };
 
-  console.log("[ConnectTPatch] OTP compatibility and Nagarsevak safety patch active");
+  console.log("[ConnectTPatch] OTP compatibility, complaint filter and Nagarsevak safety patch active");
 } catch (err) {
   console.warn("[ConnectTPatch] express patch disabled:", err.message);
 }
