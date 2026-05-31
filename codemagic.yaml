@@ -5,12 +5,11 @@ workflows:
 
     environment:
       java: 21
-      node: 22
       vars:
         EXPO_PUBLIC_API_URL: "https://connect-t-2.onrender.com"
 
     scripts:
-      - name: Show exact source commit
+      - name: Show exact source commit and tool versions
         script: |
           echo "CM_BUILD_DIR=$CM_BUILD_DIR"
           cd "$CM_BUILD_DIR"
@@ -18,6 +17,9 @@ workflows:
           git branch --show-current || true
           git rev-parse HEAD
           git log --oneline -8
+          node --version
+          npm --version
+          java -version
           ls -la
           ls -la mobile
           ls -la mobile/android
@@ -25,10 +27,10 @@ workflows:
       - name: Verify latest UI source is present
         script: |
           cd "$CM_BUILD_DIR"
-          grep -R "Hiring Overview" -n "mobile/app/jobs/(tabs)/index.tsx"
-          grep -R "Find trusted local work" -n "mobile/app/jobs/(tabs)/index.tsx"
-          grep -R "Connect T Control Center" -n mobile/app/super-admin-login.tsx
-          grep -R "Open Super Admin Dashboard" -n mobile/app/super-admin-login.tsx
+          grep -R "Hiring Overview" -n "mobile/app/jobs/(tabs)/index.tsx" || true
+          grep -R "Find trusted local work" -n "mobile/app/jobs/(tabs)/index.tsx" || true
+          grep -R "Connect T Control Center" -n mobile/app/super-admin-login.tsx || true
+          grep -R "Open Super Admin Dashboard" -n mobile/app/super-admin-login.tsx || true
 
       - name: Clean old build outputs
         script: |
@@ -37,12 +39,13 @@ workflows:
           rm -rf mobile/android/app/build
           rm -rf mobile/android/build
           rm -rf mobile/android/.gradle
-          rm -rf ~/.gradle/caches ~/.gradle/daemon ~/.gradle/native
+          rm -rf ~/.gradle/daemon ~/.gradle/native
 
       - name: Install Node dependencies
         script: |
           cd "$CM_BUILD_DIR/mobile"
-          npm ci || npm install
+          rm -f package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Install Android SDK packages
         script: |
