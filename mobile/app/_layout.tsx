@@ -55,7 +55,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (inSuperAdmin && user && isSuperAdminUser(user)) return;
 
     if (!user && !inLogin) {
-      router.replace("/login");
+      router.replace("/portal-select" as any);
     } else if (user && inLogin) {
       if (isSuperAdminUser(user)) {
         router.replace("/super-admin" as any);
