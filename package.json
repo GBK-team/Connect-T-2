@@ -1,14 +1,24 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
+  "name": "connect-t-hostinger-backend",
+  "version": "1.0.0",
   "license": "MIT",
-  "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
-  },
   "private": true,
+  "description": "Connect-T backend entry for Hostinger Node.js deployment. Mobile app source remains under mobile/ and backend source remains under backend/.",
+  "main": "backend/hostinger-server.js",
+  "scripts": {
+    "start": "node backend/hostinger-server.js",
+    "build": "echo \"No build step required for Connect-T Node backend\"",
+    "typecheck": "echo \"Typecheck skipped on Hostinger backend deployment\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.3"
+  },
   "devDependencies": {
     "typescript": "~5.9.2",
     "prettier": "^3.8.1"
