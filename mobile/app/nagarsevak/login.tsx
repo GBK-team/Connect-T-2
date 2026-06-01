@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getApiUrl } from "@/utils/apiUrl";
 
 type Step = "phone" | "otp" | "pending" | "rejected";
-const DEMO_OTP = "123456";
+const DEMO_OTP = "1234";
 
 function cleanMobile(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -19,12 +19,12 @@ export default function NagarsevakLoginScreen() {
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
-  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [otpDigits, setOtpDigits] = useState(["", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
+  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true }).start();
@@ -40,7 +40,7 @@ export default function NagarsevakLoginScreen() {
     setOtpSending(true);
     setTimeout(() => {
       setPhone(cleaned);
-      setOtpDigits(["", "", "", "", "", ""]);
+      setOtpDigits(["", "", "", ""]);
       setStep("otp");
       setOtpSending(false);
     }, 250);
@@ -88,20 +88,20 @@ export default function NagarsevakLoginScreen() {
     const next = [...otpDigits];
     next[index] = cleaned.slice(-1);
     setOtpDigits(next);
-    if (cleaned && index < 5) otpRefs[index + 1]?.current?.focus();
+    if (cleaned && index < 3) otpRefs[index + 1]?.current?.focus();
     if (!cleaned && index > 0) otpRefs[index - 1]?.current?.focus();
   };
 
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C"]} locations={[0, 0.25, 0.55, 0.8, 1]} style={StyleSheet.absoluteFill} />
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}> 
         <TouchableOpacity onPress={() => router.replace("/" as any)} style={styles.backBtn} activeOpacity={0.8}><Feather name="chevron-left" size={22} color="white" /></TouchableOpacity>
         <View style={styles.topBadge}><Feather name="shield" size={13} color="white" /><Text style={styles.topBadgeText}>Nagarsevak Portal</Text></View>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+          <Animated.View style={[styles.card, { opacity: fadeAnim }]}> 
             {step === "phone" && <>
               <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="shield" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Nagarsevak Login</Text><Text style={styles.cardSub}>Enter mobile number. Demo OTP is used for now.</Text></View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -111,13 +111,13 @@ export default function NagarsevakLoginScreen() {
               <TouchableOpacity style={styles.registerLink} onPress={() => router.push("/nagarsevak/register" as any)}><Text style={styles.registerLinkText}>New Nagarsevak? <Text style={styles.registerLinkBold}>Register here</Text></Text></TouchableOpacity>
             </>}
             {step === "otp" && <>
-              <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="lock" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Enter OTP</Text><Text style={styles.cardSub}>Use demo OTP {DEMO_OTP} for +91 {phone}</Text></View>
+              <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="lock" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Enter OTP</Text><Text style={styles.cardSub}>Use 4 digit demo OTP {DEMO_OTP} for +91 {phone}</Text></View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <View style={styles.otpRow}>{otpDigits.map((digit, idx) => <TextInput key={idx} ref={otpRefs[idx]} style={[styles.otpBox, digit && styles.otpBoxFilled]} value={digit} onChangeText={(v) => setDigit(idx, v)} keyboardType="number-pad" maxLength={1} textAlign="center" />)}</View>
               <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={verifyOtp} disabled={loading} activeOpacity={0.85}><LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.btnGrad}>{loading ? <ActivityIndicator color="white" /> : <><Feather name="check-circle" size={17} color="white" /><Text style={styles.btnText}>Verify & Login</Text></>}</LinearGradient></TouchableOpacity>
               <TouchableOpacity onPress={() => setStep("phone")} style={styles.changeBtn}><Text style={styles.changeBtnText}>← Change number</Text></TouchableOpacity>
             </>}
-            {step === "pending" && <Status icon="clock" color="#D97706" bg="#FEF3C7" title="Approval Pending" msg="Your Nagarsevak account is waiting for Super Admin approval." />}
+            {step === "pending" && <Status icon="clock" color="#D97706" bg="#FEF3C7" title="Approval Pending" msg="Your Nagarsevak account is waiting for Super Admin approval. Once approved, login again with demo OTP 1234." />}
             {step === "rejected" && <Status icon="x-circle" color="#DC2626" bg="#FEE2E2" title="Account Rejected" msg="Your registration was rejected. Please contact Super Admin." />}
           </Animated.View>
         </ScrollView>
@@ -156,8 +156,8 @@ const styles = StyleSheet.create({
   registerLink: { marginTop: 18, alignItems: "center" },
   registerLinkText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular" },
   registerLinkBold: { color: "#EA580C", fontFamily: "Inter_700Bold" },
-  otpRow: { flexDirection: "row", justifyContent: "center", gap: 7, marginBottom: 18 },
-  otpBox: { width: 42, height: 50, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
+  otpRow: { flexDirection: "row", justifyContent: "center", gap: 9, marginBottom: 18 },
+  otpBox: { width: 48, height: 52, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
   otpBoxFilled: { borderColor: "#EA580C", backgroundColor: "#FFF7ED" },
   changeBtn: { alignItems: "center", marginTop: 14 },
   changeBtnText: { color: "#EA580C", fontSize: 13, fontFamily: "Inter_600SemiBold" },
