@@ -19,12 +19,27 @@ edit('app/(tabs)/_layout.tsx', s => s.replace(
   '<Tabs backBehavior="history" tabBar={(props) => isNagarsevak ? <NagarsevakTabBar {...props} /> : <AnimatedTabBar {...props} />} screenOptions={{ headerShown: false, tabBarActiveTintColor: isNagarsevak ? GREEN : ORANGE, tabBarInactiveTintColor: MUTED }}>'
 ));
 
+edit('app/(tabs)/profile.tsx', s => s
+  .replace('const confirmLogout = async () => { setShowLogoutModal(false); await logout(); router.replace("/portal-select" as any); };',
+           'const confirmLogout = async () => { setShowLogoutModal(false); await logout("/login"); router.replace("/login" as any); };')
+);
+
+edit('app/(tabs)/admin.tsx', s => s
+  .replace('await logout();\n    router.replace("/login");', 'await logout("/nagarsevak/login");\n    router.replace("/nagarsevak/login" as any);')
+  .replace('onPress={() => router.push("/login")}', 'onPress={() => router.replace("/nagarsevak/login" as any)}')
+);
+
+edit('app/super-admin/settings.tsx', s => s
+  .replace('await logout();\n                  router.replace("/login");', 'await logout("/super-admin-login");\n                  router.replace("/super-admin-login" as any);')
+);
+
 edit('app/jobs/(tabs)/profile.tsx', s => s
   .replace('await logoutJobs();\n    },', 'await logoutJobs();\n      router.replace("/jobs/login" as any);\n    },')
   .replace('\n        { icon: "file-text" as const, label: "Resume Builder", sub: "Create resume from profile", color: "#7C3AED", bg: "#F5F3FF", onPress: () => router.push("/jobs/resume" as any) },', '')
 );
 
 edit('app/nagarsevak/login.tsx', s => s
+  .replace('router.replace("/" as any)', 'router.replace("/secret-access" as any)')
   .replace('setStep("pending");', 'router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleaned, from: "login" } });')
 );
 
