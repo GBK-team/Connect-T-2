@@ -33,7 +33,7 @@ export default function PortalSelectScreen() {
         </View>
 
         <View style={styles.portalRow}>
-          <TouchableOpacity style={styles.portalCard} onPress={() => router.replace("/login" as any)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.portalCard} onPress={() => router.push("/login" as any)} activeOpacity={0.85}>
             <LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.portalIconWrap}>
               <Feather name="home" size={26} color="white" />
             </LinearGradient>
@@ -42,7 +42,7 @@ export default function PortalSelectScreen() {
             <View style={styles.portalArrow}><Feather name="arrow-right" size={14} color="#EA580C" /></View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.portalCard} onPress={() => router.replace("/jobs/login" as any)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.portalCard} onPress={() => router.push("/jobs/login" as any)} activeOpacity={0.85}>
             <LinearGradient colors={["#EA580C", "#F97316"]} style={styles.portalIconWrap}>
               <Feather name="briefcase" size={26} color="white" />
             </LinearGradient>
