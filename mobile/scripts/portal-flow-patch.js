@@ -29,7 +29,52 @@ function ensureOtpImportSuperAdmin(source) {
   return source.replace('import { useAuth } from "@/context/AuthContext";', 'import { useAuth } from "@/context/AuthContext";\nimport OtpDigitInput from "@/components/OtpDigitInput";');
 }
 
-edit('app/(tabs)/_layout.tsx', s => s.replace(
+function fixNagarsevakTabs(source) {
+  let s = source;
+  const start = s.indexOf('function NagarsevakTabBar');
+  const end = s.indexOf('\n\nexport default function TabLayout');
+  if (start >= 0 && end > start) {
+    const fixed = `function NagarsevakTabBar({ state, descriptors, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === "web" ? 14 : Math.max(insets.bottom, 8);
+  const orderedNames = ["admin", "ward", "news", "profile"];
+  const routeByName = Object.fromEntries(state.routes.map((route: any) => [route.name, route]));
+  const activeRouteName = state.routes[state.index]?.name;
+  const labelMap: Record<string, string> = { admin: "Home", ward: "Ward", news: "News", profile: "Profile" };
+  const iconMap: Record<string, string> = { admin: "home", ward: "users", news: "radio", profile: "user" };
+
+  return (
+    <View style={{ flexDirection: "row", backgroundColor: "white", paddingBottom: bottomInset, paddingTop: 7, borderTopWidth: 1, borderTopColor: "#E2E8F0", shadowColor: "#166534", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 }}>
+      {orderedNames.map((name) => {
+        const route: any = routeByName[name];
+        if (!route) return null;
+        const isFocused = activeRouteName === name;
+        const label = labelMap[name] || descriptors[route.key]?.options?.title || name;
+        const onPress = () => {
+          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          if (!isFocused && !event.defaultPrevented) navigation.navigate(name);
+        };
+        return <TouchableOpacity key={route.key} onPress={onPress} style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 3 }} activeOpacity={0.72}><View style={{ width: 42, height: 32, alignItems: "center", justifyContent: "center", backgroundColor: isFocused ? "rgba(22,163,74,0.12)" : "transparent", borderRadius: 16, borderWidth: isFocused ? 1 : 0, borderColor: "rgba(22,163,74,0.18)" }}><Feather name={(iconMap[name] || "circle") as any} size={20} color={isFocused ? GREEN : MUTED} /></View><Text numberOfLines={1} style={{ fontSize: 10.5, fontFamily: isFocused ? "Inter_700Bold" : "Inter_600SemiBold", color: isFocused ? GREEN : MUTED, marginTop: 2 }}>{label}</Text></TouchableOpacity>;
+      })}
+    </View>
+  );
+}`;
+    s = s.slice(0, start) + fixed + s.slice(end);
+  }
+  s = s.replace(/<Tabs\.Screen name="index"[\s\S]*?<Tabs\.Screen name="admin" options=\{\{ title: "Home", href: isNagarsevak \? undefined : null \}\} \/>/,
+`<Tabs.Screen name="admin" options={{ title: "Home", href: isNagarsevak ? undefined : null }} />
+      <Tabs.Screen name="ward" options={{ title: "Ward", href: isNagarsevak ? undefined : null }} />
+      <Tabs.Screen name="news" options={{ title: "News", href: isNagarsevak ? undefined : null }} />
+      <Tabs.Screen name="profile" options={{ title: t("profile"), href: undefined }} />
+      <Tabs.Screen name="index" options={{ title: t("home"), href: isNagarsevak ? null : undefined }} />
+      <Tabs.Screen name="emergency" options={{ href: null }} />
+      <Tabs.Screen name="complaints" options={{ title: t("complaints"), href: isNagarsevak ? null : undefined }} />
+      <Tabs.Screen name="feed" options={{ title: t("feed"), href: isNagarsevak ? null : undefined }} />
+      <Tabs.Screen name="services" options={{ href: null }} />`);
+  return s;
+}
+
+edit('app/(tabs)/_layout.tsx', s => fixNagarsevakTabs(s).replace(
   '<Tabs tabBar={(props) => isNagarsevak ? <NagarsevakTabBar {...props} /> : <AnimatedTabBar {...props} />} screenOptions={{ headerShown: false, tabBarActiveTintColor: isNagarsevak ? GREEN : ORANGE, tabBarInactiveTintColor: MUTED }}>',
   '<Tabs backBehavior="history" tabBar={(props) => isNagarsevak ? <NagarsevakTabBar {...props} /> : <AnimatedTabBar {...props} />} screenOptions={{ headerShown: false, tabBarActiveTintColor: isNagarsevak ? GREEN : ORANGE, tabBarInactiveTintColor: MUTED }}>'
 ));
@@ -39,10 +84,16 @@ edit('app/(tabs)/profile.tsx', s => s
            'const confirmLogout = async () => { setShowLogoutModal(false); await logout("/login"); router.replace("/login" as any); };')
 );
 
-edit('app/(tabs)/admin.tsx', s => s
-  .replace('await logout();\n    router.replace("/login");', 'await logout("/nagarsevak/login");\n    router.replace("/nagarsevak/login" as any);')
-  .replace('onPress={() => router.push("/login")}', 'onPress={() => router.replace("/nagarsevak/login" as any)}')
-);
+edit('app/(tabs)/admin.tsx', s => {
+  let next = s
+    .replace('await logout();\n    router.replace("/login");', 'await logout("/nagarsevak/login");\n    router.replace("/nagarsevak/login" as any);')
+    .replace('onPress={() => router.push("/login")}', 'onPress={() => router.replace("/nagarsevak/login" as any)}')
+    .replace('router.push({ pathname: "/complaint/list", params: { status: nextFilter } } as any);', 'setFilter(nextFilter);\n    setTimeout(() => complaintListRef.current?.scrollToOffset({ offset: 0, animated: true }), 80);');
+  if (!next.includes('complaintIdText:')) {
+    next = next.replace(/(cmpMeta:\s*\{[^\n]*\},)/, '$1\n  complaintIdText: { fontSize: 10, color: "#16A34A", fontFamily: "Inter_700Bold", marginTop: 1 },');
+  }
+  return next;
+});
 
 edit('app/super-admin/settings.tsx', s => s
   .replace('await logout();\n                  router.replace("/login");', 'await logout("/super-admin-login");\n                  router.replace("/super-admin-login" as any);')
