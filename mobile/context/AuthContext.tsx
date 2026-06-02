@@ -13,6 +13,7 @@ export interface User {
   wardNumber?: string;
   isSuperAdmin?: boolean;
   age?: number;
+  dob?: string;
   email?: string;
   address?: string;
   contactNumber?: string;
@@ -42,8 +43,10 @@ interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
   loading: boolean;
+  logoutTarget: string | null;
+  clearLogoutTarget: () => void;
   login: (user: User) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (redirectTo?: string) => Promise<void>;
   checkPhone: (mobile: string) => Promise<User | null>;
   register: (userData: Omit<User, "id" | "avatarColor" | "createdAt">) => Promise<User>;
   loginWithPhone: (mobile: string) => Promise<User | null>;
@@ -79,6 +82,7 @@ async function saveAllUsers(users: User[]): Promise<void> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutTarget, setLogoutTarget] = useState<string | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(SESSION_KEY)
@@ -88,12 +92,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const clearLogoutTarget = () => setLogoutTarget(null);
+
   const login = async (userData: User) => {
+    setLogoutTarget(null);
     setUser(userData);
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
   };
 
-  const logout = async () => {
+  const logout = async (redirectTo?: string) => {
+    setLogoutTarget(redirectTo || null);
     setUser(null);
     await AsyncStorage.removeItem(SESSION_KEY);
   };
@@ -227,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, login, logout, checkPhone, register, loginWithPhone, loginWithNagarsevakId, loginWithGoogle, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, logoutTarget, clearLogoutTarget, login, logout, checkPhone, register, loginWithPhone, loginWithNagarsevakId, loginWithGoogle, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
