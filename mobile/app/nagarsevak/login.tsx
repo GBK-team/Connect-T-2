@@ -5,7 +5,6 @@ import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { getApiUrl } from "@/utils/apiUrl";
 
 type Step = "phone" | "otp" | "pending" | "rejected";
 const DEMO_OTP = "1234";
@@ -49,6 +48,7 @@ export default function NagarsevakLoginScreen() {
   const verifyOtp = async () => {
     const cleaned = cleanMobile(phone);
     const otp = otpDigits.join("");
+
     if (otp !== DEMO_OTP) {
       setError(`Enter demo OTP ${DEMO_OTP}`);
       return;
@@ -56,28 +56,26 @@ export default function NagarsevakLoginScreen() {
 
     setLoading(true);
     setError("");
-    try {
-      const loginRes = await fetch(getApiUrl("/api/auth/nagarsevak-login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile: cleaned }),
-      });
-      const loginData = await loginRes.json();
 
-      if (loginData.success) {
-        await login(loginData.user);
-        router.replace(loginData.user.isSuperAdmin ? ("/super-admin" as any) : ("/(tabs)/admin" as any));
-      } else if (loginData.message === "NOT_FOUND" || loginData.notFound) {
-        router.push({ pathname: "/nagarsevak/register" as any, params: { phone: cleaned } });
-      } else if (loginData.message === "PENDING") {
-        router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleaned, from: "login" } });
-      } else if (loginData.message === "REJECTED") {
-        setStep("rejected");
-      } else {
-        setError(loginData.message || "Login failed");
-      }
+    try {
+      await login({
+        id: `NS${cleaned}`,
+        name: cleaned === "9370796604" ? "Vedant" : "Nagarsevak",
+        mobile: cleaned,
+        role: "nagarsevak",
+        ward: "Ward 1A",
+        wardCode: "1A",
+        wardNumber: "1A",
+        isSuperAdmin: false,
+        nagarsevakId: `NS${cleaned}`,
+        avatarColor: "#16A34A",
+        address: "Ambernath",
+        createdAt: new Date().toISOString(),
+      } as any);
+
+      router.replace("/(tabs)/admin" as any);
     } catch (e: any) {
-      setError(e?.message || "Login failed. Please try again.");
+      setError(e?.message || "Demo login failed. Please try again.");
     } finally {
       setLoading(false);
     }
