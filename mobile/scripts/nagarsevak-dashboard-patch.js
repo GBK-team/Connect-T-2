@@ -8,6 +8,15 @@ function replaceOnce(text, from, to) {
   return text.replace(from, to);
 }
 
+function ensureComplaintIdStyle(text) {
+  if (text.includes('complaintIdText:')) return text;
+  return replaceOnce(
+    text,
+    '  cmpMeta: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 2 },',
+    '  cmpMeta: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 2 },\n  complaintIdText: { fontSize: 10, color: "#16A34A", fontFamily: "Inter_700Bold", marginTop: 1 },'
+  );
+}
+
 function cleanupRemovedPerformanceBox(text) {
   let next = text;
   next = next.replace(/\n\s*<View style=\{styles\.performancePanel\}>[\s\S]*?\n\s*<\/View>\n\n\s*\{\/\* ALERTS PANEL \*\/\}/g, '\n      {/* ALERTS PANEL */}');
@@ -42,6 +51,7 @@ try {
   );
 
   next = cleanupRemovedPerformanceBox(next);
+  next = ensureComplaintIdStyle(next);
 
   if (next !== text) {
     fs.writeFileSync(file, next);
