@@ -268,7 +268,7 @@ export default function BroadcastScreen() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity
-          onPress={() => setShowCompose(true)}
+          onPress={() => router.push("/alert/new" as any)}
           activeOpacity={0.86}
           style={{ backgroundColor: "white", borderRadius: 16, padding: 15, marginBottom: 16, flexDirection: "row", alignItems: "center", shadowColor: "#166534", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 }}
         >
@@ -281,51 +281,6 @@ export default function BroadcastScreen() {
           </View>
           <Feather name="chevron-right" size={18} color="#CBD5E1" />
         </TouchableOpacity>
-
-        <View style={{ marginBottom: 8 }}>
-          <Text
-            style={{
-              fontSize: 15,
-              fontFamily: "Inter_700Bold",
-              color: "#0F172A",
-              marginBottom: 6,
-            }}
-          >
-            Quick Broadcast
-          </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {ALERT_TYPES.map((type) => (
-              <TouchableOpacity
-                key={type.key}
-                onPress={() => {
-                  setAlertType(type.key);
-                  setShowCompose(true);
-                }}
-                style={{
-                  backgroundColor: type.bg,
-                  borderRadius: 12,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-                activeOpacity={0.8}
-              >
-                <Feather name={type.icon as any} size={14} color={type.color} />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "Inter_600SemiBold",
-                    color: type.color,
-                    marginLeft: 6,
-                  }}
-                >
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
 
         {emergencyAlerts.length > 0 && (
           <View style={{ marginTop: 8, marginBottom: 4 }}>
@@ -452,9 +407,12 @@ export default function BroadcastScreen() {
             recentAlerts.map((alert, idx) => {
               const typeConfig =
                 ALERT_TYPES.find((t) => t.key === alert.type) || ALERT_TYPES[1];
+
               return (
-                <View
+                <TouchableOpacity
                   key={alert.id || idx}
+                  onPress={() => router.push({ pathname: "/alert/[id]" as any, params: { id: alert.id } })}
+                  activeOpacity={0.88}
                   style={{
                     backgroundColor: "white",
                     borderRadius: 14,
@@ -466,9 +424,7 @@ export default function BroadcastScreen() {
                     elevation: 1,
                   }}
                 >
-                  <View
-                    style={{ flexDirection: "row", alignItems: "flex-start" }}
-                  >
+                  <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                     <View
                       style={{
                         width: 36,
@@ -480,16 +436,11 @@ export default function BroadcastScreen() {
                         marginRight: 12,
                       }}
                     >
-                      <Feather
-                        name={typeConfig.icon as any}
-                        size={16}
-                        color={typeConfig.color}
-                      />
+                      <Feather name={typeConfig.icon as any} size={16} color={typeConfig.color} />
                     </View>
+
                     <View style={{ flex: 1 }}>
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <Text
                           style={{
                             flex: 1,
@@ -501,13 +452,19 @@ export default function BroadcastScreen() {
                         >
                           {alert.title}
                         </Text>
+
                         <TouchableOpacity
-                          onPress={() => confirmDeleteBroadcast(alert.id, alert.title)}
+                          onPress={(event) => {
+                            event.stopPropagation?.();
+                            confirmDeleteBroadcast(alert.id, alert.title);
+                          }}
                           style={{ padding: 4, marginLeft: 8 }}
+                          activeOpacity={0.75}
                         >
                           <Feather name="trash-2" size={13} color="#CBD5E1" />
                         </TouchableOpacity>
                       </View>
+
                       <Text
                         style={{
                           fontSize: 12,
@@ -519,6 +476,7 @@ export default function BroadcastScreen() {
                       >
                         {alert.body}
                       </Text>
+
                       <View
                         style={{
                           flexDirection: "row",
@@ -545,6 +503,7 @@ export default function BroadcastScreen() {
                             {typeConfig.label}
                           </Text>
                         </View>
+
                         <Text
                           style={{
                             fontSize: 10,
@@ -552,13 +511,12 @@ export default function BroadcastScreen() {
                             color: "#94A3B8",
                           }}
                         >
-                          {alert.ward || "All Wards"} ·{" "}
-                          {timeAgo(alert.createdAt)}
+                          {alert.ward || "All Wards"} · {timeAgo(alert.createdAt)}
                         </Text>
                       </View>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
