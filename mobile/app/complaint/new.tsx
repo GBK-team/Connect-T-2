@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
@@ -69,7 +71,7 @@ function NoticeModal({ notice, onClose }: { notice: NoticeState; onClose: () => 
     <Modal visible={notice.visible} transparent animationType="fade" onRequestClose={close}>
       <View style={styles.modalNoticeOverlay}>
         <View style={styles.modalNoticeCard}>
-          <View style={[styles.modalNoticeIcon, { backgroundColor: bg }]}>
+          <View style={[styles.modalNoticeIcon, { backgroundColor: bg }]}> 
             <Feather name={icon as any} size={28} color={color} />
           </View>
           <Text style={styles.modalNoticeTitle}>{notice.title}</Text>
@@ -83,6 +85,22 @@ function NoticeModal({ notice, onClose }: { notice: NoticeState; onClose: () => 
   );
 }
 
+function useKeyboardVisible() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setVisible(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setVisible(false));
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  return visible;
+}
+
 export default function NewComplaintScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -90,6 +108,7 @@ export default function NewComplaintScreen() {
   const { addComplaint } = useComplaints();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const keyboardVisible = useKeyboardVisible();
 
   const [photoUri, setPhotoUri] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<ComplaintCategory | null>(null);
@@ -209,7 +228,7 @@ export default function NewComplaintScreen() {
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={["#C2410C", ORANGE, "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <LinearGradient colors={["#C2410C", ORANGE, "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: topPad + 12 }]}> 
         <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.8}>
           <Feather name="chevron-left" size={20} color="white" />
           <Text style={styles.backBtnText}>Back</Text>
@@ -217,40 +236,49 @@ export default function NewComplaintScreen() {
         <View style={styles.headerRow}><View style={styles.headerCenter}><Text style={styles.headerTitle}>{t("reportProblemTitle")}</Text><Text style={styles.headerSub}>{t("yourComplaintGoes")}</Text></View></View>
       </LinearGradient>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 100 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>{t("photoOfProblem")}</Text>
-          {photoUri ? <View style={styles.photoContainer}><Image source={{ uri: photoUri }} style={styles.photo} /><TouchableOpacity style={styles.retakeBtn} onPress={handleCamera} activeOpacity={0.8}><Feather name="refresh-cw" size={14} color="white" /><Text style={styles.retakeBtnText}>{t("retake")}</Text></TouchableOpacity></View> : <View style={styles.photoButtons}><TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}><LinearGradient colors={[ORANGE, "#FB923C"]} style={styles.cameraBtnGrad}><Feather name="camera" size={24} color="white" /><Text style={styles.cameraBtnText}>{t("takePhoto")}</Text><Text style={styles.cameraBtnSub}>{t("clickPhotoOfProblem")}</Text></LinearGradient></TouchableOpacity><TouchableOpacity style={styles.galleryBtn} onPress={handleGallery} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /><Text style={styles.galleryBtnText}>{t("chooseFromGallery")}</Text></TouchableOpacity></View>}
-        </View>
+      <KeyboardAvoidingView style={styles.keyboardArea} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + (keyboardVisible ? 28 : 112) }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          automaticallyAdjustKeyboardInsets
+        >
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>{t("photoOfProblem")}</Text>
+            {photoUri ? <View style={styles.photoContainer}><Image source={{ uri: photoUri }} style={styles.photo} /><TouchableOpacity style={styles.retakeBtn} onPress={handleCamera} activeOpacity={0.8}><Feather name="refresh-cw" size={14} color="white" /><Text style={styles.retakeBtnText}>{t("retake")}</Text></TouchableOpacity></View> : <View style={styles.photoButtons}><TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}><LinearGradient colors={[ORANGE, "#FB923C"]} style={styles.cameraBtnGrad}><Feather name="camera" size={24} color="white" /><Text style={styles.cameraBtnText}>{t("takePhoto")}</Text><Text style={styles.cameraBtnSub}>{t("clickPhotoOfProblem")}</Text></LinearGradient></TouchableOpacity><TouchableOpacity style={styles.galleryBtn} onPress={handleGallery} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /><Text style={styles.galleryBtnText}>{t("chooseFromGallery")}</Text></TouchableOpacity></View>}
+          </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>{t("complaintCategory")}</Text>
-          <View style={styles.categoryGrid}>{categories.map((cat) => <TouchableOpacity key={cat.id} style={[styles.categoryItem, selectedCategory === cat.id && styles.categoryItemSelected]} onPress={() => setSelectedCategory(cat.id)} activeOpacity={0.8}><View style={[styles.catIconWrap, { backgroundColor: selectedCategory === cat.id ? cat.color : cat.bg }]}><Feather name={cat.icon as any} size={18} color={selectedCategory === cat.id ? "white" : cat.color} /></View><Text style={[styles.catLabel, selectedCategory === cat.id && { color: cat.color }]}>{t(categoryLabelKeys[cat.id])}</Text>{selectedCategory === cat.id && <View style={[styles.catCheck, { backgroundColor: cat.color }]}><Feather name="check" size={8} color="white" /></View>}</TouchableOpacity>)}</View>
-        </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>{t("complaintCategory")}</Text>
+            <View style={styles.categoryGrid}>{categories.map((cat) => <TouchableOpacity key={cat.id} style={[styles.categoryItem, selectedCategory === cat.id && styles.categoryItemSelected]} onPress={() => setSelectedCategory(cat.id)} activeOpacity={0.8}><View style={[styles.catIconWrap, { backgroundColor: selectedCategory === cat.id ? cat.color : cat.bg }]}><Feather name={cat.icon as any} size={18} color={selectedCategory === cat.id ? "white" : cat.color} /></View><Text style={[styles.catLabel, selectedCategory === cat.id && { color: cat.color }]}>{t(categoryLabelKeys[cat.id])}</Text>{selectedCategory === cat.id && <View style={[styles.catCheck, { backgroundColor: cat.color }]}><Feather name="check" size={8} color="white" /></View>}</TouchableOpacity>)}</View>
+          </View>
 
-        <View style={styles.section}><Text style={styles.sectionLabel}>{t("complaintTitle")}</Text><TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder={t("titlePlaceholder")} placeholderTextColor="#CBD5E1" maxLength={80} /></View>
-        <View style={styles.section}><Text style={styles.sectionLabel}>{t("description")}</Text><TextInput style={[styles.input, styles.textarea]} value={description} onChangeText={setDescription} placeholder={t("descriptionPlaceholder")} placeholderTextColor="#CBD5E1" multiline numberOfLines={4} textAlignVertical="top" maxLength={500} /></View>
+          <View style={styles.section}><Text style={styles.sectionLabel}>{t("complaintTitle")}</Text><TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder={t("titlePlaceholder")} placeholderTextColor="#CBD5E1" maxLength={80} returnKeyType="next" /></View>
+          <View style={styles.section}><Text style={styles.sectionLabel}>{t("description")}</Text><TextInput style={[styles.input, styles.textarea]} value={description} onChangeText={setDescription} placeholder={t("descriptionPlaceholder")} placeholderTextColor="#CBD5E1" multiline numberOfLines={4} textAlignVertical="top" maxLength={500} /></View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>LOCATION *</Text>
-          <TouchableOpacity style={[styles.detectBtn, detectingLoc && { opacity: 0.7 }]} onPress={detectLocation} disabled={detectingLoc} activeOpacity={0.8}>{detectingLoc ? <ActivityIndicator size="small" color={ORANGE} /> : <Feather name="navigation" size={15} color={ORANGE} />}<Text style={styles.detectBtnText}>{detectingLoc ? "Detecting..." : "Detect My Location"}</Text></TouchableOpacity>
-          {locStatus === "outside" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#DC2626" /><Text style={styles.locWarningText}>Your location is outside Ambernath. Only complaints within Ambernath are accepted.</Text></View>}
-          {locStatus === "denied" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#D97706" /><Text style={styles.locWarningText}>Location permission denied. Enter manually below.</Text></View>}
-          {locStatus === "ok" && <View style={styles.locSuccess}><Feather name="check-circle" size={13} color={GREEN} /><Text style={styles.locSuccessText}>Location detected within Ambernath</Text></View>}
-          <View style={[styles.locationRow, { marginTop: 10 }]}><View style={styles.locationIcon}><Feather name="map-pin" size={16} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={location} onChangeText={(v) => { setLocation(v); if (locStatus === "ok") setLocStatus("idle"); }} placeholder="Enter exact location / landmark" placeholderTextColor="#CBD5E1" /></View>
-          <Text style={styles.wardText}>Ward: {user?.ward || "Auto-detected based on location"}</Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>LOCATION *</Text>
+            <TouchableOpacity style={[styles.detectBtn, detectingLoc && { opacity: 0.7 }]} onPress={detectLocation} disabled={detectingLoc} activeOpacity={0.8}>{detectingLoc ? <ActivityIndicator size="small" color={ORANGE} /> : <Feather name="navigation" size={15} color={ORANGE} />}<Text style={styles.detectBtnText}>{detectingLoc ? "Detecting..." : "Detect My Location"}</Text></TouchableOpacity>
+            {locStatus === "outside" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#DC2626" /><Text style={styles.locWarningText}>Your location is outside Ambernath. Only complaints within Ambernath are accepted.</Text></View>}
+            {locStatus === "denied" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#D97706" /><Text style={styles.locWarningText}>Location permission denied. Enter manually below.</Text></View>}
+            {locStatus === "ok" && <View style={styles.locSuccess}><Feather name="check-circle" size={13} color={GREEN} /><Text style={styles.locSuccessText}>Location detected within Ambernath</Text></View>}
+            <View style={[styles.locationRow, { marginTop: 10 }]}><View style={styles.locationIcon}><Feather name="map-pin" size={16} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={location} onChangeText={(v) => { setLocation(v); if (locStatus === "ok") setLocStatus("idle"); }} placeholder="Enter exact location / landmark" placeholderTextColor="#CBD5E1" returnKeyType="next" /></View>
+            <Text style={styles.wardText}>Ward: {user?.ward || "Auto-detected based on location"}</Text>
+          </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>CONTACT NUMBER *</Text>
-          <View style={styles.locationRow}><View style={styles.locationIcon}><Feather name="phone" size={15} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={contactNumber} onChangeText={(value) => setContactNumber(value.replace(/\D/g, "").slice(0, 10))} placeholder="Your 10-digit contact number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></View>
-          <Text style={[styles.wardText, { marginTop: 6 }]}>Nagarsevak may contact you for resolution updates</Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>CONTACT NUMBER *</Text>
+            <View style={styles.locationRow}><View style={styles.locationIcon}><Feather name="phone" size={15} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={contactNumber} onChangeText={(value) => setContactNumber(value.replace(/\D/g, "").slice(0, 10))} placeholder="Your 10-digit contact number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></View>
+            <Text style={[styles.wardText, { marginTop: 6 }]}>Nagarsevak may contact you for resolution updates</Text>
+          </View>
 
-        <View style={styles.noticeCard}><Feather name="info" size={14} color={ORANGE} /><Text style={styles.noticeText}>{t("complaintNotice")}</Text></View>
-      </ScrollView>
+          <View style={styles.noticeCard}><Feather name="info" size={14} color={ORANGE} /><Text style={styles.noticeText}>{t("complaintNotice")}</Text></View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}><TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}><LinearGradient colors={[GREEN, "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBtnGrad}>{submitting ? <ActivityIndicator color="white" /> : <><Feather name="send" size={18} color="white" /><Text style={styles.submitBtnText}>{t("submitComplaint")}</Text></>}</LinearGradient></TouchableOpacity></View>
+      {!keyboardVisible && <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}><TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}><LinearGradient colors={[GREEN, "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBtnGrad}>{submitting ? <ActivityIndicator color="white" /> : <><Feather name="send" size={18} color="white" /><Text style={styles.submitBtnText}>{t("submitComplaint")}</Text></>}</LinearGradient></TouchableOpacity></View>}
       <NoticeModal notice={notice} onClose={closeNotice} />
     </View>
   );
@@ -260,6 +288,7 @@ const styles = StyleSheet.create({
   backBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 10, alignSelf: "flex-start", paddingVertical: 4, paddingRight: 8, paddingLeft: 2 },
   backBtnText: { color: "rgba(255,255,255,0.92)", fontSize: 14, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
   root: { flex: 1, backgroundColor: "#ebeffc" },
+  keyboardArea: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 18, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   headerCenter: { flex: 1 },
