@@ -1,16 +1,5 @@
 import React, { useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -19,6 +8,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopShade from "@/components/TopShade";
 import { useAuth } from "@/context/AuthContext";
 import { useSuperAdminAccess } from "@/hooks/useSuperAdminAccess";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const SUPER_ADMIN_ACCESS_KEY = "@connect_t_super_admin_access_v1";
 
 function cleanMobile(value: string) {
   return value.replace(/\D/g, "").slice(0, 10);
@@ -30,6 +23,52 @@ function NoticeModal({ visible, title, message, tone = "info", onClose }: { visi
   const color = tone === "success" ? "#16A34A" : tone === "danger" ? "#DC2626" : "#16A34A";
   const bg = tone === "success" ? "#DCFCE7" : tone === "danger" ? "#FEE2E2" : "#F0FDF4";
   const icon = tone === "success" ? "check-circle" : tone === "danger" ? "alert-circle" : "info";
+
+
+  const revokeAccess = async (accessId: string) => {
+    try {
+      const raw = await AsyncStorage.getItem(SUPER_ADMIN_ACCESS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(parsed) ? parsed : [];
+
+      const nextList = list.map((item: any) => {
+        const itemId = String(item.id || item.accessId || item.uniqueId || "");
+        if (itemId !== String(accessId)) return item;
+
+        return {
+          ...item,
+          status: "revoked",
+          revokedAt: new Date().toISOString(),
+        };
+      });
+
+      await AsyncStorage.setItem(SUPER_ADMIN_ACCESS_KEY, JSON.stringify(nextList));
+
+      Alert.alert("Access revoked", "This Super Admin access ID has been revoked.");
+    } catch (error) {
+      console.warn("Failed to revoke super admin access", error);
+      Alert.alert("Revoke failed", "Could not revoke this access ID. Please try again.");
+    }
+  };
+
+  const confirmRevokeAccess = (accessId: string, name?: string) => {
+    Alert.alert(
+      "Revoke access?",
+      name
+        ? `Are you sure you want to revoke access for ${name}?`
+        : "Are you sure you want to revoke this Super Admin access ID?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Revoke",
+          style: "destructive",
+          onPress: () => revokeAccess(accessId),
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.noticeOverlay}>
