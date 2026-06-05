@@ -80,7 +80,7 @@ export default function OfficersScreen() {
         style={{ paddingTop: topPad + 12, paddingBottom: 20, paddingHorizontal: 20 }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start", marginBottom: 6 }}>
               <Feather name="users" size={10} color="#6EE7B7" />
               <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#6EE7B7", marginLeft: 4, letterSpacing: 1.5 }}>OFFICER & WARD MANAGEMENT</Text>
@@ -90,6 +90,29 @@ export default function OfficersScreen() {
               {officers.length} officers · {wardOfficers.filter((o) => o.wardCode).length} wards covered
             </Text>
           </View>
+
+          <TouchableOpacity
+            onPress={() => router.push("/super-admin/settings" as any)}
+            activeOpacity={0.86}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 15,
+              backgroundColor: "rgba(255,255,255,0.96)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginLeft: 12,
+              shadowColor: "#052E16",
+              shadowOpacity: 0.18,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 8,
+              borderWidth: 1,
+              borderColor: "rgba(22,163,74,0.22)",
+            }}
+          >
+            <Feather name="settings" size={19} color="#16A34A" />
+          </TouchableOpacity>
         </View>
 
         <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 16, padding: 14 }}>

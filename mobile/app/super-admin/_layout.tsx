@@ -82,7 +82,10 @@ function FloatingSettingsButton() {
 export default function SuperAdminLayout() {
   const { user } = useAuth();
   const pathname = usePathname();
-  const hideFloatingSettings = pathname.startsWith("/super-admin/officer");
+  const hideFloatingSettings =
+    pathname.startsWith("/super-admin/officer/") ||
+    pathname === "/super-admin/settings" ||
+    pathname === "/super-admin/access";
 
   if (!user || (user.role !== "super_admin" && !user.isSuperAdmin)) return null;
 

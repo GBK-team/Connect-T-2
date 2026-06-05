@@ -346,21 +346,6 @@ export default function SuperAdminDashboard() {
         </View>
 
         <View style={{ marginTop: 16 }}>
-          <SectionHeader title="Monthly Trends" sub="Complaint volume over 6 months" />
-          <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", height: 100, justifyContent: "space-around" }}>
-              {monthlyData.map((m) => (
-                <View key={m.month} style={{ alignItems: "center", flex: 1 }}>
-                  <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "#16A34A", marginBottom: 4 }}>{m.count > 0 ? m.count : ""}</Text>
-                  <View style={{ width: 28, height: Math.max(8, (m.count / maxMonthly) * 80), backgroundColor: "#16A34A", borderRadius: 6, opacity: 0.85 }} />
-                  <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: "#94A3B8", marginTop: 6 }}>{m.month}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <View style={{ marginTop: 16 }}>
           <SectionHeader title="Category Breakdown" sub="Complaints by type" />
           <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
             {categoryAnalytics.length === 0 ? (
@@ -406,31 +391,8 @@ export default function SuperAdminDashboard() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }} numberOfLines={1}>{c.title}</Text>
-                        <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
                          <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
-                         <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: "#64748B" }}>{c.ward} · {timeAgo(c.createdAt)}</Text>
+<Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: "#64748B" }}>{c.ward} · {timeAgo(c.createdAt)}</Text>
                       </View>
                       <View style={{ backgroundColor: STATUS_BG[c.status] || "#F1F5F9", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
                         <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: STATUS_COLOR[c.status] || "#64748B" }}>{STATUS_LABEL[c.status] || c.status}</Text>
