@@ -2731,17 +2731,6 @@ ensureJobPortalSchema()
 /* END JOB PORTAL MYSQL API V1 */
 
 
-/* 404 */
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "API route not found",
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-
-
 async function ensureConnectTCoreSchema() {
   const statements = [
 `CREATE TABLE IF NOT EXISTS users (
@@ -3057,7 +3046,7 @@ async function ensureConnectTCoreSchema() {
   }
 }
 
-app.post("/api/admin/setup-database", async (req, res) => {
+app.all("/api/admin/setup-database", async (req, res) => {
   try {
     const setupKey = process.env.SETUP_DATABASE_KEY || "connect-t-setup-2026";
     const providedKey = String(req.headers["x-setup-key"] || req.query.key || req.body?.key || "");
@@ -3091,6 +3080,16 @@ app.post("/api/admin/setup-database", async (req, res) => {
     });
   }
 });
+
+/* 404 */
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: "API route not found",
+  });
+});
+
+const PORT = process.env.PORT || 3000;
 
 
 app.listen(PORT, "0.0.0.0", () => {
