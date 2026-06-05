@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { apiGet, apiPost } from "@/lib/api";
+
 export type UserRole = "citizen" | "nagarsevak" | "super_admin";
 
 export interface User {
@@ -63,13 +65,55 @@ const AVATAR_COLORS = ["#1E40AF", "#059669", "#7C3AED", "#D97706", "#DC2626", "#
 const SUPER_ADMIN_MOBILE = "8554994735";
 
 function normalizeMobile(mobile: string): string {
-  return mobile.trim().replace(/\D/g, "");
+  return String(mobile || "").trim().replace(/\D/g, "").slice(-10);
 }
 
-async function getAllUsers(): Promise<User[]> {
+function normalizeRole(value: any): UserRole {
+  if (value === "nagarsevak" || value === "super_admin") return value;
+  return "citizen";
+}
+
+function normalizeUser(raw: any): User {
+  const role = normalizeRole(raw.role);
+  const mobile = normalizeMobile(raw.mobile || raw.phone || raw.contactNumber);
+  const isSuperAdmin =
+    raw.isSuperAdmin === true ||
+    raw.is_super_admin === 1 ||
+    raw.is_super_admin === true ||
+    role === "super_admin";
+
+  return {
+    id: String(raw.id || raw.userId || raw.nagarsevak_id || raw.nagarsevakId || `${role}_${mobile || Date.now()}`),
+    name: String(raw.name || raw.fullName || raw.contactName || (role === "super_admin" ? "Super Admin" : "User")),
+    mobile,
+    role,
+    ward: raw.ward || undefined,
+    wardCode: raw.wardCode ?? raw.ward_code ?? null,
+    wardNumber: raw.wardNumber || raw.ward_number || undefined,
+    isSuperAdmin,
+    age: raw.age === undefined || raw.age === null ? undefined : Number(raw.age),
+    dob: raw.dob || undefined,
+    email: raw.email || undefined,
+    address: raw.address || undefined,
+    contactNumber: raw.contactNumber || raw.contact_number || undefined,
+    contactName: raw.contactName || raw.contact_name || undefined,
+    officeTimings: raw.officeTimings || raw.office_timings || undefined,
+    residenceAddress: raw.residenceAddress || raw.residence_address || undefined,
+    nagarsevakId: raw.nagarsevakId || raw.nagarsevak_id || raw.id || undefined,
+    avatarColor: raw.avatarColor || raw.avatar_color || AVATAR_COLORS[0],
+    createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+    notifyEmail: raw.notifyEmail ?? raw.notify_email ?? false,
+    notifyWhatsapp: raw.notifyWhatsapp ?? raw.notify_whatsapp ?? false,
+    profilePhoto: raw.profilePhoto || raw.profile_photo || undefined,
+    officeAddress: raw.officeAddress || raw.office_address || undefined,
+  };
+}
+
+async function getLocalUsers(): Promise<User[]> {
   try {
     const raw = await AsyncStorage.getItem(USERS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeUser) : [];
   } catch {
     return [];
   }
@@ -77,6 +121,68 @@ async function getAllUsers(): Promise<User[]> {
 
 async function saveAllUsers(users: User[]): Promise<void> {
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function mergeUsers(localUsers: User[], backendUsers: User[]) {
+  const map = new Map<string, User>();
+
+  for (const item of localUsers) {
+    const key = `${normalizeMobile(item.mobile)}:${item.role}`;
+    map.set(key, normalizeUser(item));
+  }
+
+  for (const item of backendUsers) {
+    const key = `${normalizeMobile(item.mobile)}:${item.role}`;
+    map.set(key, normalizeUser(item));
+  }
+
+  return Array.from(map.values());
+}
+
+async function fetchBackendUsers(): Promise<User[]> {
+  const res = await apiGet<any>("/api/users");
+  const rawUsers = Array.isArray(res.users) ? res.users : Array.isArray(res.data) ? res.data : [];
+  return rawUsers.map(normalizeUser);
+}
+
+async function getAllUsers(): Promise<User[]> {
+  const localUsers = await getLocalUsers();
+
+  try {
+    const backendUsers = await fetchBackendUsers();
+    const merged = mergeUsers(localUsers, backendUsers);
+    await saveAllUsers(merged);
+    return merged;
+  } catch {
+    return localUsers;
+  }
+}
+
+async function upsertBackendUser(userData: User): Promise<void> {
+  const user = normalizeUser(userData);
+
+  if (!user.name || !user.mobile) {
+    return;
+  }
+
+  await apiPost("/api/users", {
+    id: user.id,
+    name: user.name,
+    mobile: user.mobile,
+    role: user.role,
+    ward: user.ward || null,
+    ward_code: user.wardCode || null,
+    ward_number: user.wardNumber || null,
+    is_super_admin: user.isSuperAdmin ? 1 : 0,
+    age: user.age || null,
+    email: user.email || null,
+    address: user.address || null,
+    nagarsevak_id: user.nagarsevakId || user.id,
+    avatar_color: user.avatarColor || null,
+    profile_photo: user.profilePhoto || null,
+    notify_email: user.notifyEmail ? 1 : 0,
+    notify_whatsapp: user.notifyWhatsapp ? 1 : 0,
+  });
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -87,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(SESSION_KEY)
       .then((stored) => {
-        if (stored) setUser(JSON.parse(stored));
+        if (stored) setUser(normalizeUser(JSON.parse(stored)));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -95,9 +201,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearLogoutTarget = () => setLogoutTarget(null);
 
   const login = async (userData: User) => {
+    const normalized = normalizeUser(userData);
+
     setLogoutTarget(null);
-    setUser(userData);
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+
+    try {
+      await upsertBackendUser(normalized);
+    } catch (error) {
+      console.error("Failed to save login user to MySQL", error);
+    }
+
+    const users = await getLocalUsers();
+    const key = `${normalizeMobile(normalized.mobile)}:${normalized.role}`;
+    const nextUsers = [
+      normalized,
+      ...users.filter((item) => `${normalizeMobile(item.mobile)}:${item.role}` !== key),
+    ];
+
+    await saveAllUsers(nextUsers);
+    setUser(normalized);
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(normalized));
   };
 
   const logout = async (redirectTo?: string) => {
@@ -118,23 +241,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const users = await getAllUsers();
     const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
     const normalizedMobile = normalizeMobile(userData.mobile);
-    const existingIndex = users.findIndex((u) => normalizeMobile(u.mobile) === normalizedMobile);
-    const newUser: User = {
+    const role = userData.role || "citizen";
+    const existingIndex = users.findIndex((u) => normalizeMobile(u.mobile) === normalizedMobile && u.role === role);
+
+    const newUser: User = normalizeUser({
       ...userData,
       mobile: normalizedMobile,
-      role: userData.role || "citizen",
+      role,
       wardCode: userData.wardCode ?? null,
       isSuperAdmin: userData.isSuperAdmin || false,
       id: existingIndex >= 0 ? users[existingIndex].id : "U" + Date.now(),
       avatarColor: existingIndex >= 0 ? users[existingIndex].avatarColor : AVATAR_COLORS[colorIndex],
       createdAt: existingIndex >= 0 ? users[existingIndex].createdAt : new Date().toISOString(),
-    };
-    if (existingIndex >= 0) {
-      users[existingIndex] = newUser;
-    } else {
-      users.push(newUser);
-    }
-    await saveAllUsers(users);
+    });
+
+    await upsertBackendUser(newUser);
     await login(newUser);
     return newUser;
   };
@@ -143,18 +264,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedMobile = normalizeMobile(mobile);
 
     if (normalizedMobile === SUPER_ADMIN_MOBILE) {
-      const superAdminUser: User = {
-        id: "SUPER_ADMIN",
-        name: "Karanjule Patil Tejashri Vishwajeet",
+      const superAdminUser: User = normalizeUser({
+        id: "SUPER_ADMIN_TEJASHREE",
+        name: "Tejashree Ma'am",
         mobile: SUPER_ADMIN_MOBILE,
         role: "super_admin",
         ward: "All Wards",
         wardCode: null,
-        nagarsevakId: "SUPER_ADMIN",
+        nagarsevakId: "SUPER_ADMIN_TEJASHREE",
         isSuperAdmin: true,
         avatarColor: "#16A34A",
         createdAt: new Date().toISOString(),
-      };
+      });
       await login(superAdminUser);
       return superAdminUser;
     }
@@ -169,7 +290,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  const loginWithNagarsevakId = async (_mobile: string, _nagarsevakId: string): Promise<User | null> => {
+  const loginWithNagarsevakId = async (mobile: string, nagarsevakId: string): Promise<User | null> => {
+    const normalizedMobile = normalizeMobile(mobile);
+    const users = await getAllUsers();
+    const existingUser = users.find(
+      (u) =>
+        normalizeMobile(u.mobile) === normalizedMobile &&
+        (u.role === "nagarsevak" || u.role === "super_admin") &&
+        (!nagarsevakId || u.nagarsevakId === nagarsevakId || u.id === nagarsevakId),
+    );
+
+    if (existingUser) {
+      await login(existingUser);
+      return existingUser;
+    }
+
     return null;
   };
 
@@ -179,21 +314,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const existing = users.find(
       (u) => u.email && u.email.toLowerCase() === normalizedEmail
     );
+
     if (existing) {
-      const refreshed: User = {
+      const refreshed: User = normalizeUser({
         ...existing,
         name: googleUser.name,
         profilePhoto: googleUser.picture,
         email: googleUser.email,
-      };
-      const idx = users.findIndex((u) => u.id === existing.id);
-      if (idx >= 0) users[idx] = refreshed;
-      await saveAllUsers(users);
+      });
       await login(refreshed);
       return refreshed;
     }
+
     const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
-    const newUser: User = {
+    const newUser: User = normalizeUser({
       id: "G_" + googleUser.sub,
       name: googleUser.name,
       mobile: "",
@@ -203,16 +337,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatarColor: AVATAR_COLORS[colorIndex],
       isSuperAdmin: false,
       createdAt: new Date().toISOString(),
-    };
+    });
+
     users.push(newUser);
     await saveAllUsers(users);
-    await login(newUser);
+    setUser(newUser);
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
     return newUser;
   };
 
   const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
-    const updated: User = {
+
+    const updated: User = normalizeUser({
       ...user,
       ...updates,
       id: user.id,
@@ -221,17 +358,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createdAt: user.createdAt,
       wardCode: updates.wardCode ?? user.wardCode ?? null,
       isSuperAdmin: updates.isSuperAdmin ?? user.isSuperAdmin ?? false,
-    };
+    });
+
+    try {
+      await upsertBackendUser(updated);
+    } catch (error) {
+      console.error("Failed to update user in MySQL", error);
+    }
+
     setUser(updated);
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(updated));
-    const users = await getAllUsers();
-    const idx = users.findIndex((u) => u.id === user.id);
-    if (idx >= 0) {
-      users[idx] = updated;
-    } else {
-      users.push(updated);
-    }
-    await saveAllUsers(users);
+
+    const users = await getLocalUsers();
+    const key = `${normalizeMobile(updated.mobile)}:${updated.role}`;
+    const nextUsers = [
+      updated,
+      ...users.filter((item) => `${normalizeMobile(item.mobile)}:${item.role}` !== key),
+    ];
+
+    await saveAllUsers(nextUsers);
   };
 
   return (

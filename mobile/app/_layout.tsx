@@ -59,6 +59,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inSuperAdminLogin = first === "super-admin-login";
     const inSuperAdmin = first === "super-admin";
     const inNagarsevak = first === "nagarsevak";
+    const inAlert = first === "alert";
+    const inComplaint = first === "complaint";
     const currentTab = inTabs ? String(segments[1] || "") : undefined;
     const isPublicRoute = !first || inLogin || inJobs || inPortalSelect || inSecretAccess || inSuperAdminLogin || inNagarsevak;
 
@@ -76,7 +78,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (isSuperAdminUser(user) && !inSuperAdmin) {
+    if (isSuperAdminUser(user) && !inSuperAdmin && !inAlert && !inComplaint) {
       router.replace("/super-admin" as any);
     } else if (user.role === "nagarsevak" && !isSuperAdminUser(user) && inTabs && !NAGARSEVAK_ALLOWED_TABS.has(currentTab || "")) {
       router.replace("/(tabs)/admin" as any);
@@ -164,6 +166,7 @@ function RootLayoutNav() {
       <Stack.Screen name="complaint/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="complaint/list" options={{ headerShown: false }} />
       <Stack.Screen name="alert/new" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="alert/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="alert/list" options={{ headerShown: false }} />
       <Stack.Screen name="service/[id]" options={{ headerShown: false }} />
     </Stack>

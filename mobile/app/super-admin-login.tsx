@@ -12,6 +12,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 
+import { apiPost } from "@/lib/api";
+
 const SUPER_ADMIN_ACCESS_KEY = "@connect_t_super_admin_access_v1";
 
 function normalizeSuperAdminPhone(value: any) {
@@ -85,38 +87,29 @@ export default function SuperAdminLoginScreen() {
     try {
       setSubmitting(true);
 
-      await login({
-        id: isMainSuperAdmin ? "SUPER_ADMIN_TEJASHREE" : `SUPER_ADMIN_${finalMobile}`,
-        name: isMainSuperAdmin ? "Tejashree Ma'am" : "Super Admin",
+      const response = await apiPost<any>("/api/auth/super-admin-access-login", {
         mobile: finalMobile,
+        accessCode: finalAccessId,
+      });
+
+      const backendUser = response.user || response.data || response;
+
+      await login({
+        id: backendUser.id || (isMainSuperAdmin ? "SUPER_ADMIN_TEJASHREE" : `SUPER_ADMIN_${finalMobile}`),
+        name: backendUser.name || (isMainSuperAdmin ? "Tejashree Ma'am" : "Super Admin"),
+        mobile: cleanMobile(backendUser.mobile || finalMobile),
         role: "super_admin",
         ward: "All Wards",
         wardCode: null,
         isSuperAdmin: true,
-        nagarsevakId: isMainSuperAdmin ? "SUPER_ADMIN_TEJASHREE" : (finalAccessId || `SA_${finalMobile}`),
+        nagarsevakId: backendUser.accessCode || finalAccessId || backendUser.id || `SA_${finalMobile}`,
         avatarColor: "#16A34A",
         createdAt: new Date().toISOString(),
       } as any);
 
-      
-      const cleanSuperAdminMobile = normalizeSuperAdminPhone(mobile);
-      const typedAccessId = String(accessId || "").trim();
-
-      const mainSuperAdminMobiles = ["7888089223"];
-      if (!mainSuperAdminMobiles.includes(cleanSuperAdminMobile)) {
-        const matchedAccess = await validateGeneratedSuperAdminAccess(cleanSuperAdminMobile, typedAccessId);
-        if (!matchedAccess) {
-          Alert.alert(
-            "Invalid Super Admin access ID",
-            "This mobile number and access ID do not match any active Super Admin access."
-          );
-          return;
-        }
-      }
-
-router.replace("/super-admin" as any);
+      router.replace("/super-admin" as any);
     } catch (e: any) {
-      showNotice("Login failed", e?.message || "Demo super admin login failed.", "danger");
+      showNotice("Login failed", e?.message || "Super Admin login failed.", "danger");
     } finally {
       setSubmitting(false);
     }

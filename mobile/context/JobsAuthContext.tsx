@@ -282,11 +282,14 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const persist = async (user: JobsUser | null) => {
-    if (user) await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    else await AsyncStorage.removeItem(SESSION_KEY);
+    if (user) {
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(user));
+      await saveStoredJobsAccount(user);
+    } else {
+      await AsyncStorage.removeItem(SESSION_KEY);
+    }
     setJobsUser(user);
-  await saveStoredJobsAccount(user);
-};
+  };
 
   useEffect(() => {
     AsyncStorage.getItem(SESSION_KEY)
@@ -303,18 +306,8 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
       phone: cleanPhone(data.phone),
     };
 
-    let user: JobsUser;
-    try {
-      const res = await apiPost<any>("/api/job-portal/register", payload);
-      user = normalizeUser(res.user || res.data || res);
-    } catch {
-      user = normalizeUser({
-        ...payload,
-        id: `${payload.role}_${payload.phone}_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-      });
-    }
-
+    const res = await apiPost<any>("/api/job-portal/register", payload);
+    const user = normalizeUser(res.user || res.data || res);
     await persist(user);
   };
 
@@ -327,13 +320,21 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
       await persist(normalizeUser(raw));
       return true;
     } catch {
+      const storedAccount = await findStoredJobsAccount(clean, role);
+      if (storedAccount) {
+        await persist(normalizeUser(storedAccount));
+        return true;
+      }
+
       const saved = await AsyncStorage.getItem(SESSION_KEY);
       if (!saved) return false;
+
       const user = normalizeUser(JSON.parse(saved));
       if (cleanPhone(user.phone) === clean && user.role === role) {
         await persist(user);
         return true;
       }
+
       return false;
     }
   };

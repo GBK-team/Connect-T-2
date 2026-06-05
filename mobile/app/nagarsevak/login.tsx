@@ -6,6 +6,8 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 
+import { apiPost } from "@/lib/api";
+
 type Step = "phone" | "otp" | "pending" | "rejected";
 const DEMO_OTP = "1234";
 
@@ -58,24 +60,56 @@ export default function NagarsevakLoginScreen() {
     setError("");
 
     try {
-      await login({
-        id: `NS${cleaned}`,
-        name: cleaned === "9370796604" ? "Vedant" : "Nagarsevak",
+      const response = await apiPost<any>("/api/auth/nagarsevak-login", {
         mobile: cleaned,
-        role: "nagarsevak",
-        ward: "Ward 1A",
-        wardCode: "1A",
-        wardNumber: "1A",
-        isSuperAdmin: false,
-        nagarsevakId: `NS${cleaned}`,
-        avatarColor: "#16A34A",
-        address: "Ambernath",
-        createdAt: new Date().toISOString(),
+      });
+
+      if (!response.success) {
+        if (response.message === "PENDING") {
+          setStep("pending");
+          return;
+        }
+
+        if (response.message === "REJECTED") {
+          setStep("rejected");
+          return;
+        }
+
+        if (response.message === "NOT_FOUND" || response.notFound) {
+          setError("Account not found. Please register first.");
+          setStep("phone");
+          return;
+        }
+
+        throw new Error(response.message || "Login failed");
+      }
+
+      const officer = response.user || {};
+
+      await login({
+        id: officer.id || `NS${cleaned}`,
+        name: officer.name || "Nagarsevak",
+        mobile: cleanMobile(officer.mobile || cleaned),
+        role: officer.role === "super_admin" ? "super_admin" : "nagarsevak",
+        ward: officer.ward || "Ward Pending",
+        wardCode: officer.wardCode || null,
+        wardNumber: officer.wardNumber || officer.wardCode || undefined,
+        isSuperAdmin: !!officer.isSuperAdmin,
+        nagarsevakId: officer.nagarsevakId || officer.id || `NS${cleaned}`,
+        avatarColor: officer.avatarColor || "#16A34A",
+        profilePhoto: officer.profilePhoto,
+        address: officer.address,
+        officeAddress: officer.officeAddress,
+        residenceAddress: officer.residenceAddress,
+        officeTimings: officer.officeTimings,
+        contactName: officer.contactName,
+        contactNumber: officer.contactNumber,
+        createdAt: officer.createdAt || new Date().toISOString(),
       } as any);
 
-      router.replace("/(tabs)/admin" as any);
+      router.replace((officer.role === "super_admin" || officer.isSuperAdmin) ? "/super-admin" as any : "/(tabs)/admin" as any);
     } catch (e: any) {
-      setError(e?.message || "Demo login failed. Please try again.");
+      setError(e?.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
