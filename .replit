@@ -26,7 +26,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd mobile && npm install --no-audit --no-fund && npx expo start --host 0.0.0.0 --port 8081 --clear"
+args = "cd mobile && npm install --no-audit --no-fund && npx expo start --lan --port 8081 --clear"
 waitForPort = 8081
 
 [workflows.workflow.metadata]
@@ -38,7 +38,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd mobile && npm install --no-audit --no-fund && npx expo start --host 0.0.0.0 --port 8081 --clear"
+args = "cd mobile && npm install --no-audit --no-fund && npx expo start --lan --port 8081 --clear"
 waitForPort = 8081
 
 [workflows.workflow.metadata]
@@ -79,7 +79,6 @@ externalPort = 8080
 [[ports]]
 localPort = 8081
 externalPort = 80
-exposeLocalhost = true
 
 [[ports]]
 localPort = 8082
@@ -107,4 +106,4 @@ externalPort = 3002
 
 [nix]
 channel = "stable-25_05"
-packages = ["nano", "fltk14", "eas-cli", "zulu"]
+packages = ["nano", "fltk14", "eas-cli", "zulu", "zip"]

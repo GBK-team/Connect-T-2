@@ -1,15 +1,5 @@
 import React, { useState, useMemo, useCallback, memo } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Platform,
-  Dimensions,
-  Modal,
-  FlatList,
-  TextInput,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Platform, Dimensions, Modal, FlatList, TextInput } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -306,7 +296,7 @@ export default function SuperAdminDashboard() {
               <Feather name="shield" size={10} color="#6EE7B7" />
               <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#6EE7B7", marginLeft: 4, letterSpacing: 1.5 }}>SUPER ADMIN</Text>
             </View>
-            <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>Tejashree's Dashboard</Text>
+            <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>Super Admin Dashboard</Text>
             <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>All Wards · AMC Ambernath · Live</Text>
           </View>
         </View>
@@ -417,6 +407,9 @@ export default function SuperAdminDashboard() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }} numberOfLines={1}>{c.title}</Text>
                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
+                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
+                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
+                         <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
                          <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
                          <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>
                          <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>

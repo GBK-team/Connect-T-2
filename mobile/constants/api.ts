@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "https://saddlebrown-pheasant-544481.hostingersite.com";
+const DEFAULT_API_BASE_URL = "https://newapp.e-bjp.in";
 
 export const API_BASE_URL =
   (process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL.trim()) ||

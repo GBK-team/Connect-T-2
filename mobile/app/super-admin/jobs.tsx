@@ -1,14 +1,5 @@
 import React, { useState, useMemo, useCallback, memo } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Platform,
-  Modal,
-  FlatList,
-  Dimensions,
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Platform, Modal, FlatList, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

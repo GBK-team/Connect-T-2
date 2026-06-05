@@ -1,16 +1,5 @@
 import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -18,6 +7,40 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import OtpDigitInput from "@/components/OtpDigitInput";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+
+
+const SUPER_ADMIN_ACCESS_KEY = "@connect_t_super_admin_access_v1";
+
+function normalizeSuperAdminPhone(value: any) {
+  return String(value || "").replace(/\D/g, "").slice(-10);
+}
+
+async function readSuperAdminAccessList() {
+  try {
+    const raw = await AsyncStorage.getItem(SUPER_ADMIN_ACCESS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function validateGeneratedSuperAdminAccess(mobileInput: string, accessInput: string) {
+  const mobile = normalizeSuperAdminPhone(mobileInput);
+  const accessId = String(accessInput || "").trim().toUpperCase();
+  const list = await readSuperAdminAccessList();
+
+  return list.find((item: any) => {
+    const itemMobile = normalizeSuperAdminPhone(item.mobile || item.phone || item.mobileNumber);
+    const itemId = String(item.id || item.accessId || item.uniqueId || "").trim().toUpperCase();
+    const status = String(item.status || "active").toLowerCase();
+    return itemMobile === mobile && itemId === accessId && status !== "revoked";
+  }) || null;
+}
+
 
 const MAIN_SUPER_ADMIN_MOBILE = "8554994735";
 const DEMO_OTP = "1234";
@@ -75,7 +98,23 @@ export default function SuperAdminLoginScreen() {
         createdAt: new Date().toISOString(),
       } as any);
 
-      router.replace("/super-admin" as any);
+      
+      const cleanSuperAdminMobile = normalizeSuperAdminPhone(mobile);
+      const typedAccessId = String(accessId || "").trim();
+
+      const mainSuperAdminMobiles = ["7888089223"];
+      if (!mainSuperAdminMobiles.includes(cleanSuperAdminMobile)) {
+        const matchedAccess = await validateGeneratedSuperAdminAccess(cleanSuperAdminMobile, typedAccessId);
+        if (!matchedAccess) {
+          Alert.alert(
+            "Invalid Super Admin access ID",
+            "This mobile number and access ID do not match any active Super Admin access."
+          );
+          return;
+        }
+      }
+
+router.replace("/super-admin" as any);
     } catch (e: any) {
       showNotice("Login failed", e?.message || "Demo super admin login failed.", "danger");
     } finally {

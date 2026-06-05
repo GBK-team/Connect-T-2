@@ -1,18 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Image,
-  Modal,
-  Platform,
-  ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, Modal, Platform, ActivityIndicator, Keyboard, KeyboardAvoidingView } from "react-native";
 import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";

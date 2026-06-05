@@ -1,8 +1,5 @@
 import React, { useState } from "react";
-import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Platform, Image, Share, TextInput, Linking,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, Image, Share, TextInput, Linking } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

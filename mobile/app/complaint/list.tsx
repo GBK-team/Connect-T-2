@@ -1,14 +1,4 @@
-import { API_BASE_URL } from "@/constants/api";
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Platform,
-  ActivityIndicator,
-} from "react-native";
+import { API_BASE_URL } from "@/constants/api"; import React, { useEffect, useState } from "react"; import {   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
