@@ -6,6 +6,36 @@ function otpApiUrl(path: string) {
   return `${base}${cleanPath}`;
 }
 
+
+export async function sendRealOtp(mobile: string, purpose = "login") {
+  try {
+    const mobile10 = String(mobile || "").replace(/\D/g, "").slice(-10);
+
+    if (mobile10.length !== 10) {
+      return { success: false, error: "Enter valid 10-digit mobile number" };
+    }
+
+    const res = await fetch(otpApiUrl("/api/auth/send-otp"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mobile: mobile10, purpose }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || data.message || "Failed to send OTP",
+      };
+    }
+
+    return { success: true, data };
+  } catch {
+    return { success: false, error: "Failed to send OTP. Please try again." };
+  }
+}
+
 export async function verifyRealOtp(mobile: string, otp: string, purpose = "login") {
   try {
     const mobile10 = String(mobile || "").replace(/\D/g, "").slice(-10);

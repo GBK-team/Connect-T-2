@@ -1,4 +1,4 @@
-import { verifyRealOtp } from "../lib/otpApi";
+import { sendRealOtp, verifyRealOtp } from "../lib/otpApi";
 import React, { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -16,7 +16,6 @@ import { apiPost } from "@/lib/api";
 
 
 const MAIN_SUPER_ADMIN_MOBILE = "8554994735";
-const DEMO_OTP = "1234";
 
 function cleanMobile(value: string) { return value.replace(/\D/g, "").slice(0, 10); }
 function cleanAccessId(value: string) { return value.trim().toUpperCase(); }
@@ -45,9 +44,18 @@ export default function SuperAdminLoginScreen() {
   const isMainSuperAdmin = finalMobile === MAIN_SUPER_ADMIN_MOBILE;
   const showNotice = (title: string, message: string, tone: NoticeTone = "info") => setNotice({ visible: true, title, message, tone });
 
-  const continueToOtp = () => {
+  const continueToOtp = async () => {
     if (finalMobile.length !== 10) return showNotice("Mobile required", "Enter a valid 10 digit mobile number.");
     // Backend validates the unique ID during final login.
+
+    setSubmitting(true);
+    const otpSend = await sendRealOtp(finalMobile, "login");
+    setSubmitting(false);
+
+    if (!otpSend.success) {
+      return showNotice("OTP failed", otpSend.error || "Failed to send OTP", "danger");
+    }
+
     setOtp("");
     setOtpStep(true);
   };
@@ -96,10 +104,10 @@ export default function SuperAdminLoginScreen() {
           <View style={styles.topBar}><TouchableOpacity style={styles.backBtn} onPress={() => router.replace("/secret-access" as any)} activeOpacity={0.85}><Feather name="chevron-left" size={22} color="#ECFDF5" /></TouchableOpacity><View style={styles.secureBadge}><View style={styles.liveDot} /><Text style={styles.secureBadgeText}>ADMIN ACCESS</Text></View></View>
           <View style={styles.hero}><View style={styles.adminMarkOuter}><View style={styles.adminMark}><Feather name="shield" size={34} color="#047857" /></View></View><Text style={styles.kicker}>Connect T Control Center</Text><Text style={styles.title}>Super Admin Login</Text><Text style={styles.subtitle}>Protected dashboard for city-wide access, officer control, alerts, jobs and civic operations.</Text></View>
           <View style={styles.securityPanel}>
-            <View style={styles.panelHeader}><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.panelTitle}>Identity Verification</Text><Text style={styles.panelSub}>{otpStep ? `Enter 6 digit OTP ${DEMO_OTP}.` : "Enter authorized mobile number to continue."}</Text></View><View style={styles.panelIcon}><Feather name="lock" size={18} color="#047857" /></View></View>
+            <View style={styles.panelHeader}><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.panelTitle}>Identity Verification</Text><Text style={styles.panelSub}>{otpStep ? "Enter the 6-digit OTP sent to your mobile number." : "Enter authorized mobile number to continue."}</Text></View><View style={styles.panelIcon}><Feather name="lock" size={18} color="#047857" /></View></View>
             <View style={styles.inputBlock}><Text style={styles.label}>Authorized Mobile Number</Text><View style={styles.inputShell}><View style={styles.inputPrefix}><Text style={styles.inputPrefixText}>+91</Text></View><TextInput value={mobile} onChangeText={(value) => { setMobile(cleanMobile(value)); setOtpStep(false); }} placeholder="8554994735" placeholderTextColor="#94A3B8" keyboardType="number-pad" maxLength={10} style={styles.input} />{finalMobile.length === 10 && <Feather name={isMainSuperAdmin ? "check-circle" : "key"} size={18} color={isMainSuperAdmin ? "#059669" : "#D97706"} />}</View></View>
             {!isMainSuperAdmin && <View style={styles.inputBlock}><Text style={styles.label}>Unique Access ID</Text><View style={styles.inputShell}><View style={styles.inputPrefix}><Feather name="key" size={14} color="#64748B" /></View><TextInput value={accessId} onChangeText={(value) => { setAccessId(cleanAccessId(value)); setOtpStep(false); }} placeholder="Example: SA-ABC123" placeholderTextColor="#94A3B8" autoCapitalize="characters" style={styles.input} /></View></View>}
-            {otpStep && <View style={styles.inputBlock}><Text style={styles.label}>4 Digit Demo OTP</Text><OtpDigitInput value={otp} onChange={setOtp} autoFocus /></View>}
+            {otpStep && <View style={styles.inputBlock}><Text style={styles.label}>6 Digit OTP</Text><OtpDigitInput value={otp} onChange={setOtp} autoFocus /></View>}
             <View style={[styles.statusBox, isMainSuperAdmin ? styles.statusBoxSuccess : styles.statusBoxNeutral]}><View style={[styles.statusIcon, isMainSuperAdmin ? { backgroundColor: "#D1FAE5" } : { backgroundColor: "#FEF3C7" }]}><Feather name={isMainSuperAdmin ? "user-check" : "key"} size={16} color={isMainSuperAdmin ? "#059669" : "#D97706"} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.statusTitle}>{isMainSuperAdmin ? "Main Super Admin detected" : "Access code required"}</Text><Text style={styles.statusText}>{isMainSuperAdmin ? "This number is allowed to open the full Super Admin dashboard." : "Only users with a unique ID generated by the main super admin can continue."}</Text></View></View>
             <TouchableOpacity style={[styles.primaryBtn, submitting && styles.disabledBtn]} onPress={otpStep ? handleLogin : continueToOtp} disabled={submitting} activeOpacity={0.88}><LinearGradient colors={submitting ? ["#94A3B8", "#64748B"] : ["#047857", "#059669", "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>{submitting ? <ActivityIndicator color="white" /> : <><Feather name={otpStep ? "check-circle" : "log-in"} size={17} color="white" /><Text style={styles.primaryBtnText}>{otpStep ? "Verify OTP & Open Dashboard" : "Continue to OTP"}</Text></>}</LinearGradient></TouchableOpacity>
             {otpStep && <TouchableOpacity onPress={() => setOtpStep(false)} activeOpacity={0.8}><Text style={styles.changeText}>← Change details</Text></TouchableOpacity>}

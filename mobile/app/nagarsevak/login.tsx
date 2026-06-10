@@ -1,4 +1,4 @@
-import { verifyRealOtp } from "../../lib/otpApi";
+import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,7 +10,6 @@ import { useAuth } from "@/context/AuthContext";
 import { apiPost } from "@/lib/api";
 
 type Step = "phone" | "otp" | "pending" | "rejected";
-const DEMO_OTP = "1234";
 
 function cleanMobile(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -21,12 +20,12 @@ export default function NagarsevakLoginScreen() {
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
-  const [otpDigits, setOtpDigits] = useState(["", "", "", ""]);
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [error, setError] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
+  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true }).start();
@@ -40,12 +39,17 @@ export default function NagarsevakLoginScreen() {
     }
     setError("");
     setOtpSending(true);
-    setTimeout(() => {
-      setPhone(cleaned);
-      setOtpDigits(["", "", "", ""]);
-      setStep("otp");
-      setOtpSending(false);
-    }, 250);
+    const otpSend = await sendRealOtp(cleaned, "login");
+    setOtpSending(false);
+
+    if (!otpSend.success) {
+      setError(otpSend.error || "Failed to send OTP");
+      return;
+    }
+
+    setPhone(cleaned);
+    setOtpDigits(["", "", "", "", "", ""]);
+    setStep("otp");
   };
 
   const verifyOtp = async () => {
@@ -119,7 +123,7 @@ export default function NagarsevakLoginScreen() {
     const next = [...otpDigits];
     next[index] = cleaned.slice(-1);
     setOtpDigits(next);
-    if (cleaned && index < 3) otpRefs[index + 1]?.current?.focus();
+    if (cleaned && index < 5) otpRefs[index + 1]?.current?.focus();
     if (!cleaned && index > 0) otpRefs[index - 1]?.current?.focus();
   };
 
@@ -134,11 +138,10 @@ export default function NagarsevakLoginScreen() {
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}> 
             {step === "phone" && <>
-              <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="shield" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Nagarsevak Login</Text><Text style={styles.cardSub}>Enter mobile number. Demo OTP is used for now.</Text></View>
+              <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="shield" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Nagarsevak Login</Text><Text style={styles.cardSub}>Enter mobile number to receive OTP.</Text></View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <View style={styles.inputWrap}><Text style={styles.inputLabel}>MOBILE NUMBER</Text><View style={styles.phoneRow}><View style={styles.countryCode}><Text style={styles.countryCodeText}>+91</Text></View><TextInput style={styles.phoneInput} value={phone} onChangeText={setPhone} placeholder="10-digit mobile" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} autoFocus /></View></View>
               <TouchableOpacity style={[styles.primaryBtn, otpSending && { opacity: 0.7 }]} onPress={sendOtp} disabled={otpSending} activeOpacity={0.85}><LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.btnGrad}>{otpSending ? <ActivityIndicator color="white" /> : <><Feather name="send" size={17} color="white" /><Text style={styles.btnText}>Continue</Text></>}</LinearGradient></TouchableOpacity>
-              <Text style={styles.demoText}>Demo OTP: {DEMO_OTP}</Text>
               <TouchableOpacity style={styles.registerLink} onPress={() => router.push("/nagarsevak/register" as any)}><Text style={styles.registerLinkText}>New Nagarsevak? <Text style={styles.registerLinkBold}>Register here</Text></Text></TouchableOpacity>
             </>}
             {step === "otp" && <>
@@ -187,8 +190,8 @@ const styles = StyleSheet.create({
   registerLink: { marginTop: 18, alignItems: "center" },
   registerLinkText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular" },
   registerLinkBold: { color: "#EA580C", fontFamily: "Inter_700Bold" },
-  otpRow: { flexDirection: "row", justifyContent: "center", gap: 9, marginBottom: 18 },
-  otpBox: { width: 48, height: 52, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
+  otpRow: { flexDirection: "row", justifyContent: "center", gap: 7, marginBottom: 18 },
+  otpBox: { width: 42, height: 52, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
   otpBoxFilled: { borderColor: "#EA580C", backgroundColor: "#FFF7ED" },
   changeBtn: { alignItems: "center", marginTop: 14 },
   changeBtnText: { color: "#EA580C", fontSize: 13, fontFamily: "Inter_600SemiBold" },

@@ -1,4 +1,4 @@
-import { verifyRealOtp } from "../../lib/otpApi";
+import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
 import React, { useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,7 +15,6 @@ type Step = "form" | "otp";
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
 const BG = "#ebeffc";
-const DEMO_OTP = "1234";
 
 function cleanPhone(v: string) { return v.replace(/\D/g, "").slice(-10); }
 function validName(v: string) { return /^[A-Za-z .'-]{3,80}$/.test(v.trim()); }
@@ -53,10 +52,20 @@ export default function JobPortalLoginScreen() {
     return "";
   };
 
-  const continueToOtp = () => {
+  const continueToOtp = async () => {
     const msg = validate();
     if (msg) { setError(msg); return; }
+
     setError("");
+    setLoading(true);
+    const otpSend = await sendRealOtp(phone10, "login");
+    setLoading(false);
+
+    if (!otpSend.success) {
+      setError(otpSend.error || "Failed to send OTP");
+      return;
+    }
+
     setOtp("");
     setStep("otp");
   };
@@ -108,8 +117,8 @@ export default function JobPortalLoginScreen() {
               <TouchableOpacity style={s.primaryBtn} onPress={continueToOtp} activeOpacity={0.9}><Text style={s.primaryText}>Continue to OTP</Text><Feather name="arrow-right" size={18} color="white" /></TouchableOpacity>
               <Text style={s.note}>{tab === "login" ? "Use your registered mobile number." : "Only basic details now. Full profile can be completed later."}</Text>
             </> : <>
-              <Section title="4 Digit Demo OTP" />
-              <Text style={s.otpSub}>Enter OTP {DEMO_OTP} for +91 {phone10}</Text>
+              <Section title="6 Digit OTP" />
+              <Text style={s.otpSub}>Enter the 6-digit OTP sent to +91 {phone10}</Text>
               <OtpDigitInput value={otp} onChange={setOtp} autoFocus />
               {!!error && <View style={s.errorBox}><Feather name="alert-circle" size={16} color="#DC2626" /><Text style={s.errorText}>{error}</Text></View>}
               <TouchableOpacity style={[s.primaryBtn, loading && s.primaryBtnDisabled]} disabled={loading} onPress={submit} activeOpacity={0.9}><Text style={s.primaryText}>{loading ? "Please wait..." : tab === "login" ? "Verify & Login" : "Verify & Create Account"}</Text><Feather name="check" size={18} color="white" /></TouchableOpacity>

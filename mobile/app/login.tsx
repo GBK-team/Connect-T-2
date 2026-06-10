@@ -1,4 +1,4 @@
-import { verifyRealOtp } from "../lib/otpApi";
+import { sendRealOtp, verifyRealOtp } from "../lib/otpApi";
 import React, { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -17,7 +17,6 @@ type Step = "form" | "otp" | "notifications" | "success";
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
 const GREEN = "#059669";
-const DEMO_OTP = "1234";
 
 function cleanPhone(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -79,7 +78,7 @@ export default function LoginScreen() {
     setLogoTapCount(next);
   };
 
-  const continueToOtp = () => {
+  const continueToOtp = async () => {
     setError("");
     if (tab === "register") {
       if (regName.trim().length < 2) return setError("Enter full name");
@@ -90,6 +89,16 @@ export default function LoginScreen() {
     } else if (cleanPhone(loginPhone).length !== 10) {
       return setError("Enter valid 10 digit mobile number");
     }
+
+    setLoading(true);
+    const otpSend = await sendRealOtp(phone, "login");
+    setLoading(false);
+
+    if (!otpSend.success) {
+      setError(otpSend.error || "Failed to send OTP");
+      return;
+    }
+
     setOtp("");
     setStep("otp");
   };

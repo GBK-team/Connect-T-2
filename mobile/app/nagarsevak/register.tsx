@@ -1,4 +1,4 @@
-import { verifyRealOtp } from "../../lib/otpApi";
+import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,7 +9,6 @@ import { NAGARSEVAK_WARDS } from "@/data/wards";
 import { getApiUrl } from "@/utils/apiUrl";
 
 type Step = "form" | "otp";
-const DEMO_OTP = "1234";
 
 function cleanMobile(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -42,10 +41,10 @@ export default function NagarsevakRegisterScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(["", "", "", ""]);
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [wardAvailable, setWardAvailable] = useState<boolean | null>(null);
   const [checkingWard, setCheckingWard] = useState(false);
-  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
+  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
 
   useEffect(() => {
     if (mobile && !contactNumber) setContactNumber(mobile);
@@ -85,13 +84,18 @@ export default function NagarsevakRegisterScreen() {
     if (wardAvailable === false) return setError("This ward is already assigned to an approved Nagarsevak");
     if (contact.length !== 10) return setError("Enter a valid 10-digit contact number");
     setOtpSending(true);
-    setTimeout(() => {
-      setMobile(cleaned);
-      setContactNumber(contact);
-      setOtpDigits(["", "", "", ""]);
-      setStep("otp");
-      setOtpSending(false);
-    }, 250);
+    const otpSend = await sendRealOtp(cleaned, "login");
+    setOtpSending(false);
+
+    if (!otpSend.success) {
+      setError(otpSend.error || "Failed to send OTP");
+      return;
+    }
+
+    setMobile(cleaned);
+    setContactNumber(contact);
+    setOtpDigits(["", "", "", "", "", ""]);
+    setStep("otp");
   };
 
   const verifyAndRegister = async () => {
@@ -139,7 +143,7 @@ export default function NagarsevakRegisterScreen() {
     const next = [...otpDigits];
     next[index] = cleaned.slice(-1);
     setOtpDigits(next);
-    if (cleaned && index < 3) otpRefs[index + 1]?.current?.focus();
+    if (cleaned && index < 5) otpRefs[index + 1]?.current?.focus();
     if (!cleaned && index > 0) otpRefs[index - 1]?.current?.focus();
   };
 
@@ -165,10 +169,9 @@ export default function NagarsevakRegisterScreen() {
               <Field label="RESIDENCE ADDRESS"><TextInput style={[styles.input, styles.textarea]} value={address} onChangeText={setAddress} placeholder="Your residence address" placeholderTextColor="#CBD5E1" multiline textAlignVertical="top" /></Field>
               <View style={styles.noticeCard}><Feather name="info" size={14} color="#D97706" /><Text style={styles.noticeText}>If this mobile already has a pending request, the app will show pending verification and will not submit again.</Text></View>
               <TouchableOpacity style={[styles.primaryBtn, otpSending && { opacity: 0.7 }]} onPress={sendOtp} disabled={otpSending} activeOpacity={0.85}><LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.btnGrad}>{otpSending ? <ActivityIndicator color="white" /> : <><Feather name="send" size={17} color="white" /><Text style={styles.btnText}>Verify Mobile & Submit</Text></>}</LinearGradient></TouchableOpacity>
-              <Text style={styles.demoText}>Demo OTP: {DEMO_OTP}</Text>
             </>}
             {step === "otp" && <>
-              <View style={styles.cardHeader}><View style={styles.headerIcon}><Feather name="lock" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Verify Mobile</Text><Text style={styles.cardSub}>Enter the 6-digit OTP sent to your mobile number {DEMO_OTP} for +91 {mobile}</Text></View>
+              <View style={styles.cardHeader}><View style={styles.headerIcon}><Feather name="lock" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Verify Mobile</Text><Text style={styles.cardSub}>Enter the 6-digit OTP sent to +91 {mobile}</Text></View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <View style={styles.otpRow}>{otpDigits.map((digit, idx) => <TextInput key={idx} ref={otpRefs[idx]} style={[styles.otpBox, digit && styles.otpBoxFilled]} value={digit} onChangeText={(v) => setDigit(idx, v)} keyboardType="number-pad" maxLength={1} textAlign="center" />)}</View>
               <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={verifyAndRegister} disabled={loading} activeOpacity={0.85}><LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.btnGrad}>{loading ? <ActivityIndicator color="white" /> : <><Feather name="check" size={17} color="white" /><Text style={styles.btnText}>Submit for Approval</Text></>}</LinearGradient></TouchableOpacity>
@@ -218,8 +221,8 @@ const styles = StyleSheet.create({
   btnGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 15 },
   btnText: { color: "white", fontSize: 15, fontFamily: "Inter_700Bold" },
   demoText: { textAlign: "center", marginTop: 10, color: "#EA580C", fontSize: 12, fontFamily: "Inter_700Bold" },
-  otpRow: { flexDirection: "row", justifyContent: "center", gap: 9, marginBottom: 18 },
-  otpBox: { width: 48, height: 50, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
+  otpRow: { flexDirection: "row", justifyContent: "center", gap: 7, marginBottom: 18 },
+  otpBox: { width: 42, height: 50, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", fontSize: 20, fontFamily: "Inter_700Bold", color: "#0F172A" },
   otpBoxFilled: { borderColor: "#EA580C", backgroundColor: "#FFF7ED" },
   changeBtn: { alignItems: "center", marginTop: 14 },
   changeBtnText: { color: "#EA580C", fontSize: 13, fontFamily: "Inter_600SemiBold" },
