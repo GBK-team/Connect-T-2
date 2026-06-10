@@ -1,8 +1,9 @@
 import React, { useRef } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 
-const ORANGE = "#EA580C";
-const DARK = "#C2410C";
+const OTP_LENGTH = 6;
+
+const refsFactory = () => Array.from({ length: OTP_LENGTH }, () => useRef<TextInput>(null));
 
 type OtpDigitInputProps = {
   value: string;
@@ -11,33 +12,33 @@ type OtpDigitInputProps = {
 };
 
 export default function OtpDigitInput({ value, onChange, autoFocus = false }: OtpDigitInputProps) {
-  const refs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 4).split("");
+  const refs = refsFactory();
+  const digits = String(value || "").replace(/\D/g, "").slice(0, OTP_LENGTH).split("");
 
   const setDigit = (index: number, text: string) => {
     const cleaned = text.replace(/\D/g, "");
-    const next = [digits[0] || "", digits[1] || "", digits[2] || "", digits[3] || ""];
+    const next = Array.from({ length: OTP_LENGTH }, (_, i) => digits[i] || "");
 
     if (cleaned.length > 1) {
-      cleaned.slice(0, 4).split("").forEach((char, offset) => {
-        if (index + offset < 4) next[index + offset] = char;
+      cleaned.slice(0, OTP_LENGTH - index).split("").forEach((char, offset) => {
+        if (index + offset < OTP_LENGTH) next[index + offset] = char;
       });
-      onChange(next.join("").slice(0, 4));
-      const focusIndex = Math.min(index + cleaned.length, 3);
+      onChange(next.join("").slice(0, OTP_LENGTH));
+      const focusIndex = Math.min(index + cleaned.length, OTP_LENGTH - 1);
       refs[focusIndex]?.current?.focus();
       return;
     }
 
     next[index] = cleaned.slice(0, 1);
-    onChange(next.join("").slice(0, 4));
+    onChange(next.join("").slice(0, OTP_LENGTH));
 
-    if (cleaned && index < 3) refs[index + 1]?.current?.focus();
+    if (cleaned && index < OTP_LENGTH - 1) refs[index + 1]?.current?.focus();
     if (!cleaned && index > 0) refs[index - 1]?.current?.focus();
   };
 
   return (
     <View style={styles.row}>
-      {[0, 1, 2, 3].map((index) => (
+      {Array.from({ length: OTP_LENGTH }, (_, index) => (
         <TextInput
           key={index}
           ref={refs[index]}
@@ -45,7 +46,7 @@ export default function OtpDigitInput({ value, onChange, autoFocus = false }: Ot
           onChangeText={(text) => setDigit(index, text)}
           keyboardType="number-pad"
           inputMode="numeric"
-          maxLength={6}
+          maxLength={1}
           textAlign="center"
           autoFocus={autoFocus && index === 0}
           style={[styles.box, digits[index] ? styles.boxFilled : null]}
@@ -59,15 +60,15 @@ export default function OtpDigitInput({ value, onChange, autoFocus = false }: Ot
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, marginBottom: 14 },
+  row: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 14 },
   box: {
-    width: 48,
+    width: 42,
     height: 52,
     borderRadius: 12,
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
     backgroundColor: "#F8FAFC",
-    color: DARK,
+    color: "#000000",
     fontSize: 22,
     fontFamily: "Inter_700Bold",
     fontWeight: "800",
