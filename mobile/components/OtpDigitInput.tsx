@@ -77,6 +77,6 @@ const styles = StyleSheet.create({
   boxFilled: {
     borderColor: "#FED7AA",
     backgroundColor: "#FFF7ED",
-    color: ORANGE,
+    color: "#000000",
   },
 });
