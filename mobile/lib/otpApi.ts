@@ -1,4 +1,10 @@
-import { apiUrl } from "./api";
+import { API_BASE_URL } from "../constants/api";
+
+function otpApiUrl(path: string) {
+  const base = String(API_BASE_URL || "https://newapp.e-bjp.in").replace(/\/+$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+}
 
 export async function verifyRealOtp(mobile: string, otp: string, purpose = "login") {
   try {
@@ -13,7 +19,7 @@ export async function verifyRealOtp(mobile: string, otp: string, purpose = "logi
       return { success: false, error: "Enter 6-digit OTP" };
     }
 
-    const res = await fetch(apiUrl("/api/auth/verify-otp"), {
+    const res = await fetch(otpApiUrl("/api/auth/verify-otp"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
