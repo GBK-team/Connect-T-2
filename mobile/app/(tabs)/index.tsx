@@ -17,6 +17,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useAlerts, AppAlert, wardKey } from "@/context/AlertContext";
 import { useComplaints, Complaint } from "@/context/ComplaintContext";
 import { fetchEmergencyContacts, fetchServiceCatalog, EmergencyContact } from "@/lib/servicesApi";
+import { displayUtilityStatus, fetchUtilityStatuses, statusIsOk, UtilityStatus, utilityLastUpdated } from "@/lib/utilityStatusApi";
 
 const quickServices = [
   { id: "hospital", label: "Hospitals", icon: "activity", color: "#DC2626", bg: "#FEE2E2" },
@@ -82,10 +83,11 @@ export default function HomeScreen() {
   const { complaints } = useComplaints();
   const [selectedAlert, setSelectedAlert] = useState<AppAlert | null>(null);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [selectedUtility, setSelectedUtility] = useState<string | null>(null);
+  const [selectedUtility, setSelectedUtility] = useState<UtilityStatus | null>(null);
   const [readAlertIds, setReadAlertIds] = useState<string[]>([]);
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
   const [serviceShortcuts, setServiceShortcuts] = useState<typeof quickServices>([]);
+  const [utilityStatuses, setUtilityStatuses] = useState<UtilityStatus[]>([]);
 
   const roleColor = getRoleColor(user?.role);
   const readAlertsKey = `connectt_read_alerts_${user?.id || "guest"}`;
@@ -148,6 +150,27 @@ export default function HomeScreen() {
       .catch(() => {});
   }, [readAlertsKey]);
 
+  useEffect(() => {
+    if (!user?.ward) {
+      setUtilityStatuses([]);
+      return;
+    }
+
+    let mounted = true;
+
+    fetchUtilityStatuses(user.ward, user.wardCode)
+      .then((statuses) => {
+        if (mounted) setUtilityStatuses(statuses);
+      })
+      .catch(() => {
+        if (mounted) setUtilityStatuses([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.ward, user?.wardCode]);
+
   const markAlertsRead = (ids: string[]) => {
     if (ids.length === 0) return;
     const merged = Array.from(new Set([...readAlertIds, ...ids]));
@@ -180,6 +203,38 @@ export default function HomeScreen() {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     router.push({ pathname: "/(tabs)/services", params: { category: categoryId } } as any);
   };
+
+  const defaultWard = user?.ward || "Ambernath";
+  const waterStatus = utilityStatuses.find((item) => item.utilityType === "water");
+  const electricityStatus = utilityStatuses.find((item) => item.utilityType === "electricity");
+  const utilityItems: UtilityStatus[] = [
+    waterStatus || {
+      id: "default-water",
+      ward: defaultWard,
+      wardCode: user?.wardCode || null,
+      utilityType: "water",
+      title: t("waterSupply"),
+      status: "normal",
+      hoursPerDay: "—",
+      scheduleText: "No ward update posted yet.",
+      description: "No water supply update has been posted for your ward yet.",
+      helpline: "AMC Water Helpline: 0251-2604100",
+      source: "Ward Utility Desk",
+    },
+    electricityStatus || {
+      id: "default-electricity",
+      ward: defaultWard,
+      wardCode: user?.wardCode || null,
+      utilityType: "electricity",
+      title: t("electricity"),
+      status: "normal",
+      hoursPerDay: "—",
+      scheduleText: "No ward update posted yet.",
+      description: "No electricity update has been posted for your ward yet.",
+      helpline: "MSEDCL Helpline: 1912",
+      source: "Ward Utility Desk",
+    },
+  ];
 
   const greeting = `${t(getGreetingKey())}, ${user?.name?.split(" ")[0] || t("citizen")} 👋`;
 
@@ -317,8 +372,20 @@ export default function HomeScreen() {
         {/* UTILITY STATUS */}
         <SectionHeader title={t("utilityStatus")} />
         <View style={styles.utilityRow}>
-          <UtilityCard title={t("waterSupply")} value="14" unit={t("hoursDay")} status={t("reduced")} statusOk={false} icon="droplet" gradColors={["#0EA5E9", "#0EA5E9"]} lastUpdated="2 hrs ago" onPress={() => setSelectedUtility("water")} />
-          <UtilityCard title={t("electricity")} value="24" unit={t("hoursDay")} status={t("normal")} statusOk={true} icon="zap" gradColors={["#F59E0B", "#F59E0B"]} lastUpdated="30 min ago" onPress={() => setSelectedUtility("electricity")} />
+          {utilityItems.map((item) => (
+            <UtilityCard
+              key={item.utilityType}
+              title={item.utilityType === "water" ? t("waterSupply") : t("electricity")}
+              value={item.hoursPerDay || "—"}
+              unit={t("hoursDay")}
+              status={displayUtilityStatus(item.status)}
+              statusOk={statusIsOk(item.status)}
+              icon={item.utilityType === "water" ? "droplet" : "zap"}
+              gradColors={item.utilityType === "water" ? (["#0EA5E9", "#0EA5E9"] as const) : (["#F59E0B", "#F59E0B"] as const)}
+              lastUpdated={utilityLastUpdated(item.updatedAt)}
+              onPress={() => setSelectedUtility(item)}
+            />
+          ))}
         </View>
 
         {/* QUICK SERVICES */}
@@ -469,69 +536,46 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
-              {selectedUtility === "water" && (
-                <>
-                  <View style={[styles.modalIconWrap, { backgroundColor: "#BAE6FD" }]}>
-                    <Feather name="droplet" size={28} color="#0EA5E9" />
-                  </View>
-                  <Text style={styles.modalTitle}>{t("waterSupply")}</Text>
-                  <View style={styles.utilityStatRow}>
-                    <View style={styles.utilityStat}>
-                      <Text style={[styles.utilityStatNum, { color: "#DC2626" }]}>14</Text>
-                      <Text style={styles.utilityStatLabel}>{t("hoursDay")}</Text>
+              {selectedUtility && (() => {
+                const isWater = selectedUtility.utilityType === "water";
+                const color = isWater ? "#0EA5E9" : "#D97706";
+                const bg = isWater ? "#BAE6FD" : "#FEF3C7";
+                return (
+                  <>
+                    <View style={[styles.modalIconWrap, { backgroundColor: bg }]}>
+                      <Feather name={isWater ? "droplet" : "zap"} size={28} color={color} />
                     </View>
-                    <View style={styles.utilityStatDivider} />
-                    <View style={styles.utilityStat}>
-                      <Text style={[styles.utilityStatNum, { color: "#D97706" }]}>{t("reduced")}</Text>
-                      <Text style={styles.utilityStatLabel}>Status</Text>
+                    <Text style={styles.modalTitle}>{isWater ? t("waterSupply") : t("electricity")}</Text>
+                    <View style={styles.utilityStatRow}>
+                      <View style={styles.utilityStat}>
+                        <Text style={[styles.utilityStatNum, { color }]}>{selectedUtility.hoursPerDay || "—"}</Text>
+                        <Text style={styles.utilityStatLabel}>{t("hoursDay")}</Text>
+                      </View>
+                      <View style={styles.utilityStatDivider} />
+                      <View style={styles.utilityStat}>
+                        <Text style={[styles.utilityStatNum, { color }]}>{displayUtilityStatus(selectedUtility.status)}</Text>
+                        <Text style={styles.utilityStatLabel}>Status</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.modalDivider} />
-                  <Text style={styles.modalBody}>
-                    Water supply in Ambernath is currently restricted to 14 hours per day due to maintenance work on the main distribution pipeline from Barvi Dam. Station Area East and Vithalwadi areas are most affected with supply available from 6AM–8PM only.{"\n\n"}
-                    The AMC Water Department is conducting repairs on the 900mm main pipeline from Barvi Dam. Normal 24-hour supply is expected to resume by 1st May 2025.{"\n\n"}
-                    For water tanker requests, contact AMC Water Helpline: 0251-2604100{"\n"}
-                    Tanker booking: 0251-2604155
-                  </Text>
-                  <View style={styles.modalSourceRow}>
-                    <Feather name="info" size={12} color="#64748B" />
-                    <Text style={styles.modalSourceText}>Source: AMC Water Department · Updated 2 hrs ago</Text>
-                  </View>
-                </>
-              )}
-              {selectedUtility === "electricity" && (
-                <>
-                  <View style={[styles.modalIconWrap, { backgroundColor: "#FEF3C7" }]}>
-                    <Feather name="zap" size={28} color="#D97706" />
-                  </View>
-                  <Text style={styles.modalTitle}>{t("electricity")}</Text>
-                  <View style={styles.utilityStatRow}>
-                    <View style={styles.utilityStat}>
-                      <Text style={[styles.utilityStatNum, { color: "#059669" }]}>24</Text>
-                      <Text style={styles.utilityStatLabel}>{t("hoursDay")}</Text>
+                    <View style={styles.modalDivider} />
+                    <Text style={styles.modalBody}>
+                      {selectedUtility.scheduleText ? selectedUtility.scheduleText + "\n\n" : ""}
+                      {selectedUtility.description || "No detailed utility update has been posted for your ward yet."}
+                      {selectedUtility.helpline ? "\n\n" + selectedUtility.helpline : ""}
+                    </Text>
+                    <View style={styles.modalSourceRow}>
+                      <Feather name="map-pin" size={12} color="#64748B" />
+                      <Text style={styles.modalSourceText}>Ward: {selectedUtility.ward}</Text>
                     </View>
-                    <View style={styles.utilityStatDivider} />
-                    <View style={styles.utilityStat}>
-                      <Text style={[styles.utilityStatNum, { color: "#059669" }]}>{t("normal")}</Text>
-                      <Text style={styles.utilityStatLabel}>Status</Text>
+                    <View style={styles.modalSourceRow}>
+                      <Feather name="info" size={12} color="#64748B" />
+                      <Text style={styles.modalSourceText}>
+                        Source: {selectedUtility.source || "Ward Utility Desk"} · Updated {utilityLastUpdated(selectedUtility.updatedAt)}
+                      </Text>
                     </View>
-                  </View>
-                  <View style={styles.modalDivider} />
-                  <Text style={styles.modalBody}>
-                    Power supply across Ambernath is currently normal with 24-hour availability. MSEDCL has completed the transformer upgrade at MIDC Area substation.{"\n\n"}
-                    Planned maintenance schedule:{"\n"}
-                    • MIDC Area substation — Completed{"\n"}
-                    • Vithalwadi feeder line — 28 Apr, 10AM-2PM{"\n"}
-                    • Old Ambernath substation — No planned outage{"\n\n"}
-                    For power complaints, call MSEDCL Helpline: 1912{"\n"}
-                    SMS ULHAS to 1912 for outage updates
-                  </Text>
-                  <View style={styles.modalSourceRow}>
-                    <Feather name="info" size={12} color="#64748B" />
-                    <Text style={styles.modalSourceText}>Source: MSEDCL Ambernath Division · Updated 30 min ago</Text>
-                  </View>
-                </>
-              )}
+                  </>
+                );
+              })()}
             </ScrollView>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedUtility(null)} activeOpacity={0.85}>
               <Text style={styles.modalCloseBtnText}>{t("cancel")}</Text>

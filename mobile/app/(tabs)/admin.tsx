@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
 import { useLanguage } from "@/context/LanguageContext";
 import { wardMatchesNagarsevak } from "@/data/wards";
+import { displayUtilityStatus, postUtilityStatus, UtilityType } from "@/lib/utilityStatusApi";
 
 const statusLabelKeys: Record<ComplaintStatus, string> = {
   submitted: "submitted",
@@ -203,6 +204,13 @@ export default function AdminScreen() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName] = useState("");
   const [editWard, setEditWard] = useState("");
+  const [utilityType, setUtilityType] = useState<UtilityType>("water");
+  const [utilityStatus, setUtilityStatus] = useState("normal");
+  const [utilityHours, setUtilityHours] = useState("");
+  const [utilitySchedule, setUtilitySchedule] = useState("");
+  const [utilityDescription, setUtilityDescription] = useState("");
+  const [utilitySaving, setUtilitySaving] = useState(false);
+  const [utilityMessage, setUtilityMessage] = useState("");
 
   if (!user || user.role !== "nagarsevak") {
     return (
@@ -266,6 +274,45 @@ export default function AdminScreen() {
     if (!editName.trim()) return;
     await updateUser({ name: editName.trim(), ward: editWard || user?.ward });
     setShowEditProfile(false);
+  };
+
+  const saveUtilityStatus = async () => {
+    if (!user?.ward) {
+      setUtilityMessage("Your ward is missing. Update your profile first.");
+      return;
+    }
+
+    if (!utilityDescription.trim()) {
+      setUtilityMessage("Add a short public update message.");
+      return;
+    }
+
+    setUtilitySaving(true);
+    setUtilityMessage("");
+
+    try {
+      await postUtilityStatus({
+        utilityType,
+        ward: user.ward,
+        wardCode: user.wardCode,
+        title: utilityType === "water" ? "Water Supply" : "Electricity",
+        status: utilityStatus,
+        hoursPerDay: utilityHours.trim() || undefined,
+        scheduleText: utilitySchedule.trim() || undefined,
+        description: utilityDescription.trim(),
+        helpline: utilityType === "water" ? "AMC Water Helpline: 0251-2604100" : "MSEDCL Helpline: 1912",
+        source: utilityType === "water" ? "AMC Water Department" : "MSEDCL Ambernath Division",
+      });
+
+      setUtilityMessage(`${utilityType === "water" ? "Water" : "Electricity"} update posted for ${user.ward}`);
+      setUtilityHours("");
+      setUtilitySchedule("");
+      setUtilityDescription("");
+    } catch (error: any) {
+      setUtilityMessage(error?.message || "Unable to post utility update.");
+    } finally {
+      setUtilitySaving(false);
+    }
   };
 
   return (
@@ -376,6 +423,113 @@ export default function AdminScreen() {
             </ScrollView>
           )}
         </TouchableOpacity>
+
+        {/* WARD UTILITY STATUS PANEL */}
+        <View style={styles.alertPanel}>
+          <View style={styles.alertPanelHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Feather name="zap" size={14} color="#C2410C" />
+              <Text style={styles.alertPanelTitle}>Ward Utility Status</Text>
+            </View>
+            <View style={styles.alertCountBadge}>
+              <Text style={styles.alertCountText}>{user?.ward || "Ward"}</Text>
+            </View>
+          </View>
+
+          <Text style={{ fontSize: 12, color: "#64748B", fontFamily: "Inter_500Medium", marginBottom: 10 }}>
+            Post water/electricity update for your ward only. Citizens registered in your ward will see it on their home screen.
+          </Text>
+
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            {(["water", "electricity"] as UtilityType[]).map((type) => {
+              const activeType = utilityType === type;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    backgroundColor: activeType ? "#EA580C" : "#FFF7ED",
+                    borderWidth: 1,
+                    borderColor: activeType ? "#EA580C" : "#FED7AA",
+                  }}
+                  onPress={() => setUtilityType(type)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ color: activeType ? "white" : "#C2410C", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                    {type === "water" ? "Water" : "Electricity"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            {["normal", "reduced", "maintenance", "outage"].map((status) => {
+              const activeStatus = utilityStatus === status;
+              return (
+                <TouchableOpacity
+                  key={status}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                    borderRadius: 999,
+                    backgroundColor: activeStatus ? "#16A34A" : "#F1F5F9",
+                  }}
+                  onPress={() => setUtilityStatus(status)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ color: activeStatus ? "white" : "#475569", fontFamily: "Inter_700Bold", fontSize: 11 }}>
+                    {displayUtilityStatus(status)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TextInput
+            style={{ backgroundColor: "#F8FAFC", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, paddingVertical: 10, color: "#0F172A", marginBottom: 8 }}
+            value={utilityHours}
+            onChangeText={setUtilityHours}
+            placeholder="Hours per day e.g. 14 or 24"
+            placeholderTextColor="#94A3B8"
+            keyboardType="number-pad"
+          />
+          <TextInput
+            style={{ backgroundColor: "#F8FAFC", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, paddingVertical: 10, color: "#0F172A", marginBottom: 8 }}
+            value={utilitySchedule}
+            onChangeText={setUtilitySchedule}
+            placeholder="Schedule e.g. 6 AM to 8 PM / maintenance timing"
+            placeholderTextColor="#94A3B8"
+          />
+          <TextInput
+            style={{ backgroundColor: "#F8FAFC", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, paddingVertical: 10, color: "#0F172A", minHeight: 74, marginBottom: 10 }}
+            value={utilityDescription}
+            onChangeText={setUtilityDescription}
+            placeholder="Public message for citizens"
+            placeholderTextColor="#94A3B8"
+            multiline
+            textAlignVertical="top"
+          />
+
+          {!!utilityMessage && (
+            <Text style={{ fontSize: 11, color: utilityMessage.includes("posted") ? "#059669" : "#DC2626", fontFamily: "Inter_700Bold", marginBottom: 8 }}>
+              {utilityMessage}
+            </Text>
+          )}
+
+          <TouchableOpacity
+            style={styles.postAlertBtn}
+            onPress={saveUtilityStatus}
+            disabled={utilitySaving}
+            activeOpacity={0.85}
+          >
+            <Feather name="send" size={13} color="white" />
+            <Text style={styles.postAlertBtnText}>{utilitySaving ? "Posting..." : "Post Utility Update"}</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.dashboardGrid}>
           {dashboardFilters.map((item) => {
