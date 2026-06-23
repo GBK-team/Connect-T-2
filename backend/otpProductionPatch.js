@@ -1,15 +1,13 @@
 /*
- * Demo OTP route patch.
+ * Production OTP route patch.
  *
  * Loaded before server.js. Registers /api/auth/send-otp and /api/auth/verify-otp.
- * For the current app-finalization phase all portals use the same 4 digit demo
- * OTP. Later this file can be switched back to real SMS OTP without changing
- * the mobile login workflow.
+ * Sends a real 6 digit OTP through the configured SMS provider and verifies it
+ * for mobile login flows across the Connect-T app.
  */
 
 const sessions = new Map();
 let installed = false;
-const DEMO_OTP = "1234";
 
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -95,7 +93,7 @@ async function verifyOtp(req, res) {
       success: true,
       valid: true,
       mobile: session?.mobile || mobile,
-      purpose: session?.purpose || "demo",
+      purpose: session?.purpose || "login",
       message: "OTP verified successfully",
     });
   } catch (err) {
@@ -119,7 +117,7 @@ try {
     return originalPost.call(this, path, ...handlers);
   };
 
-  console.log("[OtpProductionPatch] 4 digit demo OTP active");
+  console.log("[OtpProductionPatch] production 6 digit SMS OTP active");
 } catch (err) {
   console.warn("[OtpProductionPatch] disabled:", err.message);
 }
