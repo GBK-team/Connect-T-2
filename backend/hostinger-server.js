@@ -8,6 +8,7 @@
 
 require("dotenv").config();
 require("./otpProductionPatch.js");
+require("./utilityStatusPatch.js");
 require("./connectTProductionPatch.js");
 require("./nagarsevakLoginPatch.js");
 require("./jobPortalMessagePatch.js");
