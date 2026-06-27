@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, Modal, Platform, ActivityIndicator, Keyboard, KeyboardAvoidingView } from "react-native";
-import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -104,8 +103,6 @@ export default function NewComplaintScreen() {
   const [location, setLocation] = useState("");
   const [contactNumber, setContactNumber] = useState(user?.mobile || "");
   const [submitting, setSubmitting] = useState(false);
-  const [detectingLoc, setDetectingLoc] = useState(false);
-  const [locStatus, setLocStatus] = useState<"idle" | "ok" | "outside" | "denied">("idle");
   const [notice, setNotice] = useState<NoticeState>({ visible: false, title: "", message: "", tone: "info" });
 
   const showNotice = (titleText: string, messageText: string, tone: NoticeTone = "info", onDone?: () => void) => {
@@ -113,40 +110,6 @@ export default function NewComplaintScreen() {
   };
 
   const closeNotice = () => setNotice((prev) => ({ ...prev, visible: false, onDone: undefined }));
-
-  const AMBERNATH_BOUNDS = { minLat: 19.08, maxLat: 19.23, minLng: 73.13, maxLng: 73.25 };
-
-  const detectLocation = async () => {
-    if (Platform.OS === "web") {
-      showNotice("Not available", "Location detection is not available on web. Please enter manually.");
-      return;
-    }
-    setDetectingLoc(true);
-    setLocStatus("idle");
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLocStatus("denied");
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const { latitude, longitude } = pos.coords;
-      const inBounds = latitude >= AMBERNATH_BOUNDS.minLat && latitude <= AMBERNATH_BOUNDS.maxLat && longitude >= AMBERNATH_BOUNDS.minLng && longitude <= AMBERNATH_BOUNDS.maxLng;
-      if (!inBounds) {
-        setLocStatus("outside");
-        return;
-      }
-      const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
-      const addr = rev[0];
-      const locString = [addr?.street, addr?.district, addr?.city || "Ambernath"].filter(Boolean).join(", ");
-      setLocation(locString || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-      setLocStatus("ok");
-    } catch {
-      showNotice("Location failed", "Could not detect location. Please enter it manually.", "danger");
-    } finally {
-      setDetectingLoc(false);
-    }
-  };
 
   const handleCamera = async () => {
     if (Platform.OS === "web") {
@@ -181,8 +144,7 @@ export default function NewComplaintScreen() {
 
     const cleanContact = contactNumber.trim().replace(/\D/g, "").slice(-10);
     if (cleanContact.length !== 10) return showNotice("Contact Required", "Please enter your 10-digit contact number so we can reach you.");
-    if (!location.trim()) return showNotice("Location Required", "Please enter the location or tap Detect Location.");
-    if (locStatus === "outside") return showNotice("Outside Ambernath", "Complaints can only be filed for locations within Ambernath city limits.", "danger");
+    if (!location.trim()) return showNotice("Location Required", "Please enter the complaint location or nearby landmark manually.");
 
     setSubmitting(true);
     try {
@@ -247,12 +209,8 @@ export default function NewComplaintScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>LOCATION *</Text>
-            <TouchableOpacity style={[styles.detectBtn, detectingLoc && { opacity: 0.7 }]} onPress={detectLocation} disabled={detectingLoc} activeOpacity={0.8}>{detectingLoc ? <ActivityIndicator size="small" color={ORANGE} /> : <Feather name="navigation" size={15} color={ORANGE} />}<Text style={styles.detectBtnText}>{detectingLoc ? "Detecting..." : "Detect My Location"}</Text></TouchableOpacity>
-            {locStatus === "outside" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#DC2626" /><Text style={styles.locWarningText}>Your location is outside Ambernath. Only complaints within Ambernath are accepted.</Text></View>}
-            {locStatus === "denied" && <View style={styles.locWarning}><Feather name="alert-circle" size={13} color="#D97706" /><Text style={styles.locWarningText}>Location permission denied. Enter manually below.</Text></View>}
-            {locStatus === "ok" && <View style={styles.locSuccess}><Feather name="check-circle" size={13} color={GREEN} /><Text style={styles.locSuccessText}>Location detected within Ambernath</Text></View>}
-            <View style={[styles.locationRow, { marginTop: 10 }]}><View style={styles.locationIcon}><Feather name="map-pin" size={16} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={location} onChangeText={(v) => { setLocation(v); if (locStatus === "ok") setLocStatus("idle"); }} placeholder="Enter exact location / landmark" placeholderTextColor="#CBD5E1" returnKeyType="next" /></View>
-            <Text style={styles.wardText}>Ward: {user?.ward || "Auto-detected based on location"}</Text>
+            <View style={styles.locationRow}><View style={styles.locationIcon}><Feather name="map-pin" size={16} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={location} onChangeText={setLocation} placeholder="Enter exact location / landmark manually" placeholderTextColor="#CBD5E1" returnKeyType="next" /></View>
+            <Text style={styles.wardText}>Ward: {user?.ward || "Ward Pending"}</Text>
           </View>
 
           <View style={styles.section}>
@@ -308,12 +266,6 @@ const styles = StyleSheet.create({
   locationIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   locationInput: { flex: 1 },
   wardText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 8 },
-  detectBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FFEDD5", borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14 },
-  detectBtnText: { fontSize: 14, color: ORANGE, fontFamily: "Inter_600SemiBold" },
-  locWarning: { flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: "#FEE2E2", padding: 10, borderRadius: 10, marginTop: 8 },
-  locWarningText: { flex: 1, fontSize: 11, color: "#991B1B", fontFamily: "Inter_400Regular" },
-  locSuccess: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#D1FAE5", padding: 8, borderRadius: 10, marginTop: 8 },
-  locSuccessText: { fontSize: 11, color: "#065F46", fontFamily: "Inter_400Regular" },
   noticeCard: { flexDirection: "row", gap: 10, backgroundColor: "#FFF7ED", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#FFEDD5", alignItems: "flex-start" },
   noticeText: { flex: 1, fontSize: 12, color: ORANGE, fontFamily: "Inter_400Regular", lineHeight: 18 },
   submitBar: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, backgroundColor: "white", borderTopWidth: 1, borderTopColor: "#F1F5F9" },
