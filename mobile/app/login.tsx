@@ -7,6 +7,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import TopShade from "@/components/TopShade";
+import DobDatePicker from "@/components/DobDatePicker";
 import OtpDigitInput from "@/components/OtpDigitInput";
 import { useAuth } from "@/context/AuthContext";
 import { ambernathWards } from "@/data/mumbaiServices";
