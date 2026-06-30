@@ -89,9 +89,11 @@ export default function DobDatePicker({
 
   return (
     <View style={s.wrap}>
-      <Text style={s.label}>
-        {label} {required ? <Text style={s.required}>*</Text> : null}
-      </Text>
+      {label ? (
+        <Text style={s.label}>
+          {label} {required ? <Text style={s.required}>*</Text> : null}
+        </Text>
+      ) : null}
 
       <TouchableOpacity style={s.input} onPress={() => setOpen(true)} activeOpacity={0.85}>
         <Feather name="calendar" size={14} color={value ? "#EA580C" : "#94A3B8"} />
@@ -103,7 +105,7 @@ export default function DobDatePicker({
         <View style={s.overlay}>
           <View style={s.sheet}>
             <View style={s.header}>
-              <Text style={s.title}>{label}</Text>
+              <Text style={s.title}>{label || "Date of Birth"}</Text>
               <TouchableOpacity onPress={() => setOpen(false)} style={s.closeBtn}>
                 <Feather name="x" size={20} color="#64748B" />
               </TouchableOpacity>

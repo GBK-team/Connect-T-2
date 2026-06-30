@@ -34,7 +34,7 @@ const createId = (prefix) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_KEY || "CHANGE_THIS_CONNECT_T_SECRET";
-const MAIN_SUPER_ADMIN_MOBILE = String(process.env.MAIN_SUPER_ADMIN_MOBILE || "8554994735").replace(/\D/g, "").slice(-10);
+const MAIN_SUPER_ADMIN_MOBILE = String(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604").replace(/\D/g, "").slice(-10);
 
 function b64url(input) {
   return Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -1976,24 +1976,28 @@ app.post("/api/auth/super-admin-access-login", async (req, res) => {
 
     if (mobile === MAIN_SUPER_ADMIN_MOBILE) {
       const user = {
-        id: "SUPER_ADMIN_TEJASHREE",
-        name: "Tejashree Ma'am",
+        id: "SUPER_ADMIN_MAIN",
+        name: "Super Admin",
         mobile,
         role: "super_admin",
+        ward: "All Wards",
         isSuperAdmin: true,
         approvalStatus: "approved",
+        nagarsevakId: "SUPER_ADMIN_MAIN",
       };
 
       await db.query(
         `INSERT INTO users
-         (id, name, mobile, role, is_super_admin, approval_status)
-         VALUES (?, ?, ?, 'super_admin', 1, 'approved')
+         (id, name, mobile, role, ward, is_super_admin, approval_status, nagarsevak_id)
+         VALUES (?, ?, ?, 'super_admin', 'All Wards', 1, 'approved', ?)
          ON DUPLICATE KEY UPDATE
            name = VALUES(name),
            role = 'super_admin',
+           ward = 'All Wards',
            is_super_admin = 1,
-           approval_status = 'approved'`,
-        [user.id, user.name, user.mobile],
+           approval_status = 'approved',
+           nagarsevak_id = VALUES(nagarsevak_id)`,
+        [user.id, user.name, user.mobile, user.nagarsevakId],
       );
 
       return res.json({
@@ -2482,8 +2486,8 @@ app.post("/api/auth/verify-otp", async (req, res) => {
       message: "OTP verified successfully",
       user: {
         mobile,
-        role: mobile === "8554994735" ? "super_admin" : "citizen",
-        is_super_admin: mobile === "8554994735" ? 1 : 0,
+        role: mobile === MAIN_SUPER_ADMIN_MOBILE ? "super_admin" : "citizen",
+        is_super_admin: mobile === MAIN_SUPER_ADMIN_MOBILE ? 1 : 0,
       },
     });
   } catch (err) {

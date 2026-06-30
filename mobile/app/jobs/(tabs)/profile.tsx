@@ -8,6 +8,7 @@ import * as ImagePicker from "expo-image-picker";
 
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
+import DobDatePicker from "@/components/DobDatePicker";
 import { calcProfileCompletion, CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
 import { useJobs } from "@/context/JobsContext";
 
@@ -32,20 +33,6 @@ function countWords(value?: string) {
   return String(value || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
-function normalizeDobForInputs(value?: string) {
-  const raw = String(value || "").trim();
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return { day: iso[3], month: iso[2], year: iso[1] };
-  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) return { day: slash[1].padStart(2, "0"), month: slash[2].padStart(2, "0"), year: slash[3] };
-  return { day: "", month: "", year: "" };
-}
-
-function makeDob(day: string, month: string, year: string) {
-  if (!day && !month && !year) return undefined;
-  if (day.length < 1 || month.length < 1 || year.length !== 4) return undefined;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-}
 
 function validEmail(value?: string) {
   const v = String(value || "").trim();
@@ -88,19 +75,6 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
     <TouchableOpacity style={[s.chip, active && s.chipActive]} onPress={onPress} activeOpacity={0.82}>
       <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
     </TouchableOpacity>
-  );
-}
-
-function DobEditor({ day, month, year, setDay, setMonth, setYear }: { day: string; month: string; year: string; setDay: (v: string) => void; setMonth: (v: string) => void; setYear: (v: string) => void }) {
-  return (
-    <View style={s.inputGroup}>
-      <Text style={s.label}>Date of Birth</Text>
-      <View style={s.dobRow}>
-        <TextInput value={day} onChangeText={(v) => setDay(v.replace(/\D/g, "").slice(0, 2))} placeholder="DD" keyboardType="number-pad" maxLength={2} style={s.dobInput} placeholderTextColor="#94A3B8" />
-        <TextInput value={month} onChangeText={(v) => setMonth(v.replace(/\D/g, "").slice(0, 2))} placeholder="MM" keyboardType="number-pad" maxLength={2} style={s.dobInput} placeholderTextColor="#94A3B8" />
-        <TextInput value={year} onChangeText={(v) => setYear(v.replace(/\D/g, "").slice(0, 4))} placeholder="YYYY" keyboardType="number-pad" maxLength={4} style={[s.dobInput, { flex: 1.35 }]} placeholderTextColor="#94A3B8" />
-      </View>
-    </View>
   );
 }
 
@@ -158,13 +132,10 @@ export default function JobPortalProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ visible: boolean; title: string; message: string; tone?: "success" | "danger" | "info"; onConfirm?: () => void; confirmText?: string }>({ visible: false, title: "", message: "" });
 
-  const dob = normalizeDobForInputs(jobsUser?.dob);
+  const [profileDob, setProfileDob] = useState(jobsUser?.dob || "");
   const [name, setName] = useState(jobsUser?.name || "");
   const [email, setEmail] = useState(jobsUser?.email || "");
   const [profilePhoto, setProfilePhoto] = useState(jobsUser?.profilePhoto);
-  const [day, setDay] = useState(dob.day);
-  const [month, setMonth] = useState(dob.month);
-  const [year, setYear] = useState(dob.year);
   const [location, setLocation] = useState(jobsUser?.location || "");
   const [qualification, setQualification] = useState(jobsUser?.qualification || "");
   const [skills, setSkills] = useState(jobsUser?.skills || "");
@@ -226,7 +197,7 @@ export default function JobPortalProfileScreen() {
       if (isEmployer) {
         await updateJobsUser({ name: name.trim(), email: email.trim() || undefined, profilePhoto, company: company.trim(), contactPerson: contactPerson.trim() || name.trim(), whatsapp: cleanPhone(whatsapp || jobsUser.phone), industry: industry.trim() || undefined, gstNo: gstNo.trim() || undefined, companyType: companyType.trim() || undefined, companySize: companySize.trim() || undefined, yearEstablished: yearEstablished.trim() || undefined, website: website.trim() || undefined, address: address.trim() || undefined, pincode: pincode.trim() || undefined, companyDescription: companyDescription.trim() || undefined });
       } else {
-        await updateJobsUser({ name: name.trim(), email: email.trim() || undefined, profilePhoto, dob: makeDob(day, month, year), location: location.trim() || undefined, qualification: qualification.trim() || undefined, skills: skills.trim() || undefined, currentStatus, experience: currentStatus === "fresher" ? undefined : experience.trim() || undefined, languages: languages.trim() || undefined, about: about.trim() || undefined, currentCompany: currentStatus === "employed" ? currentCompany.trim() || undefined : undefined, currentRole: currentStatus === "employed" ? currentRole.trim() || undefined : undefined, previousCompany: previousCompany.trim() || undefined, previousRole: previousRole.trim() || undefined, collegeName: currentStatus === "student" ? collegeName.trim() || undefined : undefined, fieldOfStudy: currentStatus === "student" ? fieldOfStudy.trim() || undefined : undefined });
+        await updateJobsUser({ name: name.trim(), email: email.trim() || undefined, profilePhoto, dob: profileDob || undefined, location: location.trim() || undefined, qualification: qualification.trim() || undefined, skills: skills.trim() || undefined, currentStatus, experience: currentStatus === "fresher" ? undefined : experience.trim() || undefined, languages: languages.trim() || undefined, about: about.trim() || undefined, currentCompany: currentStatus === "employed" ? currentCompany.trim() || undefined : undefined, currentRole: currentStatus === "employed" ? currentRole.trim() || undefined : undefined, previousCompany: previousCompany.trim() || undefined, previousRole: previousRole.trim() || undefined, collegeName: currentStatus === "student" ? collegeName.trim() || undefined : undefined, fieldOfStudy: currentStatus === "student" ? fieldOfStudy.trim() || undefined : undefined });
       }
       showNotice("Profile saved", "Your Job Portal profile has been updated.", "success");
     } catch (err: any) {
@@ -308,7 +279,7 @@ export default function JobPortalProfileScreen() {
           <Section title="Basic Details" icon="user">
             <Input label={isEmployer ? "Owner / HR Name" : "Full Name"} value={name} onChangeText={setName} placeholder="Full name" />
             <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@email.com" keyboardType="email-address" autoCapitalize="none" />
-            {!isEmployer && <DobEditor day={day} month={month} year={year} setDay={setDay} setMonth={setMonth} setYear={setYear} />}
+            {!isEmployer && <DobDatePicker label="Date of Birth" value={profileDob} onChange={setProfileDob} placeholder="Select date of birth" />}
           </Section>
 
           {isEmployer ? (

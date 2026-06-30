@@ -393,8 +393,35 @@ async function superAdminAccessLogin(req, res) {
     const mobile = normalizeMobile(req.body?.mobile);
     const accessCode = String(req.body?.accessCode || req.body?.access_code || "").trim().toUpperCase();
 
-    if (mobile.length !== 10 || !accessCode) {
-      return sendJson(res, 400, { success: false, message: "Mobile and unique access ID are required" });
+    if (mobile.length !== 10) {
+      return sendJson(res, 400, { success: false, message: "Valid 10 digit mobile number is required" });
+    }
+
+    const mainSuperAdminMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
+
+    if (!accessCode && mobile === mainSuperAdminMobile) {
+      return sendJson(res, 200, {
+        success: true,
+        source: "main_super_admin",
+        user: {
+          id: "SUPER_ADMIN_MAIN",
+          name: "Super Admin",
+          mobile,
+          role: "super_admin",
+          ward: "All Wards",
+          isSuperAdmin: true,
+          nagarsevakId: "SUPER_ADMIN_MAIN",
+          avatarColor: "#16A34A",
+          approvalStatus: "approved",
+        },
+      });
+    }
+
+    if (!accessCode) {
+      return sendJson(res, 400, {
+        success: false,
+        message: "Unique access ID is required unless this is the main Super Admin mobile",
+      });
     }
 
     const [rows] = await db.query(
@@ -421,7 +448,11 @@ async function superAdminAccessLogin(req, res) {
         name: row.name,
         mobile,
         role: "super_admin",
+        ward: "All Wards",
         isSuperAdmin: true,
+        nagarsevakId: row.id,
+        avatarColor: "#16A34A",
+        approvalStatus: "approved",
         accessCode: row.access_code,
       },
     });

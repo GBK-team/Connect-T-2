@@ -13,9 +13,9 @@ export interface NagarsevakDirectoryEntry {
 
 export const NAGARSEVAK_DIRECTORY: NagarsevakDirectoryEntry[] = [
   {
-    id: "NS001",
-    name: "Karanjule Patil Tejashri Vishwajeet",
-    mobile: "8554994735",
+    id: "SUPER_ADMIN_MAIN",
+    name: "Super Admin",
+    mobile: "9370796604",
 
     ward: "All Wards",
     wardCode: null,

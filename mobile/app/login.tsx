@@ -23,19 +23,14 @@ function cleanPhone(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
 
-function formatDobInput(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
-}
-
 function isValidDob(value: string) {
-  if (!/^\d{2}-\d{2}-\d{4}$/.test(value)) return false;
-  const [d, m, y] = value.split("-").map(Number);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+  const [y, m, d] = value.split("-").map(Number);
   if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900 || y > new Date().getFullYear()) return false;
   const dt = new Date(y, m - 1, d);
-  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d && dt <= today;
 }
 
 export default function LoginScreen() {
@@ -83,7 +78,7 @@ export default function LoginScreen() {
     setError("");
     if (tab === "register") {
       if (regName.trim().length < 2) return setError("Enter full name");
-      if (!isValidDob(regDob.trim())) return setError("Enter DOB as DD-MM-YYYY");
+      if (!isValidDob(regDob.trim())) return setError("Select valid date of birth");
       if (!regAddress.trim()) return setError("Enter address");
       if (cleanPhone(regPhone).length !== 10) return setError("Enter valid 10 digit mobile number");
       if (!regWard) return setError("Select ward/location");
@@ -168,7 +163,7 @@ export default function LoginScreen() {
             <View style={s.formCard}>
               <Field label="Full Name *" value={regName} onChangeText={setRegName} placeholder="Enter full name" />
               <Field label="Email Address (optional)" value={regEmail} onChangeText={setRegEmail} placeholder="Enter email address" keyboardType="email-address" autoCapitalize="none" />
-              <Field label="Date of Birth *" value={regDob} onChangeText={(v) => setRegDob(formatDobInput(v))} placeholder="DD-MM-YYYY" keyboardType="number-pad" maxLength={10} />
+              <DobDatePicker label="Date of Birth" required value={regDob} onChange={setRegDob} placeholder="Select date of birth" />
               <Field label="Current Address *" value={regAddress} onChangeText={setRegAddress} placeholder="Enter address" multiline />
               <Text style={s.fieldLabel}>Phone Number *</Text>
               <View style={s.phoneRow}><View style={s.countryCode}><Text style={s.countryCodeText}>IN +91</Text></View><TextInput style={[s.input, s.phoneInput]} placeholder="10-digit mobile number" placeholderTextColor="#94A3B8" keyboardType="phone-pad" maxLength={10} value={regPhone} onChangeText={setRegPhone} /></View>

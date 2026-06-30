@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { NAGARSEVAK_WARDS } from "@/data/wards";
 import { getApiUrl } from "@/utils/apiUrl";
+import DobDatePicker from "@/components/DobDatePicker";
 
 type Step = "form" | "otp";
 
@@ -14,15 +15,14 @@ function cleanMobile(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
 
-function formatDob(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
-}
-
 function isValidDob(value: string) {
-  return /^\d{2}-\d{2}-\d{4}$/.test(value.trim());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900 || y > new Date().getFullYear()) return false;
+  const dt = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d && dt <= today;
 }
 
 export default function NagarsevakRegisterScreen() {
@@ -78,7 +78,7 @@ export default function NagarsevakRegisterScreen() {
     const cleaned = cleanMobile(mobile);
     const contact = cleanMobile(contactNumber || cleaned);
     if (name.trim().length < 2) return setError("Enter your full name");
-    if (!isValidDob(dob)) return setError("Enter DOB as DD-MM-YYYY");
+    if (!isValidDob(dob)) return setError("Select valid date of birth");
     if (cleaned.length !== 10) return setError("Enter a valid 10-digit mobile number");
     if (!ward) return setError("Select your ward");
     if (wardAvailable === false) return setError("This ward is already assigned to an approved Nagarsevak");
@@ -161,7 +161,7 @@ export default function NagarsevakRegisterScreen() {
               <View style={styles.cardHeader}><View style={styles.headerIcon}><Feather name="clipboard" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Register as Nagarsevak</Text><Text style={styles.cardSub}>Submit once. Super Admin approval is required before login.</Text></View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <Field label="FULL NAME *"><TextInput style={styles.input} value={name} onChangeText={setName} placeholder="As per official records" placeholderTextColor="#CBD5E1" autoCapitalize="words" /></Field>
-              <Field label="DATE OF BIRTH *"><TextInput style={styles.input} value={dob} onChangeText={(v) => setDob(formatDob(v))} placeholder="DD-MM-YYYY" placeholderTextColor="#CBD5E1" keyboardType="number-pad" maxLength={10} /></Field>
+              <Field label="DATE OF BIRTH *"><DobDatePicker label="" value={dob} onChange={setDob} placeholder="Select date of birth" /></Field>
               <Field label="MOBILE NUMBER *"><View style={styles.phoneRow}><View style={styles.countryCode}><Text style={styles.countryCodeText}>+91</Text></View><TextInput style={[styles.input, { flex: 1, borderWidth: 0, borderRadius: 0 }]} value={mobile} onChangeText={setMobile} placeholder="10-digit mobile" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></View></Field>
               <Field label="WARD *"><TouchableOpacity style={[styles.input, styles.wardPicker]} onPress={() => setWardModal(true)} activeOpacity={0.8}><Text style={[styles.wardPickerText, !ward && { color: "#CBD5E1" }]}>{ward || "Select your ward"}</Text>{checkingWard ? <ActivityIndicator size="small" color="#EA580C" /> : ward ? <View style={[styles.wardBadge, { backgroundColor: wardAvailable === false ? "#FEE2E2" : "#D1FAE5" }]}><Feather name={wardAvailable === false ? "x" : "check"} size={11} color={wardAvailable === false ? "#DC2626" : "#059669"} /><Text style={[styles.wardBadgeText, { color: wardAvailable === false ? "#DC2626" : "#059669" }]}>{wardAvailable === false ? "Taken" : "Available"}</Text></View> : <Feather name="chevron-down" size={16} color="#94A3B8" />}</TouchableOpacity>{ward && wardAvailable === false && <Text style={styles.wardTakenMsg}>Only approved Nagarsevak can reserve a ward. Try another ward.</Text>}</Field>
               <Field label="CONTACT NUMBER *"><TextInput style={styles.input} value={contactNumber} onChangeText={setContactNumber} placeholder="Public contact number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></Field>

@@ -16,7 +16,7 @@ function InfoModal({ visible, onClose }: { visible: boolean; onClose: () => void
         <View style={styles.modalCard}>
           <View style={styles.modalIcon}><Feather name="shield" size={28} color="#16A34A" /></View>
           <Text style={styles.modalTitle}>Super Admin Access</Text>
-          <Text style={styles.modalText}>Main super admin login is restricted to Tejashree Ma'am mobile number. Extra super admins can use unique access IDs generated from the Super Admin dashboard.</Text>
+          <Text style={styles.modalText}>Main super admin login is restricted to the authorized main Super Admin mobile number. Extra super admins can use unique access IDs generated from the Super Admin dashboard.</Text>
           <TouchableOpacity style={styles.modalBtn} onPress={onClose} activeOpacity={0.85}><Text style={styles.modalBtnText}>OK</Text></TouchableOpacity>
         </View>
       </View>

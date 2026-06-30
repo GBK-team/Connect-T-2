@@ -14,7 +14,7 @@ let columnsEnsured = false;
 let defaultSuperAdminEnsured = false;
 
 const DEFAULT_SUPER_ADMIN_ID = "SUPER_ADMIN_MAIN";
-const DEFAULT_SUPER_ADMIN_MOBILE = "9370796604";
+const DEFAULT_SUPER_ADMIN_MOBILE = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
 
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);

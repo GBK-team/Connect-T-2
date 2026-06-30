@@ -284,8 +284,8 @@ export default function ReportsScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#DCFCE7", borderRadius: 10, padding: 12, marginBottom: 14 }}>
                 <Feather name="shield" size={16} color="#16A34A" />
                 <View style={{ marginLeft: 10 }}>
-                  <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }}>Tejashree (Super Admin)</Text>
-                  <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#16A34A" }}>+91 8554994735 · Head Administrator</Text>
+                  <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }}>Main Super Admin</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#16A34A" }}>+91 9370796604 · Head Administrator</Text>
                 </View>
               </View>
               {sessionLog.map((log, idx) => (
