@@ -4,7 +4,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/context/AuthContext";
 import { getApiUrl } from "@/utils/apiUrl";
 
 function cleanMobile(value?: string | string[]) {
@@ -16,7 +15,6 @@ type StatusState = "submitted" | "reviewing" | "approved" | "rejected" | "not_fo
 export default function NagarsevakVerificationStatusScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ phone?: string; mobile?: string; from?: string }>();
-  const { login } = useAuth();
   const phone = cleanMobile(params.phone || params.mobile);
   const [status, setStatus] = useState<StatusState>("submitted");
   const [checking, setChecking] = useState(false);
@@ -44,9 +42,10 @@ export default function NagarsevakVerificationStatusScreen() {
 
       if (data.success && data.user) {
         setStatus("approved");
-        setMessage("Your profile is approved. Opening Nagarsevak dashboard...");
-        await login(data.user);
-        setTimeout(() => router.replace("/(tabs)/admin" as any), 600);
+        setMessage("Your profile is approved. Please verify a new OTP to open the Nagarsevak dashboard.");
+        setTimeout(() => {
+          router.replace({ pathname: "/nagarsevak/login" as any, params: { phone } });
+        }, 900);
         return;
       }
 
@@ -59,6 +58,12 @@ export default function NagarsevakVerificationStatusScreen() {
       } else if (data.message === "NOT_FOUND" || data.notFound) {
         setStatus("not_found");
         setMessage("No Nagarsevak registration was found for this mobile number. Please register first.");
+      } else if (data.message === "OTP_REQUIRED") {
+        setStatus("approved");
+        setMessage("Your profile is approved. Please verify a new OTP to open the Nagarsevak dashboard.");
+        setTimeout(() => {
+          router.replace({ pathname: "/nagarsevak/login" as any, params: { phone } });
+        }, 900);
       } else {
         setStatus("reviewing");
         setMessage("Verification is still under review. Please check again later.");

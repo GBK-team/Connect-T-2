@@ -44,18 +44,12 @@ workflows:
       - name: Install Node dependencies
         script: |
           cd "$CM_BUILD_DIR/mobile"
-          rm -f package-lock.json
-          npm install --legacy-peer-deps --no-audit --no-fund
+          npm ci --legacy-peer-deps --no-audit --no-fund
 
-      - name: Apply generated mobile patches
+      - name: Verify install did not rewrite app source
         script: |
-          cd "$CM_BUILD_DIR/mobile"
-          node scripts/clean-generated-patches.js
-          node scripts/portal-flow-patch.js
-          node scripts/super-admin-dashboard-patch.js
-          node scripts/nagarsevak-dashboard-patch.js
-          node scripts/super-admin-ui-polish.js
-          grep -n "complaintIdText" "app/(tabs)/admin.tsx" || true
+          cd "$CM_BUILD_DIR"
+          git diff --exit-code -- mobile/app mobile/components mobile/context mobile/hooks mobile/lib
 
       - name: Install Android SDK packages
         script: |
@@ -93,7 +87,7 @@ workflows:
       - name: TypeScript check
         script: |
           cd "$CM_BUILD_DIR/mobile"
-          npx tsc --noEmit -p tsconfig.json
+          npm run typecheck
 
       - name: Build release APK
         script: |

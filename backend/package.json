@@ -5,7 +5,9 @@
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node --require ./otpProductionPatch.js --require ./utilityStatusPatch.js --require ./connectTProductionPatch.js --require ./nagarsevakLoginPatch.js --require ./jobPortalMessagePatch.js --require ./jobPortalProfilePatch.js --require ./superAdminDbPatch.js server.js"
+    "start": "node hostinger-entry.js",
+    "check": "for file in *.js; do node --check \"$file\"; done",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

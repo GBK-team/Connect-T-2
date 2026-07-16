@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/constants/api"; import React, { useEffect, useRef, useState } from "react"; import {   ActivityIndicator, Animated, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react"; import {   ActivityIndicator, Animated, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ComplaintStatus } from "@/context/ComplaintContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
+import { apiGet, apiPatch } from "@/lib/api";
 
 type ComplaintDetail = {
   id: string;
@@ -158,12 +159,7 @@ export default function ComplaintDetailScreen() {
   const loadComplaint = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/complaints/${id}`);
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setComplaint(null);
-        return;
-      }
+      const data = await apiGet<any>(`/api/complaints/${id}`);
       const apiComplaint = data.complaint;
       const createdAt = apiComplaint.created_at || apiComplaint.createdAt || new Date().toISOString();
       setComplaint({
@@ -205,19 +201,13 @@ export default function ComplaintDetailScreen() {
     if (!complaint) return;
     try {
       setUpdatingStatus(nextStatus);
-      const response = await fetch(`${API_BASE_URL}/api/complaints/${complaint.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: nextStatus,
-          note,
-          assigned_to: nextStatus === "assigned" ? user?.name || "Ward Officer" : undefined,
-          resolved_note: nextStatus === "resolved" ? "Complaint resolved" : undefined,
-          updated_by: user?.name || "Ward Officer",
-        }),
+      await apiPatch(`/api/complaints/${complaint.id}/status`, {
+        status: nextStatus,
+        note,
+        assigned_to: nextStatus === "assigned" ? user?.name || "Ward Officer" : undefined,
+        resolved_note: nextStatus === "resolved" ? "Complaint resolved" : undefined,
+        updated_by: user?.name || "Ward Officer",
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Status update failed");
       await loadComplaint();
       showNotice("Updated", "Complaint status updated successfully.", "success");
     } catch (error) {

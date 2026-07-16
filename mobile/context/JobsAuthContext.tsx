@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { apiPatch, apiPost } from "@/lib/api";
+import { apiPatch, apiPost, clearJobsAuthToken, getStoredJobsAuthToken, storeJobsAuthToken } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 
 
@@ -246,9 +247,10 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    AsyncStorage.getItem(SESSION_KEY)
-      .then((saved) => {
-        if (saved) setJobsUser(normalizeUser(JSON.parse(saved)));
+    Promise.all([AsyncStorage.getItem(SESSION_KEY), getStoredJobsAuthToken()])
+      .then(([saved, token]) => {
+        if (saved && token) setJobsUser(normalizeUser(JSON.parse(saved)));
+        else if (saved) void AsyncStorage.removeItem(SESSION_KEY);
       })
       .catch(() => null)
       .finally(() => setLoading(false));
@@ -258,9 +260,11 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
     const payload = {
       ...data,
       phone: cleanPhone(data.phone),
+      profilePhoto: await toUploadableMediaUri(data.profilePhoto),
     };
 
     const res = await apiPost<any>("/api/job-portal/register", payload);
+    await storeJobsAuthToken(res.token);
     const user = normalizeUser(res.user || res.data || res);
     await persist(user);
   };
@@ -271,6 +275,7 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
       const res = await apiPost<any>("/api/job-portal/login", { phone: clean, role });
       const raw = res.user || res.data || res;
       if (!raw || !raw.id) return false;
+      await storeJobsAuthToken(res.token);
       await persist(normalizeUser(raw));
       return true;
     } catch {
@@ -279,14 +284,18 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logoutJobs = async () => {
+    await clearJobsAuthToken();
     await persist(null);
   };
 
   const updateJobsUser = async (data: Partial<JobsUser>) => {
     if (!jobsUser) return;
-    const next = normalizeUser({ ...jobsUser, ...data });
-    await apiPatch(`/api/job-portal/users/${jobsUser.id}`, next);
-    await persist(next);
+    const profilePhoto = Object.prototype.hasOwnProperty.call(data, "profilePhoto")
+      ? await toUploadableMediaUri(data.profilePhoto)
+      : jobsUser.profilePhoto;
+    const next = normalizeUser({ ...jobsUser, ...data, profilePhoto });
+    const res = await apiPatch<any>(`/api/job-portal/users/${jobsUser.id}`, next);
+    await persist(normalizeUser(res.user || next));
   };
 
   const addCompany = async (company: Omit<CompanyProfile, "id">) => {

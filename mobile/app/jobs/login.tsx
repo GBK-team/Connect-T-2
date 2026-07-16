@@ -58,7 +58,7 @@ export default function JobPortalLoginScreen() {
 
     setError("");
     setLoading(true);
-    const otpSend = await sendRealOtp(phone10, "login");
+    const otpSend = await sendRealOtp(phone10, tab);
     setLoading(false);
 
     if (!otpSend.success) {
@@ -71,7 +71,7 @@ export default function JobPortalLoginScreen() {
   };
 
   const submit = async () => {
-    const otpCheck = await verifyRealOtp(phone, otp, "login");
+    const otpCheck = await verifyRealOtp(phone, otp, tab);
     if (!otpCheck.success) { setError(otpCheck.error || "Invalid OTP"); return; }
     setLoading(true); setError("");
     try {

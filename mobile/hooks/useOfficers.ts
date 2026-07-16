@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { API_BASE_URL } from "@/constants/api";
+import { apiGet, apiPatch } from "@/lib/api";
 
 export interface Officer {
   id: string;
@@ -23,28 +23,6 @@ export interface Officer {
 }
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
-
-function buildApiUrl(path: string) {
-  const cleanBase = API_BASE_URL.replace(/\/$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-  return `${cleanBase}${cleanPath}`;
-}
-
-async function readJson(res: Response) {
-  const text = await res.text();
-
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {
-      success: false,
-      message: text,
-    };
-  }
-}
 
 function normalizeOfficer(item: any): Officer {
   return {
@@ -86,12 +64,7 @@ export function useOfficers(statusFilter?: ApprovalStatus) {
 
     try {
       const query = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
-      const res = await fetch(buildApiUrl(`/api/auth/officers${query}`));
-      const data = await readJson(res);
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error || "Failed to load officers");
-      }
+      const data = await apiGet<any>(`/api/auth/officers${query}`);
 
       setOfficers((data.officers || []).map(normalizeOfficer));
     } catch (e: any) {
@@ -111,22 +84,10 @@ export function useOfficers(statusFilter?: ApprovalStatus) {
     approvalStatus: "approved" | "rejected",
   ) => {
     try {
-      const res = await fetch(buildApiUrl("/api/auth/officers"), {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id,
-          approvalStatus,
-        }),
+      const data = await apiPatch<any>("/api/auth/officers", {
+        id,
+        approvalStatus,
       });
-
-      const data = await readJson(res);
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error || "Failed to update officer");
-      }
 
       setOfficers((prev) =>
         prev.map((o) => (o.id === id ? { ...o, approvalStatus } : o)),

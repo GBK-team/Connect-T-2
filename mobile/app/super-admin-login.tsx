@@ -12,7 +12,7 @@ import OtpDigitInput from "@/components/OtpDigitInput";
 
 
 
-import { apiPost } from "@/lib/api";
+import { apiPost, storeAuthToken } from "@/lib/api";
 
 
 const MAIN_SUPER_ADMIN_MOBILE = "9370796604";
@@ -73,6 +73,7 @@ export default function SuperAdminLoginScreen() {
       });
 
       const backendUser = response.user || response.data || response;
+      await storeAuthToken(response.token);
 
       await login({
         id: backendUser.id || (isMainSuperAdmin ? "SUPER_ADMIN_MAIN" : `SUPER_ADMIN_${finalMobile}`),

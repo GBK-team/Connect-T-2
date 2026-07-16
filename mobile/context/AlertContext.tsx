@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type AlertType = "alert" | "news" | "emergency";
 export type AlertPriority = "normal" | "important" | "urgent" | "high";
@@ -155,6 +156,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       const result = await apiGet<any>("/api/alerts");
       const backendAlerts = Array.isArray(result.alerts)
         ? result.alerts.map(normalizeBackendAlert)
+            .filter((item: AppAlert) => !item.expiresAt || new Date(item.expiresAt).getTime() > Date.now())
         : [];
 
       setAlerts(sortAlerts(backendAlerts));
@@ -182,6 +184,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       new Date(createdAt.getTime() + ALERT_ACTIVE_MS).toISOString();
 
     const id = "ALT" + Date.now().toString().slice(-8);
+    const mediaUri = await toUploadableMediaUri(data.media?.uri);
 
     const payload = {
       id,
@@ -194,7 +197,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       valid_until: data.validUntil || formatValidUntil(expiresAt),
       expires_at: expiresAt,
       target_audience: data.targetAudience || null,
-      media_uri: data.media?.uri || null,
+      media_uri: mediaUri,
       media_type: data.media?.type || null,
       media_file_name: data.media?.fileName || null,
       media_mime_type: data.media?.mimeType || null,

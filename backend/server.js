@@ -6,6 +6,13 @@ const mysql = require("mysql2/promise");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const {
+  signToken: signSecureToken,
+  verifyOtpProof,
+  verifyRequestToken,
+} = require("./authSecurity");
+const { sendOtp: createOtpSession, verifyOtp: verifyOtpSession } = require("./otpService");
+const { saveDataUri } = require("./mediaStorage");
 
 const app = express();
 
@@ -33,7 +40,6 @@ const db = mysql.createPool({
 const createId = (prefix) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_KEY || "CHANGE_THIS_CONNECT_T_SECRET";
 const MAIN_SUPER_ADMIN_MOBILE = String(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604").replace(/\D/g, "").slice(-10);
 
 function b64url(input) {
@@ -45,40 +51,11 @@ function b64urlJson(obj) {
 }
 
 function signToken(payload) {
-  const header = { alg: "HS256", typ: "JWT" };
-  const body = {
-    ...payload,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
-  };
-
-  const unsigned = `${b64urlJson(header)}.${b64urlJson(body)}`;
-  const signature = crypto.createHmac("sha256", JWT_SECRET).update(unsigned).digest("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  return `${unsigned}.${signature}`;
+  return signSecureToken(payload);
 }
 
 function verifyToken(req) {
-  const header = String(req.headers.authorization || "");
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-
-  if (!token) return null;
-
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-
-  const unsigned = `${parts[0]}.${parts[1]}`;
-  const expected = crypto.createHmac("sha256", JWT_SECRET).update(unsigned).digest("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  if (expected !== parts[2]) return null;
-
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+  return verifyRequestToken(req);
 }
 
 function issueUserToken(user) {
@@ -86,55 +63,444 @@ function issueUserToken(user) {
     sub: user.id,
     mobile: user.mobile,
     role: user.role,
+    scope: user.scope || "civic",
     isSuperAdmin: !!(user.isSuperAdmin || user.is_super_admin),
   });
 }
 
-function requireSuperAdmin(req, res, next) {
-  const auth = verifyToken(req);
+async function requireSuperAdmin(req, res, next) {
+  try {
+    const auth = verifyToken(req);
+    const user = await currentCivicUser(auth);
+    if (!auth || !user || (user.role !== "super_admin" && !user.is_super_admin)) {
+      return res.status(401).json({ success: false, error: "Super Admin token required" });
+    }
 
-  if (!auth || (auth.role !== "super_admin" && !auth.isSuperAdmin)) {
-    return res.status(401).json({
-      success: false,
-      error: "Super admin token required",
-    });
+    req.auth = auth;
+    req.civicUser = user;
+    return next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "Admin authorization failed" });
+  }
+}
+
+function replaceRequestQuery(req, updates, remove = []) {
+  const nextQuery = { ...(req.query || {}) };
+  for (const key of remove) delete nextQuery[key];
+  Object.assign(nextQuery, updates || {});
+  Object.defineProperty(req, "query", {
+    configurable: true,
+    enumerable: true,
+    value: nextQuery,
+  });
+}
+
+async function currentCivicUser(auth) {
+  if (!auth?.sub) return null;
+  const [rows] = await db.query(
+    `SELECT id, name, mobile, role, ward, ward_code, is_super_admin, approval_status,
+            address, age, email, avatar_color
+     FROM users WHERE id = ? LIMIT 1`,
+    [auth.sub],
+  );
+  return rows[0] || null;
+}
+
+async function requireCommunityUser(req, res) {
+  const auth = verifyToken(req);
+  if (!auth || auth.scope === "job_portal") {
+    res.status(401).json({ success: false, error: "Login required" });
+    return null;
+  }
+
+  const user = await currentCivicUser(auth);
+  if (!user) {
+    res.status(401).json({ success: false, error: "User session is no longer valid" });
+    return null;
   }
 
   req.auth = auth;
-  next();
+  req.civicUser = user;
+  return user;
 }
+
+function isSuperAdminAuth(auth) {
+  return !!auth && (auth.role === "super_admin" || auth.isSuperAdmin === true);
+}
+
+async function adminAccessAllowed(req) {
+  const tokenUser = await currentCivicUser(verifyToken(req));
+  if (tokenUser && (tokenUser.role === "super_admin" || !!tokenUser.is_super_admin)) return true;
+  const configured = String(process.env.ADMIN_API_KEY || "");
+  const provided = String(req.headers["x-admin-key"] || "");
+  const left = Buffer.from(configured);
+  const right = Buffer.from(provided);
+  return !!configured && left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+async function authorizeComplaints(req, res, next) {
+  try {
+    const auth = verifyToken(req);
+    if (!auth || auth.scope === "job_portal") {
+      return res.status(401).json({ success: false, error: "Login required" });
+    }
+
+    const user = await currentCivicUser(auth);
+    if (!user) return res.status(401).json({ success: false, error: "User session is no longer valid" });
+
+    const isSuperAdmin = user.role === "super_admin" || !!user.is_super_admin;
+    const isOfficer = user.role === "nagarsevak" && user.approval_status === "approved";
+    const method = req.method.toUpperCase();
+    const complaintId = String(req.params?.id || req.path.split("/").filter(Boolean)[0] || "");
+
+    if (method === "GET" && req.path === "/") {
+      if (isSuperAdmin) return next();
+      if (isOfficer) {
+        replaceRequestQuery(
+          req,
+          user.ward_code ? { ward_code: user.ward_code } : { ward: user.ward },
+          ["user_id", "user_mobile", "assigned_officer_id", "ward", "ward_code"],
+        );
+        return next();
+      }
+
+      replaceRequestQuery(
+        req,
+        { user_mobile: String(user.mobile || "").replace(/\D/g, "").slice(-10) },
+        ["user_id", "ward", "ward_code", "assigned_officer_id"],
+      );
+      return next();
+    }
+
+    if (method === "POST" && req.path === "/") {
+      if (user.role !== "citizen" && !isOfficer && !isSuperAdmin) {
+        return res.status(403).json({ success: false, error: "Citizen or officer account required" });
+      }
+      if (!isSuperAdmin) {
+        req.body.user_id = user.id;
+        req.body.user_name = user.name;
+        req.body.user_mobile = String(user.mobile || "").replace(/\D/g, "").slice(-10);
+        req.body.user_address = user.address || null;
+        req.body.user_age = user.age || null;
+        req.body.user_email = user.email || null;
+        req.body.ward = user.ward || req.body.ward;
+        req.body.ward_code = user.ward_code || req.body.ward_code;
+        delete req.body.assigned_officer_id;
+      }
+      return next();
+    }
+
+    if (!complaintId) return res.status(400).json({ success: false, error: "Complaint id is required" });
+    const [rows] = await db.query(
+      "SELECT user_id, user_mobile, ward, ward_code FROM complaints WHERE id = ? LIMIT 1",
+      [complaintId],
+    );
+    if (!rows.length) return res.status(404).json({ success: false, error: "Complaint not found" });
+    const complaint = rows[0];
+
+    if (isSuperAdmin) return next();
+    if (isOfficer) {
+      const sameWard = user.ward_code
+        ? String(complaint.ward_code || "").toLowerCase() === String(user.ward_code).toLowerCase()
+        : String(complaint.ward || "").toLowerCase() === String(user.ward || "").toLowerCase();
+      if (!sameWard) return res.status(403).json({ success: false, error: "Complaint belongs to another ward" });
+      if (method === "PATCH") {
+        const validStatuses = ["assigned", "in_progress", "resolved", "rejected"];
+        if (!validStatuses.includes(String(req.body?.status || ""))) {
+          return res.status(400).json({ success: false, error: "Invalid complaint status" });
+        }
+        req.body.updated_by = user.name;
+      }
+      return next();
+    }
+
+    const ownComplaint =
+      String(complaint.user_id || "") === String(user.id) ||
+      String(complaint.user_mobile || "").replace(/\D/g, "").slice(-10) ===
+        String(user.mobile || "").replace(/\D/g, "").slice(-10);
+    if (!ownComplaint || method !== "GET") {
+      return res.status(403).json({ success: false, error: "You cannot access this complaint" });
+    }
+    return next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "Complaint authorization failed" });
+  }
+}
+
+async function authorizeJobPortal(req, res, next) {
+  try {
+    const method = req.method.toUpperCase();
+    const pathName = req.path;
+    const auth = verifyToken(req);
+
+    if (method === "GET" && pathName === "/jobs") {
+      if (auth?.scope === "job_portal" && auth.sub) {
+        replaceRequestQuery(req, { viewerId: auth.sub });
+      } else {
+        replaceRequestQuery(req, {}, ["viewerId"]);
+      }
+      return next();
+    }
+
+    if (
+      (method === "GET" && ["/health", "/patch-health"].includes(pathName)) ||
+      (method === "POST" && ["/register", "/login"].includes(pathName))
+    ) {
+      return next();
+    }
+
+    let isSuperAdmin = isSuperAdminAuth(auth);
+    if (isSuperAdmin) {
+      const civicUser = await currentCivicUser(auth);
+      isSuperAdmin = !!civicUser && (civicUser.role === "super_admin" || !!civicUser.is_super_admin);
+    }
+    let isJobUser = auth?.scope === "job_portal" && ["seeker", "employer"].includes(auth.role);
+    if (isJobUser) {
+      const [jobUsers] = await db.query(
+        "SELECT role FROM job_portal_users WHERE id = ? LIMIT 1",
+        [auth.sub],
+      );
+      isJobUser = !!jobUsers.length && jobUsers[0].role === auth.role;
+    }
+    if (!isSuperAdmin && !isJobUser) {
+      return res.status(401).json({ success: false, error: "Job Portal login required" });
+    }
+
+    if (pathName === "/admin/analytics") {
+      return isSuperAdmin ? next() : res.status(403).json({ success: false, error: "Super admin required" });
+    }
+
+    const userMatch = pathName.match(/^\/users\/([^/]+)$/);
+    const resumeMatch = pathName.match(/^\/resume\/([^/]+)$/);
+    const notificationMatch = pathName.match(/^\/notifications\/([^/]+)$/);
+    const protectedUserId = userMatch?.[1] || resumeMatch?.[1] || notificationMatch?.[1];
+    if (protectedUserId && !isSuperAdmin && protectedUserId !== String(auth.sub)) {
+      return res.status(403).json({ success: false, error: "You cannot access another Job Portal account" });
+    }
+
+    if (method === "POST" && pathName === "/jobs") {
+      if (!isSuperAdmin && (auth.role !== "employer" || String(req.body?.employerId || req.body?.employer_id) !== String(auth.sub))) {
+        return res.status(403).json({ success: false, error: "Only the logged-in employer can post this job" });
+      }
+      return next();
+    }
+
+    const jobMutation = pathName.match(/^\/jobs\/([^/]+)$/);
+    if (jobMutation && ["PATCH", "DELETE"].includes(method) && !isSuperAdmin) {
+      if (auth.role !== "employer") return res.status(403).json({ success: false, error: "Employer account required" });
+      const [rows] = await db.query("SELECT employer_id FROM job_portal_jobs WHERE id = ? LIMIT 1", [jobMutation[1]]);
+      if (!rows.length) return res.status(404).json({ success: false, error: "Job not found" });
+      if (String(rows[0].employer_id) !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "You cannot modify another employer's job" });
+      }
+      return next();
+    }
+
+    const applyMatch = pathName.match(/^\/jobs\/([^/]+)\/apply$/);
+    if (applyMatch && method === "POST" && !isSuperAdmin) {
+      if (auth.role !== "seeker" || String(req.body?.seekerId || req.body?.seeker_id) !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "Only the logged-in seeker can apply" });
+      }
+      return next();
+    }
+
+    if (pathName === "/applications" && method === "GET" && !isSuperAdmin) {
+      if (auth.role === "seeker") {
+        replaceRequestQuery(req, { seekerId: auth.sub }, ["employerId", "jobId"]);
+      } else {
+        replaceRequestQuery(req, { employerId: auth.sub }, ["seekerId", "jobId"]);
+      }
+      return next();
+    }
+
+    const statusMatch = pathName.match(/^\/applications\/([^/]+)\/status$/);
+    if (statusMatch && method === "PATCH" && !isSuperAdmin) {
+      if (auth.role !== "employer") return res.status(403).json({ success: false, error: "Employer account required" });
+      const [rows] = await db.query(
+        `SELECT j.employer_id FROM job_portal_applications a
+         JOIN job_portal_jobs j ON j.id = a.job_id WHERE a.id = ? LIMIT 1`,
+        [statusMatch[1]],
+      );
+      if (!rows.length) return res.status(404).json({ success: false, error: "Application not found" });
+      if (String(rows[0].employer_id) !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "You cannot update this application" });
+      }
+      return next();
+    }
+
+    if (pathName === "/messages" && method === "GET" && !isSuperAdmin) {
+      if (String(req.query?.userId || "") !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "You cannot read another user's messages" });
+      }
+      return next();
+    }
+
+    if (pathName === "/messages" && method === "POST" && !isSuperAdmin) {
+      if (String(req.body?.senderId || req.body?.sender_id || "") !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "Message sender does not match the logged-in user" });
+      }
+
+      const jobId = String(req.body?.jobId || req.body?.job_id || "").trim();
+      const receiverId = String(req.body?.receiverId || req.body?.receiver_id || "").trim();
+      if (!jobId || !receiverId) {
+        return res.status(400).json({ success: false, error: "jobId and receiverId are required" });
+      }
+      const [pairs] = await db.query(
+        `SELECT j.employer_id, a.seeker_id
+         FROM job_portal_jobs j
+         LEFT JOIN job_portal_applications a
+           ON a.job_id = j.id AND a.seeker_id IN (?, ?)
+         WHERE j.id = ?
+         LIMIT 1`,
+        [auth.sub, receiverId, jobId],
+      );
+      const pair = pairs[0];
+      const isJobPair = pair && (
+        (String(pair.employer_id) === String(auth.sub) && String(pair.seeker_id) === receiverId) ||
+        (String(pair.employer_id) === receiverId && String(pair.seeker_id) === String(auth.sub))
+      );
+      if (!isJobPair) {
+        return res.status(403).json({ success: false, error: "Messages are limited to a job's employer and applicant" });
+      }
+      return next();
+    }
+
+    const messageDelete = pathName.match(/^\/messages\/([^/]+)$/);
+    if (messageDelete && method === "DELETE" && !isSuperAdmin) {
+      if (String(req.query?.userId || req.body?.userId || "") !== String(auth.sub)) {
+        return res.status(403).json({ success: false, error: "You cannot delete another user's message" });
+      }
+      return next();
+    }
+
+    return next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "Job Portal authorization failed" });
+  }
+}
+
+async function authorizeAlerts(req, res, next) {
+  try {
+    if (req.method === "GET") return next();
+
+    const user = await requireCommunityUser(req, res);
+    if (!user) return;
+    const isSuperAdmin = user.role === "super_admin" || !!user.is_super_admin;
+    const isOfficer = user.role === "nagarsevak" && user.approval_status === "approved";
+    if (!isSuperAdmin && !isOfficer) {
+      return res.status(403).json({ success: false, error: "Approved officer or Super Admin required" });
+    }
+
+    if (req.method === "POST") {
+      req.body.posted_by = user.name;
+      req.body.posted_by_id = user.id;
+      if (!isSuperAdmin) req.body.ward = user.ward;
+      return next();
+    }
+
+    if (req.method === "DELETE") {
+      const alertId = req.path.split("/").filter(Boolean)[0];
+      const [rows] = await db.query("SELECT posted_by_id, ward FROM alerts WHERE id = ? LIMIT 1", [alertId]);
+      if (!rows.length) return res.status(404).json({ success: false, error: "Alert not found" });
+      const ownsAlert = String(rows[0].posted_by_id || "") === String(user.id);
+      const sameWard = String(rows[0].ward || "").toLowerCase() === String(user.ward || "").toLowerCase();
+      if (!isSuperAdmin && !ownsAlert && !sameWard) {
+        return res.status(403).json({ success: false, error: "You cannot remove another ward's alert" });
+      }
+    }
+
+    return next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "Alert authorization failed" });
+  }
+}
+
+async function authorizeCommunity(req, res, next) {
+  try {
+    const user = await requireCommunityUser(req, res);
+    if (!user) return;
+    const isSuperAdmin = user.role === "super_admin" || !!user.is_super_admin;
+    const method = req.method.toUpperCase();
+    const pathName = req.path;
+
+    if (req.baseUrl === "/api/feed") {
+      if (method === "POST" && pathName === "/posts") {
+        req.body.author_id = user.id;
+        req.body.author_name = user.name;
+        req.body.author_role = user.role;
+        req.body.avatar_color = user.avatar_color;
+        req.body.pinned = isSuperAdmin && !!req.body.pinned;
+      }
+
+      if (/^\/posts\/[^/]+\/like$/.test(pathName)) {
+        if (method === "POST") req.body.user_id = user.id;
+        if (method === "DELETE") replaceRequestQuery(req, { user_id: user.id });
+      }
+
+      if (method === "DELETE" && /^\/posts\/[^/]+$/.test(pathName)) {
+        const postId = pathName.split("/")[2];
+        const [rows] = await db.query("SELECT author_id FROM feed_posts WHERE id = ? LIMIT 1", [postId]);
+        if (!rows.length) return res.status(404).json({ success: false, error: "Post not found" });
+        if (!isSuperAdmin && String(rows[0].author_id) !== String(user.id)) {
+          return res.status(403).json({ success: false, error: "You cannot delete another user's post" });
+        }
+      }
+
+      if (pathName === "/subscriptions") {
+        if (method === "GET") replaceRequestQuery(req, { user_id: user.id });
+        if (method === "POST") req.body.subscriber_id = user.id;
+      }
+
+      if (pathName === "/blocks") {
+        if (method === "GET") replaceRequestQuery(req, { user_id: user.id });
+        if (method === "POST") {
+          req.body.user_id = user.id;
+          req.body.blocked_until = Math.min(
+            Number(req.body.blocked_until || 0),
+            Date.now() + 24 * 60 * 60 * 1000,
+          );
+        }
+      }
+    }
+
+    if (req.baseUrl === "/api/chat") {
+      if (method === "POST" && pathName === "/messages") {
+        req.body.author_id = user.id;
+        req.body.author_name = user.name;
+        req.body.author_role = user.role;
+        req.body.avatar_color = user.avatar_color;
+      }
+
+      if (["PATCH", "DELETE"].includes(method) && /^\/messages\/[^/]+$/.test(pathName)) {
+        const messageId = pathName.split("/")[2];
+        const [rows] = await db.query("SELECT author_id FROM chat_messages WHERE id = ? LIMIT 1", [messageId]);
+        if (!rows.length) return res.status(404).json({ success: false, error: "Message not found" });
+        if (!isSuperAdmin && String(rows[0].author_id) !== String(user.id)) {
+          return res.status(403).json({ success: false, error: "You cannot modify another user's message" });
+        }
+      }
+    }
+
+    return next();
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "Community authorization failed" });
+  }
+}
+
+app.use("/api/super-admin", requireSuperAdmin);
+app.use("/api/auth/officers", requireSuperAdmin);
+app.use("/api/complaints", authorizeComplaints);
+app.use("/api/job-portal", authorizeJobPortal);
+app.use("/api/alerts", authorizeAlerts);
+app.use("/api/feed", authorizeCommunity);
+app.use("/api/chat", authorizeCommunity);
 
 function publicBaseUrl(req) {
   return String(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 }
 
 async function saveDataUriToUploads(value, prefix, req) {
-  if (!value || typeof value !== "string") return value || null;
-  if (!value.startsWith("data:")) return value;
-
-  const match = value.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return value;
-
-  const mime = match[1];
-  const base64 = match[2];
-  const ext =
-    mime.includes("png") ? "png" :
-    mime.includes("webp") ? "webp" :
-    mime.includes("mp4") ? "mp4" :
-    "jpg";
-
-  const buffer = Buffer.from(base64, "base64");
-
-  if (buffer.length > 8 * 1024 * 1024) {
-    throw new Error("Uploaded media exceeds 8MB limit");
-  }
-
-  const fileName = `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}.${ext}`;
-  const filePath = path.join(UPLOAD_DIR, fileName);
-
-  await fs.promises.writeFile(filePath, buffer);
-
-  return `${publicBaseUrl(req)}/uploads/${fileName}`;
+  return saveDataUri(value, prefix, req);
 }
 
 async function columnExists(tableName, columnName) {
@@ -165,6 +531,7 @@ async function ensureProductionMySQLSchema() {
     await ensureColumn("users", "office_timings", "office_timings VARCHAR(190) NULL AFTER residence_address");
     await ensureColumn("users", "contact_name", "contact_name VARCHAR(150) NULL AFTER office_timings");
     await ensureColumn("users", "contact_number", "contact_number VARCHAR(20) NULL AFTER contact_name");
+    await ensureColumn("users", "ward_changed", "ward_changed TINYINT(1) NOT NULL DEFAULT 0 AFTER ward_number");
 
 
     await db.query(`
@@ -358,18 +725,13 @@ app.get("/api/server-info", (req, res) => {
     success: true,
     serverVersion: SERVER_VERSION,
     serverFile: "backend/server.js",
-    runtimeFile: __filename,
-    cwd: process.cwd(),
   });
 });
 
 /* USERS */
 app.get("/api/users", async (req, res) => {
   try {
-    const adminKey = process.env.ADMIN_API_KEY || "";
-    const providedKey = String(req.headers["x-admin-key"] || req.query.key || "");
-
-    if (!adminKey || providedKey !== adminKey) {
+    if (!(await adminAccessAllowed(req))) {
       return res.status(403).json({
         success: false,
         error: "Admin API key required",
@@ -377,7 +739,7 @@ app.get("/api/users", async (req, res) => {
     }
 
     const [rows] = await db.query(
-      `SELECT id, name, mobile, role, ward, ward_code, ward_number,
+      `SELECT id, name, mobile, role, ward, ward_code, ward_number, ward_changed,
               is_super_admin, age, dob, email, address, nagarsevak_id,
               avatar_color, profile_photo, notify_email, notify_whatsapp,
               approval_status, office_address, residence_address,
@@ -395,16 +757,17 @@ app.get("/api/users", async (req, res) => {
 
 app.post("/api/users", async (req, res) => {
   try {
-    const id = req.body.id || createId("user");
+    const requestedId = req.body.id || createId("user");
 
     const {
       name,
-      mobile,
-      role = "citizen",
+      mobile: rawMobile,
+      role: requestedRole = "citizen",
       ward,
       ward_code,
       ward_number,
-      is_super_admin = false,
+      ward_changed: requestedWardChanged = false,
+      is_super_admin: requestedSuperAdmin = false,
       age,
       dob,
       email,
@@ -414,7 +777,7 @@ app.post("/api/users", async (req, res) => {
       profile_photo,
       notify_email = false,
       notify_whatsapp = false,
-      approval_status,
+      approval_status: requestedApprovalStatus,
       office_address,
       residence_address,
       office_timings,
@@ -422,25 +785,78 @@ app.post("/api/users", async (req, res) => {
       contact_number,
     } = req.body;
 
-    if (!name || !mobile) {
+    const mobile = String(rawMobile || "").replace(/\D/g, "").slice(-10);
+    if (!name || mobile.length !== 10) {
       return res.status(400).json({
         success: false,
-        error: "name and mobile are required",
+        error: "name and valid 10 digit mobile are required",
       });
     }
+    if (String(name).trim().length > 160) {
+      return res.status(400).json({ success: false, error: "Name is too long" });
+    }
+
+    if (!['citizen', 'nagarsevak', 'super_admin'].includes(requestedRole)) {
+      return res.status(400).json({ success: false, error: "Invalid user role" });
+    }
+
+    const auth = verifyToken(req);
+    const authUser = await currentCivicUser(auth);
+    const authIsSuperAdmin = !!authUser && (authUser.role === "super_admin" || !!authUser.is_super_admin);
+    const [existingRows] = await db.query(
+      `SELECT id, mobile, role, ward, ward_changed, is_super_admin, approval_status
+       FROM users WHERE id = ? OR (mobile = ? AND role = ?)
+       ORDER BY (id = ?) DESC LIMIT 1`,
+      [requestedId, mobile, requestedRole, requestedId],
+    );
+    const existing = existingRows[0] || null;
+    const ownsExisting = !!existing && String(auth?.sub || "") === String(existing.id);
+    const hasOtpProof = !!verifyOtpProof(req, mobile, ["login", "register"]);
+    const existingMobile = String(existing?.mobile || "").replace(/\D/g, "").slice(-10);
+
+    if (!authIsSuperAdmin && !ownsExisting && !hasOtpProof) {
+      return res.status(401).json({ success: false, error: "Verified OTP or an active user session is required" });
+    }
+
+    if (existing && !authIsSuperAdmin && existingMobile !== mobile && (!ownsExisting || !hasOtpProof)) {
+      return res.status(403).json({ success: false, error: "Verified OTP is required to change this account's mobile number" });
+    }
+
+    if (!existing && !authIsSuperAdmin && requestedRole !== "citizen") {
+      return res.status(403).json({ success: false, error: "Officer and Super Admin roles cannot be self-assigned" });
+    }
+
+    const wardIsChanging = !!existing?.ward && !!ward &&
+      String(existing.ward).trim().toLowerCase() !== String(ward).trim().toLowerCase();
+    if (!authIsSuperAdmin && wardIsChanging && !!existing?.ward_changed) {
+      return res.status(403).json({ success: false, error: "Ward can only be changed once" });
+    }
+
+    const id = existing?.id || requestedId;
+    const role = authIsSuperAdmin ? requestedRole : existing?.role || "citizen";
+    const is_super_admin = authIsSuperAdmin
+      ? !!requestedSuperAdmin
+      : !!(existing?.is_super_admin || role === "super_admin");
+    const approval_status = authIsSuperAdmin
+      ? requestedApprovalStatus || existing?.approval_status || "approved"
+      : existing?.approval_status || "approved";
+    const ward_changed = authIsSuperAdmin
+      ? !!requestedWardChanged
+      : !!(existing?.ward_changed || wardIsChanging);
 
     const savedProfilePhoto = await saveDataUriToUploads(profile_photo, "profile", req);
 
     await db.query(
       `INSERT INTO users
-      (id, name, mobile, role, ward, ward_code, ward_number, is_super_admin, age, dob, email, address, nagarsevak_id, avatar_color, profile_photo, notify_email, notify_whatsapp, approval_status, office_address, residence_address, office_timings, contact_name, contact_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, mobile, role, ward, ward_code, ward_number, ward_changed, is_super_admin, age, dob, email, address, nagarsevak_id, avatar_color, profile_photo, notify_email, notify_whatsapp, approval_status, office_address, residence_address, office_timings, contact_name, contact_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
       name = VALUES(name),
       role = VALUES(role),
       ward = VALUES(ward),
       ward_code = VALUES(ward_code),
       ward_number = VALUES(ward_number),
+      ward_changed = VALUES(ward_changed),
       is_super_admin = VALUES(is_super_admin),
       age = VALUES(age),
       dob = VALUES(dob),
@@ -465,6 +881,7 @@ app.post("/api/users", async (req, res) => {
         ward || null,
         ward_code || null,
         ward_number || null,
+        ward_changed ? 1 : 0,
         is_super_admin ? 1 : 0,
         age || null,
         dob || null,
@@ -487,6 +904,8 @@ app.post("/api/users", async (req, res) => {
     res.status(201).json({
       success: true,
       userId: id,
+      profilePhoto: savedProfilePhoto || null,
+      wardChanged: ward_changed,
       token: issueUserToken({
         id,
         mobile,
@@ -511,9 +930,16 @@ app.post("/api/auth/user-by-mobile", async (req, res) => {
       });
     }
 
+    if (!verifyOtpProof(req, mobile, ["login", "register"])) {
+      return res.status(401).json({
+        success: false,
+        error: "Verified OTP is required to access this account",
+      });
+    }
+
     const params = [mobile];
     let sql = `
-      SELECT id, name, mobile, role, ward, ward_code, ward_number,
+      SELECT id, name, mobile, role, ward, ward_code, ward_number, ward_changed,
              is_super_admin, age, dob, email, address, nagarsevak_id,
              avatar_color, profile_photo, notify_email, notify_whatsapp,
              approval_status, office_address, residence_address,
@@ -678,6 +1104,9 @@ app.post("/api/complaints", async (req, res) => {
         success: false,
         error: "title, description, location and ward are required",
       });
+    }
+    if (String(title).trim().length > 255 || String(description).trim().length > 10000) {
+      return res.status(400).json({ success: false, error: "Complaint title or description is too long" });
     }
 
     const finalWardCode =
@@ -867,8 +1296,8 @@ app.get("/api/alerts", async (req, res) => {
     await ensureAlertsTable();
     const { type, ward } = req.query;
 
-    let sql = "SELECT * FROM alerts WHERE is_active = 1";
-    const params = [];
+    let sql = "SELECT * FROM alerts WHERE is_active = 1 AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?)";
+    const params = [new Date().toISOString()];
 
     if (type) {
       sql += " AND type = ?";
@@ -893,7 +1322,6 @@ app.post("/api/alerts", async (req, res) => {
   try {
     await ensureAlertsTable();
     const id = req.body.id || createId("alert");
-    const savedMediaUri = await saveDataUriToUploads(req.body.media_uri, "alert", req);
 
     const {
       title,
@@ -921,6 +1349,27 @@ app.post("/api/alerts", async (req, res) => {
         error: "title, body and posted_by are required",
       });
     }
+    if (String(title).trim().length > 255 || String(body).trim().length > 10000) {
+      return res.status(400).json({ success: false, error: "Alert title or message is too long" });
+    }
+
+    if (!['alert', 'news', 'emergency'].includes(type)) {
+      return res.status(400).json({ success: false, error: "Invalid alert type" });
+    }
+    if (!['normal', 'important', 'urgent', 'high'].includes(priority)) {
+      return res.status(400).json({ success: false, error: "Invalid alert priority" });
+    }
+    if (expires_at && Number.isNaN(new Date(expires_at).getTime())) {
+      return res.status(400).json({ success: false, error: "Invalid alert expiry" });
+    }
+    if (expires_at && new Date(expires_at).getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, error: "Alert expiry must be in the future" });
+    }
+    if (media_type && !['image', 'video'].includes(media_type)) {
+      return res.status(400).json({ success: false, error: "Invalid alert media type" });
+    }
+
+    const savedMediaUri = await saveDataUriToUploads(req.body.media_uri, "alert", req);
 
     await db.query(
       `INSERT INTO alerts
@@ -977,6 +1426,7 @@ app.get("/api/feed/posts", async (req, res) => {
 app.post("/api/feed/posts", async (req, res) => {
   try {
     const id = req.body.id || createId("post");
+    const savedImageUri = await saveDataUriToUploads(req.body.image_uri, "feed", req);
 
     const {
       author_id,
@@ -995,6 +1445,9 @@ app.post("/api/feed/posts", async (req, res) => {
         error: "author_id, author_name, author_role and content are required",
       });
     }
+    if (String(content).trim().length > 5000) {
+      return res.status(400).json({ success: false, error: "Post content is too long" });
+    }
 
     await db.query(
       `INSERT INTO feed_posts
@@ -1008,7 +1461,7 @@ app.post("/api/feed/posts", async (req, res) => {
         avatar_color || null,
         type,
         content,
-        image_uri || null,
+        savedImageUri || null,
         pinned ? 1 : 0,
       ],
     );
@@ -1184,6 +1637,9 @@ app.post("/api/chat/messages", async (req, res) => {
         error: "author_id, author_name, author_role and text are required",
       });
     }
+    if (String(text).trim().length > 2000) {
+      return res.status(400).json({ success: false, error: "Message is too long" });
+    }
 
     await db.query(
       `INSERT INTO chat_messages
@@ -1204,6 +1660,9 @@ app.patch("/api/chat/messages/:id", async (req, res) => {
 
     if (!text) {
       return res.status(400).json({ success: false, error: "text is required" });
+    }
+    if (text.length > 2000) {
+      return res.status(400).json({ success: false, error: "Message is too long" });
     }
 
     await db.query("UPDATE chat_messages SET text = ? WHERE id = ?", [text, req.params.id]);
@@ -1849,7 +2308,7 @@ app.post("/api/super-admin/access-codes", requireSuperAdmin, async (req, res) =>
   try {
     const name = String(req.body.name || "").trim();
     const mobile = normalizeMobile(req.body.mobile);
-    const createdBy = String(req.body.createdBy || req.body.created_by || "main_super_admin").trim();
+    const createdBy = String(req.auth?.sub || "main_super_admin").trim();
 
     if (!name || mobile.length !== 10) {
       return res.status(400).json({
@@ -1903,12 +2362,27 @@ app.patch("/api/super-admin/access-codes/:id", requireSuperAdmin, async (req, re
       });
     }
 
+    const [accessRows] = await db.query(
+      "SELECT mobile FROM super_admin_access_codes WHERE id = ? LIMIT 1",
+      [id],
+    );
+    if (!accessRows.length) {
+      return res.status(404).json({ success: false, message: "Access ID not found" });
+    }
+
     await db.query(
       `UPDATE super_admin_access_codes
        SET status = ?
        WHERE id = ?`,
       [status, id],
     );
+
+    if (status === "revoked") {
+      await db.query(
+        "UPDATE users SET role = 'citizen', is_super_admin = 0 WHERE mobile = ? AND mobile <> ?",
+        [accessRows[0].mobile, MAIN_SUPER_ADMIN_MOBILE],
+      );
+    }
 
     return res.json({
       success: true,
@@ -1948,6 +2422,10 @@ app.delete("/api/super-admin/access-codes/:id", requireSuperAdmin, async (req, r
     }
 
     await db.query("DELETE FROM super_admin_access_codes WHERE id = ?", [id]);
+    await db.query(
+      "UPDATE users SET role = 'citizen', is_super_admin = 0 WHERE mobile = ? AND mobile <> ?",
+      [rows[0].mobile, MAIN_SUPER_ADMIN_MOBILE],
+    );
 
     return res.json({
       success: true,
@@ -1971,6 +2449,13 @@ app.post("/api/auth/super-admin-access-login", async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Valid mobile number is required",
+      });
+    }
+
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return res.status(401).json({
+        success: false,
+        message: "Verified login OTP is required",
       });
     }
 
@@ -2122,6 +2607,13 @@ app.post("/api/auth/nagarsevak-register", async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Name and valid mobile number are required",
+      });
+    }
+
+    if (!verifyOtpProof(req, mobile, ["register"])) {
+      return res.status(401).json({
+        success: false,
+        message: "Verified registration OTP is required",
       });
     }
 
@@ -2282,27 +2774,38 @@ app.post("/api/auth/nagarsevak-login", async (req, res) => {
       });
     }
 
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return res.json({
+        success: false,
+        message: "OTP_REQUIRED",
+        approvalStatus,
+      });
+    }
+
+    const user = {
+      id: officer.id,
+      name: officer.name,
+      mobile: officer.mobile,
+      role: officer.isSuperAdmin ? "super_admin" : "nagarsevak",
+      ward: officer.ward,
+      wardCode: officer.wardCode,
+      wardNumber: officer.wardNumber,
+      nagarsevakId: officer.nagarsevakId || officer.id,
+      isSuperAdmin: !!officer.isSuperAdmin,
+      avatarColor: officer.avatarColor || "#EA580C",
+      profilePhoto: officer.profilePhoto,
+      officeAddress: officer.officeAddress,
+      residenceAddress: officer.residenceAddress,
+      officeTimings: officer.officeTimings,
+      contactName: officer.contactName,
+      contactNumber: officer.contactNumber,
+      createdAt: officer.createdAt,
+    };
+
     return res.json({
       success: true,
-      user: {
-        id: officer.id,
-        name: officer.name,
-        mobile: officer.mobile,
-        role: officer.isSuperAdmin ? "super_admin" : "nagarsevak",
-        ward: officer.ward,
-        wardCode: officer.wardCode,
-        wardNumber: officer.wardNumber,
-        nagarsevakId: officer.nagarsevakId || officer.id,
-        isSuperAdmin: !!officer.isSuperAdmin,
-        avatarColor: officer.avatarColor || "#EA580C",
-        profilePhoto: officer.profilePhoto,
-        officeAddress: officer.officeAddress,
-        residenceAddress: officer.residenceAddress,
-        officeTimings: officer.officeTimings,
-        contactName: officer.contactName,
-        contactNumber: officer.contactNumber,
-        createdAt: officer.createdAt,
-      },
+      user,
+      token: issueUserToken(user),
     });
   } catch (err) {
     return res.status(500).json({
@@ -2397,6 +2900,35 @@ app.patch("/api/auth/officers", async (req, res) => {
   }
 });
 
+app.delete("/api/auth/officers/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Officer id is required" });
+    }
+
+    const [rows] = await db.query(
+      "SELECT id, role, is_super_admin FROM users WHERE id = ? LIMIT 1",
+      [id],
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Officer not found" });
+    }
+    if (rows[0].role !== "nagarsevak" || rows[0].is_super_admin) {
+      return res.status(403).json({ success: false, message: "Super Admin accounts cannot be deleted here" });
+    }
+
+    await db.query(
+      "UPDATE complaints SET assigned_officer_id = NULL WHERE assigned_officer_id = ?",
+      [id],
+    );
+    await db.query("DELETE FROM users WHERE id = ? AND role = 'nagarsevak'", [id]);
+    return res.json({ success: true, id });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || "Officer deletion failed" });
+  }
+});
+
 
 /* OTP AUTH */
 function generateOtp() {
@@ -2430,70 +2962,47 @@ function normalizeAccessCode(value) {
 
 app.post("/api/auth/send-otp", async (req, res) => {
   try {
-    const mobile = normalizeMobile(req.body?.mobile);
-    const purpose = req.body?.purpose || "login";
-
-    if (mobile.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        error: "Valid 10 digit mobile number is required",
-      });
-    }
-
-    const otp = "1234";
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await db.query(
-      `INSERT INTO otp_codes (mobile, otp_code, purpose, expires_at)
-       VALUES (?, ?, ?, ?)`,
-      [mobile, otp, purpose, expiresAt],
-    );
-
+    const { sendOtpSms } = require("./smsProvider");
+    const result = await createOtpSession({
+      mobile: req.body?.mobile || req.body?.phone,
+      purpose: req.body?.purpose || "login",
+      sendSms: sendOtpSms,
+    });
     return res.json({
       success: true,
-      message: "Demo OTP sent successfully",
-      devOtp: "1234",
+      message: "OTP sent successfully",
+      ...result,
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(Number(err?.status || 500)).json({
       success: false,
-      error: err.message,
+      error: err.message || "Failed to send OTP",
+      code: err?.code,
+      retryAfterSeconds: err?.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : undefined,
     });
   }
 });
 
 app.post("/api/auth/verify-otp", async (req, res) => {
   try {
-    const mobile = normalizeMobile(req.body?.mobile);
-    const otp = String(req.body?.otp || "").trim();
-
-    if (mobile.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        error: "Valid mobile number required",
-      });
-    }
-
-    if (otp !== "1234") {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid OTP. Use demo OTP 1234",
-      });
-    }
-
+    const result = verifyOtpSession({
+      mobile: req.body?.mobile || req.body?.phone,
+      code: req.body?.otp || req.body?.otp_code,
+      purpose: req.body?.purpose || "login",
+      sessionToken: req.body?.sessionToken || req.body?.session_token,
+    });
     return res.json({
       success: true,
+      valid: true,
       message: "OTP verified successfully",
-      user: {
-        mobile,
-        role: mobile === MAIN_SUPER_ADMIN_MOBILE ? "super_admin" : "citizen",
-        is_super_admin: mobile === MAIN_SUPER_ADMIN_MOBILE ? 1 : 0,
-      },
+      ...result,
     });
   } catch (err) {
-    return res.status(500).json({
+    return res.status(Number(err?.status || 500)).json({
       success: false,
-      error: err.message,
+      valid: false,
+      error: err.message || "OTP verification failed",
+      code: err?.code,
     });
   }
 });
@@ -2745,6 +3254,9 @@ async function ensureJobPortalSchema() {
   await jpEnsureColumn("job_portal_jobs", "joining_preference", "VARCHAR(120) NULL AFTER benefits");
   await jpEnsureColumn("job_portal_jobs", "last_date_to_apply", "DATE NULL AFTER joining_preference");
   await jpEnsureColumn("job_portal_jobs", "urgent_hiring", "TINYINT(1) NOT NULL DEFAULT 0 AFTER allow_messaging");
+  await jpEnsureColumn("job_portal_messages", "message_type", "VARCHAR(20) NOT NULL DEFAULT 'text' AFTER message");
+  await jpEnsureColumn("job_portal_messages", "media_url", "LONGTEXT NULL AFTER message_type");
+  await jpEnsureColumn("job_portal_messages", "read_at", "DATETIME NULL AFTER media_url");
 }
 
 app.get("/api/job-portal/health", async (req, res) => {
@@ -2778,6 +3290,10 @@ app.post("/api/job-portal/register", async (req, res) => {
       return jpBadRequest(res, "Enter a valid 10 digit contact number");
     }
 
+    if (!verifyOtpProof(req, phone, ["register"])) {
+      return res.status(401).json({ success: false, error: "Verified OTP is required to register" });
+    }
+
     if (!jpEmailOk(email)) {
       return jpBadRequest(res, "Enter a valid email address");
     }
@@ -2789,6 +3305,12 @@ app.post("/api/job-portal/register", async (req, res) => {
     if (role === "employer" && (!req.body.company || !req.body.address)) {
       return jpBadRequest(res, "Company name and address are required");
     }
+
+    const savedProfilePhoto = await saveDataUriToUploads(
+      req.body.profilePhoto || req.body.profile_photo,
+      "job_profile",
+      req,
+    );
 
     await db.query(
       `INSERT INTO job_portal_users
@@ -2826,7 +3348,7 @@ app.post("/api/job-portal/register", async (req, res) => {
         phone,
         email || null,
         req.body.avatarColor || req.body.avatar_color || "#059669",
-        req.body.profilePhoto || req.body.profile_photo || null,
+        savedProfilePhoto || null,
         req.body.qualification || null,
         req.body.skills || null,
         req.body.about || null,
@@ -2853,7 +3375,12 @@ app.post("/api/job-portal/register", async (req, res) => {
       [phone, role],
     );
 
-    res.status(201).json({ success: true, user: jpUser(rows[0]) });
+    const user = jpUser(rows[0]);
+    res.status(201).json({
+      success: true,
+      user,
+      token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2874,6 +3401,10 @@ app.post("/api/job-portal/login", async (req, res) => {
       return jpBadRequest(res, "Enter a valid 10 digit contact number");
     }
 
+    if (!verifyOtpProof(req, phone, ["login"])) {
+      return res.status(401).json({ success: false, error: "Verified OTP is required to login" });
+    }
+
     const [rows] = await db.query(
       "SELECT * FROM job_portal_users WHERE phone = ? AND role = ? LIMIT 1",
       [phone, role],
@@ -2886,7 +3417,12 @@ app.post("/api/job-portal/login", async (req, res) => {
       });
     }
 
-    res.json({ success: true, user: jpUser(rows[0]) });
+    const user = jpUser(rows[0]);
+    res.json({
+      success: true,
+      user,
+      token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2912,6 +3448,10 @@ app.get("/api/job-portal/users/:id", async (req, res) => {
 app.patch("/api/job-portal/users/:id", async (req, res) => {
   try {
     await ensureJobPortalSchema();
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "profilePhoto")) {
+      req.body.profilePhoto = await saveDataUriToUploads(req.body.profilePhoto, "job_profile", req);
+    }
 
     const allowed = {
       name: "name",
@@ -3371,6 +3911,19 @@ app.get("/api/job-portal/messages", async (req, res) => {
       return jpBadRequest(res, "userId and peerId, jobId, or applicationId required");
     }
 
+    if (userId && peerId) {
+      const updateWhere = ["receiver_id = ?", "sender_id = ?", "read_at IS NULL"];
+      const updateParams = [userId, peerId];
+      if (jobId) {
+        updateWhere.push("job_id = ?");
+        updateParams.push(jobId);
+      }
+      await db.query(
+        `UPDATE job_portal_messages SET read_at = NOW() WHERE ${updateWhere.join(" AND ")}`,
+        updateParams,
+      );
+    }
+
     const [rows] = await db.query(
       `SELECT * FROM job_portal_messages WHERE ${where.join(" AND ")} ORDER BY created_at ASC`,
       params,
@@ -3387,22 +3940,32 @@ app.post("/api/job-portal/messages", async (req, res) => {
     const senderId = req.body.senderId || req.body.sender_id;
     const receiverId = req.body.receiverId || req.body.receiver_id;
     const message = String(req.body.message || "").trim();
+    const messageType = String(req.body.messageType || req.body.message_type || "text").trim();
+    const mediaUrl = await saveDataUriToUploads(
+      req.body.mediaUrl || req.body.media_url,
+      "job_message",
+      req,
+    );
 
-    if (!senderId || !receiverId || !message) {
-      return jpBadRequest(res, "senderId, receiverId and message are required");
+    if (!senderId || !receiverId || (!message && !mediaUrl)) {
+      return jpBadRequest(res, "senderId, receiverId and message or media are required");
     }
 
     const id = jpCreateId("msg");
 
     await db.query(
-      "INSERT INTO job_portal_messages (id, job_id, application_id, sender_id, receiver_id, message) VALUES (?, ?, ?, ?, ?, ?)",
+      `INSERT INTO job_portal_messages
+       (id, job_id, application_id, sender_id, receiver_id, message, message_type, media_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         req.body.jobId || req.body.job_id || null,
         req.body.applicationId || req.body.application_id || null,
         senderId,
         receiverId,
-        message,
+        message || "Photo",
+        messageType || "text",
+        mediaUrl || null,
       ],
     );
 
@@ -3414,6 +3977,30 @@ app.post("/api/job-portal/messages", async (req, res) => {
     res.status(201).json({ success: true, message: rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/job-portal/messages/:id", async (req, res) => {
+  try {
+    const userId = String(req.query.userId || req.body?.userId || "").trim();
+    const mode = String(req.query.mode || req.body?.mode || "delete").trim();
+    if (!userId) return jpBadRequest(res, "userId is required");
+
+    if (mode === "unsend") {
+      await db.query(
+        "DELETE FROM job_portal_messages WHERE id = ? AND sender_id = ?",
+        [req.params.id, userId],
+      );
+      return res.json({ success: true, mode });
+    }
+
+    await db.query(
+      "UPDATE job_portal_messages SET message = '[deleted]', media_url = NULL WHERE id = ? AND (sender_id = ? OR receiver_id = ?)",
+      [req.params.id, userId, userId],
+    );
+    return res.json({ success: true, mode: "delete" });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -3531,10 +4118,7 @@ ensureJobPortalSchema()
 // Credentials are never stored in mobile app code.
 app.get("/api/admin/sms-settings", async (req, res) => {
   try {
-    const adminKey = process.env.ADMIN_API_KEY || "";
-    const providedKey = String(req.headers["x-admin-key"] || req.query.key || "");
-
-    if (!adminKey || providedKey !== adminKey) {
+    if (!(await adminAccessAllowed(req))) {
       return res.status(403).json({ success: false, error: "Admin API key required" });
     }
 
@@ -3549,10 +4133,7 @@ app.get("/api/admin/sms-settings", async (req, res) => {
 
 app.post("/api/admin/sms-settings", async (req, res) => {
   try {
-    const adminKey = process.env.ADMIN_API_KEY || "";
-    const providedKey = String(req.headers["x-admin-key"] || req.query.key || "");
-
-    if (!adminKey || providedKey !== adminKey) {
+    if (!(await adminAccessAllowed(req))) {
       return res.status(403).json({ success: false, error: "Admin API key required" });
     }
 

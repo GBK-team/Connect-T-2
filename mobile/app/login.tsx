@@ -87,7 +87,7 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const otpSend = await sendRealOtp(phone, "login");
+    const otpSend = await sendRealOtp(phone, tab);
     setLoading(false);
 
     if (!otpSend.success) {
@@ -100,7 +100,7 @@ export default function LoginScreen() {
   };
 
   const verifyOtp = async () => {
-    const otpCheck = await verifyRealOtp(phone, otp, "login");
+    const otpCheck = await verifyRealOtp(phone, otp, tab);
     if (!otpCheck.success) { setError(otpCheck.error || "Invalid OTP"); return; }
     setLoading(true);
     setError("");

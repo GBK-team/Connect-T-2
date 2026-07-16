@@ -5,9 +5,9 @@ import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { API_BASE_URL } from "@/constants/api";
 import { useComplaints } from "@/context/ComplaintContext";
 import { Officer, useOfficers } from "@/hooks/useOfficers";
+import { apiDelete } from "@/lib/api";
 
 const GREEN = "#16A34A";
 const DARK_GREEN = "#166534";
@@ -102,17 +102,12 @@ export default function OfficerDetailScreen() {
     if (!officer) return;
     setActionMsg("");
     try {
-      const base = API_BASE_URL.replace(/\/$/, "");
-      const res = await fetch(`${base}/api/auth/officers/${encodeURIComponent(officer.id)}`, { method: "DELETE" });
-      if (!res.ok) {
-        setActionMsg("Delete API is not enabled on backend yet.");
-        return;
-      }
+      await apiDelete(`/api/auth/officers/${encodeURIComponent(officer.id)}`);
       await refetch();
       setMenuVisible(false);
       router.back();
-    } catch {
-      setActionMsg("Delete API is not enabled on backend yet.");
+    } catch (error: any) {
+      setActionMsg(error?.message || "Officer could not be deleted.");
     }
   };
 

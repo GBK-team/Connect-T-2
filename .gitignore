@@ -65,6 +65,8 @@ backend/.env
 backend/.env.backup.*
 mobile/.env
 mobile/server/.env
+!.env.example
+!**/.env.example
 
 # Generated local logs/cache
 mobile/.expo/

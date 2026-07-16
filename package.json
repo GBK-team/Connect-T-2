@@ -5,7 +5,9 @@
   "main": "backend/hostinger-entry.js",
   "scripts": {
     "start": "node backend/hostinger-entry.js",
-    "build": "echo \"No build step required for Connect-T Node backend\""
+    "build": "echo \"No build step required for Connect-T Node backend\"",
+    "check": "for file in backend/*.js; do node --check \"$file\"; done",
+    "test": "node --test backend/test/*.test.js"
   },
   "engines": {
     "node": ">=20"

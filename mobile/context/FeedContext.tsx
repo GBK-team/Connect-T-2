@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 import { useAuth } from "@/context/AuthContext";
 
 export type PostType = "announcement" | "update" | "complaint" | "general";
@@ -241,6 +242,7 @@ export function FeedProvider({ children }: { children: ReactNode }) {
       return { success: false, reason: "blocked" };
     }
 
+    const uploadedImage = await toUploadableMediaUri(imageUri);
     await apiPost("/api/feed/posts", {
       id: generateId("P"),
       author_id: authorId,
@@ -249,7 +251,7 @@ export function FeedProvider({ children }: { children: ReactNode }) {
       avatar_color: avatarColor,
       type,
       content,
-      image_uri: imageUri || null,
+      image_uri: uploadedImage,
       pinned: false,
     });
 

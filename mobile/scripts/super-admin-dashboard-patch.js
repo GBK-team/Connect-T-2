@@ -24,6 +24,14 @@ function cleanDuplicateComplaintSearchState(text) {
   return next;
 }
 
+function cleanDuplicateComplaintIds(text) {
+  const repeatedId = /(?:\s*<Text style=\{\{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" \}\}>ID: \{c\.id\}<\/Text>){2,}/g;
+  return text.replace(
+    repeatedId,
+    '\n                        <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: "#16A34A" }}>ID: {c.id}</Text>',
+  );
+}
+
 function ensureTextInputImport(text) {
   let next = text;
   // Remove duplicate TextInput import lines in the same react-native import block.
@@ -40,6 +48,7 @@ try {
 
   next = ensureTextInputImport(next);
   next = cleanDuplicateComplaintSearchState(next);
+  next = cleanDuplicateComplaintIds(next);
 
   next = replaceOnce(
     next,
@@ -77,6 +86,7 @@ try {
 
   // Final cleanup after all insertions.
   next = cleanDuplicateComplaintSearchState(next);
+  next = cleanDuplicateComplaintIds(next);
 
   if (next !== text) {
     fs.writeFileSync(file, next);

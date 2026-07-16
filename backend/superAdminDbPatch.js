@@ -13,6 +13,8 @@ let installed = false;
 let columnsEnsured = false;
 let defaultSuperAdminEnsured = false;
 
+const { signToken, verifyOtpProof } = require("./authSecurity");
+
 const DEFAULT_SUPER_ADMIN_ID = "SUPER_ADMIN_MAIN";
 const DEFAULT_SUPER_ADMIN_MOBILE = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
 
@@ -229,13 +231,41 @@ async function superAdminAccessLogin(req, res) {
       return sendJson(res, 400, { success: false, message: "Valid 10 digit mobile number is required" });
     }
 
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return sendJson(res, 401, {
+        success: false,
+        message: "Verified OTP is required for Super Admin login",
+      });
+    }
+
     const dbSuperAdmin = await findDbSuperAdminByMobile(db, mobile);
     if (dbSuperAdmin) {
+      if (mobile !== DEFAULT_SUPER_ADMIN_MOBILE) {
+        if (!accessCode) {
+          return sendJson(res, 400, {
+            success: false,
+            message: "Unique access ID is required for this Super Admin account",
+          });
+        }
+
+        const [activeAccess] = await db.query(
+          `SELECT id FROM super_admin_access_codes
+           WHERE ${mobileSql("mobile")} = ? AND UPPER(access_code) = ? AND status = 'active'
+           LIMIT 1`,
+          [mobile, accessCode],
+        );
+        if (!activeAccess.length) {
+          return sendJson(res, 403, { success: false, message: "Invalid or revoked Super Admin access ID" });
+        }
+      }
+
       const normalized = await normalizeSuperAdminUserRow(db, dbSuperAdmin);
+      const user = mapSuperAdmin(normalized, mobile, accessCode || undefined);
       return sendJson(res, 200, {
         success: true,
         source: "users",
-        user: mapSuperAdmin(normalized, mobile, accessCode || undefined),
+        user,
+        token: signToken({ sub: user.id, mobile, role: "super_admin", isSuperAdmin: true, scope: "civic" }),
       });
     }
 
@@ -265,10 +295,12 @@ async function superAdminAccessLogin(req, res) {
     }
 
     const userRow = await upsertAccessCodeSuperAdmin(db, accessRow, mobile);
+    const user = mapSuperAdmin(userRow, mobile, accessRow.access_code);
     return sendJson(res, 200, {
       success: true,
       source: "access_code",
-      user: mapSuperAdmin(userRow, mobile, accessRow.access_code),
+      user,
+      token: signToken({ sub: user.id, mobile, role: "super_admin", isSuperAdmin: true, scope: "civic" }),
     });
   } catch (err) {
     return sendJson(res, 500, { success: false, error: err.message, message: err.message || "SUPER_ADMIN_LOGIN_FAILED" });

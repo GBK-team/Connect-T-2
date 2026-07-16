@@ -19,9 +19,11 @@ CREATE TABLE IF NOT EXISTS users (
   ward VARCHAR(80) NULL,
   ward_code VARCHAR(20) NULL,
   ward_number VARCHAR(20) NULL,
+  ward_changed TINYINT(1) NOT NULL DEFAULT 0,
   is_super_admin TINYINT(1) NOT NULL DEFAULT 0,
   approval_status VARCHAR(30) NOT NULL DEFAULT 'approved',
   age INT NULL,
+  dob VARCHAR(40) NULL,
   email VARCHAR(190) NULL,
   address TEXT NULL,
   nagarsevak_id VARCHAR(80) NULL,
@@ -366,6 +368,7 @@ END$$
 DELIMITER ;
 
 CALL ensure_ct_column('users', 'approval_status', "VARCHAR(30) NOT NULL DEFAULT 'approved'");
+CALL ensure_ct_column('users', 'dob', 'VARCHAR(40) NULL');
 CALL ensure_ct_column('users', 'office_address', 'TEXT NULL');
 CALL ensure_ct_column('users', 'residence_address', 'TEXT NULL');
 CALL ensure_ct_column('users', 'office_timings', 'VARCHAR(160) NULL');
@@ -374,6 +377,7 @@ CALL ensure_ct_column('users', 'contact_number', 'VARCHAR(30) NULL');
 CALL ensure_ct_column('users', 'profile_photo', 'LONGTEXT NULL');
 CALL ensure_ct_column('users', 'notify_email', 'TINYINT(1) NOT NULL DEFAULT 0');
 CALL ensure_ct_column('users', 'notify_whatsapp', 'TINYINT(1) NOT NULL DEFAULT 0');
+CALL ensure_ct_column('users', 'ward_changed', 'TINYINT(1) NOT NULL DEFAULT 0');
 
 CALL ensure_ct_column('complaints', 'ward_code', 'VARCHAR(20) NULL');
 CALL ensure_ct_column('complaints', 'assigned_officer_id', 'VARCHAR(80) NULL');
