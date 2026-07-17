@@ -6,11 +6,4 @@
  * matching backend/package.json's npm start behavior.
  */
 
-require("dotenv").config();
-require("./otpProductionPatch.js");
-require("./utilityStatusPatch.js");
-require("./connectTProductionPatch.js");
-require("./nagarsevakLoginPatch.js");
-require("./jobPortalMessagePatch.js");
-require("./jobPortalProfilePatch.js");
-require("./server.js");
+require("./hostinger-entry.js");

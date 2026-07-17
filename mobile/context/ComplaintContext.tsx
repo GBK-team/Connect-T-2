@@ -7,8 +7,9 @@ import React, {
   ReactNode,
 } from "react";
 
-import { API_BASE_URL } from "@/constants/api";
 import { useAuth } from "@/context/AuthContext";
+import { apiGet, apiPatch, apiPost } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type ComplaintStatus =
   | "submitted"
@@ -221,17 +222,13 @@ function normalizeComplaint(item: any): Complaint {
   };
 }
 
-function buildUrl(path: string, params?: Record<string, string | undefined>) {
-  const cleanBase = API_BASE_URL.replace(/\/$/, "");
-  const url = new URL(`${cleanBase}${path}`);
-
+function buildPath(path: string, params?: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined && value !== "") {
-      url.searchParams.set(key, value);
-    }
+    if (value !== undefined && value !== "") query.set(key, value);
   });
-
-  return url.toString();
+  const suffix = query.toString();
+  return suffix ? `${path}?${suffix}` : path;
 }
 
 export function ComplaintProvider({ children }: { children: ReactNode }) {
@@ -264,12 +261,7 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const response = await fetch(buildUrl("/api/complaints", params));
-      const result = await readJsonResponse(response);
-
-      if (!response.ok || !result.success) {
-        throw new Error(getApiError(result, "Failed to load complaints"));
-      }
+      const result = await apiGet<any>(buildPath("/api/complaints", params));
 
       const normalizedComplaints: Complaint[] = (result.complaints || []).map(normalizeComplaint);
 
@@ -314,12 +306,13 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
 
   const addComplaint = async (data: NewComplaintData): Promise<Complaint> => {
     const now = new Date().toISOString();
+    const photoUrl = await toUploadableMediaUri(data.photoUri);
 
     const payload = {
       title: data.title.trim(),
       description: data.description.trim(),
       category: data.category || "other",
-      photo_url: data.photoUri || null,
+      photo_url: photoUrl,
       location: data.location.trim(),
       ward: data.ward?.trim() || "Ward Pending",
       ward_code: data.wardCode || user?.wardCode || null,
@@ -332,19 +325,7 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
       user_email: data.userEmail || user?.email || null,
     };
 
-    const response = await fetch(buildUrl("/api/complaints"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const result = await readJsonResponse(response);
-
-    if (!response.ok || !result.success) {
-      throw new Error(getApiError(result, "Failed to create complaint"));
-    }
+    const result = await apiPost<any>("/api/complaints", payload);
 
     const created = normalizeComplaint({
       ...payload,
@@ -371,23 +352,11 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
     note?: string,
     updatedBy?: string,
   ) => {
-    const response = await fetch(buildUrl(`/api/complaints/${id}/status`), {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        status,
-        note,
-        updated_by: updatedBy || user?.name || "Officer",
-      }),
+    await apiPatch(`/api/complaints/${id}/status`, {
+      status,
+      note,
+      updated_by: updatedBy || user?.name || "Officer",
     });
-
-    const result = await readJsonResponse(response);
-
-    if (!response.ok || !result.success) {
-      throw new Error(getApiError(result, "Failed to update complaint status"));
-    }
 
     await refreshComplaints();
   };

@@ -125,8 +125,8 @@ edit('app/jobs/login.tsx', s => {
 edit('app/super-admin-login.tsx', s => {
   let next = ensureOtpImportSuperAdmin(s);
   next = next.replace(
-    '{otpStep && <View style={styles.inputBlock}><Text style={styles.label}>4 Digit Demo OTP</Text><View style={styles.inputShell}><View style={styles.inputPrefix}><Feather name="hash" size={14} color="#047857" /></View><TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\\D/g, "").slice(0, 4))} placeholder="1234" placeholderTextColor="#94A3B8" keyboardType="number-pad" maxLength={4} style={[styles.input, { letterSpacing: 8, fontSize: 20, fontFamily: "Inter_800ExtraBold" }]} /></View></View>}',
-    '{otpStep && <View style={styles.inputBlock}><Text style={styles.label}>4 Digit Demo OTP</Text><OtpDigitInput value={otp} onChange={setOtp} autoFocus /></View>}'
+    '{otpStep && <View style={styles.inputBlock}><Text style={styles.label}>6 Digit OTP</Text><View style={styles.inputShell}><View style={styles.inputPrefix}><Feather name="hash" size={14} color="#047857" /></View><TextInput value={otp} onChangeText={(value) => setOtp(value.replace(/\\D/g, "").slice(0, 6))} placeholder="000000" placeholderTextColor="#94A3B8" keyboardType="number-pad" maxLength={6} style={[styles.input, { letterSpacing: 8, fontSize: 20, fontFamily: "Inter_800ExtraBold" }]} /></View></View>}',
+    '{otpStep && <View style={styles.inputBlock}><Text style={styles.label}>6 Digit OTP</Text><OtpDigitInput value={otp} onChange={setOtp} autoFocus /></View>}'
   );
   return next;
 });

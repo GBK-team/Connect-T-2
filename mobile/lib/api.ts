@@ -5,24 +5,92 @@ import { API_BASE_URL, apiUrl } from "@/constants/api";
 const GET_CACHE_TTL_MS = 20_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const AUTH_TOKEN_KEY = "connect_t_auth_token_v1";
+const JOB_AUTH_TOKEN_KEY = "connect_t_job_auth_token_v1";
+const OTP_VERIFICATION_KEY = "connect_t_otp_verification_v1";
 
 const getCache = new Map<string, { at: number; data: unknown }>();
 const inFlightGets = new Map<string, Promise<unknown>>();
 
 export async function storeAuthToken(token?: string | null) {
-  if (token) await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+  if (token) {
+    await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+    await AsyncStorage.removeItem(OTP_VERIFICATION_KEY);
+    clearGetCache();
+  }
 }
 
 export async function clearAuthToken() {
   await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  await AsyncStorage.removeItem(OTP_VERIFICATION_KEY);
+  clearGetCache();
 }
 
-async function getAuthHeaders(body?: unknown) {
+export async function storeJobsAuthToken(token?: string | null) {
+  if (token) {
+    await AsyncStorage.setItem(JOB_AUTH_TOKEN_KEY, token);
+    await AsyncStorage.removeItem(OTP_VERIFICATION_KEY);
+    clearGetCache();
+  }
+}
+
+export async function clearJobsAuthToken() {
+  await AsyncStorage.removeItem(JOB_AUTH_TOKEN_KEY);
+  clearGetCache();
+}
+
+export async function storeOtpVerificationToken(token?: string | null) {
+  if (token) await AsyncStorage.setItem(OTP_VERIFICATION_KEY, token);
+  else await AsyncStorage.removeItem(OTP_VERIFICATION_KEY);
+}
+
+function tokenPayload(token?: string | null): Record<string, any> | null {
+  if (!token) return null;
+  try {
+    const encoded = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!encoded) return null;
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    return JSON.parse(globalThis.atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function isUsableToken(token?: string | null) {
+  const payload = tokenPayload(token);
+  return !!payload?.exp && Number(payload.exp) > Math.floor(Date.now() / 1000);
+}
+
+function isSuperAdminToken(token?: string | null) {
+  const payload = tokenPayload(token);
+  return payload?.role === "super_admin" || payload?.isSuperAdmin === true;
+}
+
+export async function getStoredAuthToken() {
   const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  return isUsableToken(token) ? token : null;
+}
+
+export async function getStoredJobsAuthToken() {
+  const token = await AsyncStorage.getItem(JOB_AUTH_TOKEN_KEY);
+  return isUsableToken(token) ? token : null;
+}
+
+async function getAuthHeaders(path: string, body?: unknown) {
+  const [civicToken, jobsToken, otpVerification] = await Promise.all([
+    AsyncStorage.getItem(AUTH_TOKEN_KEY),
+    AsyncStorage.getItem(JOB_AUTH_TOKEN_KEY),
+    AsyncStorage.getItem(OTP_VERIFICATION_KEY),
+  ]);
+  const token = path.startsWith("/api/job-portal/")
+    ? isSuperAdminToken(civicToken)
+      ? civicToken
+      : jobsToken || civicToken
+    : civicToken;
   const headers: Record<string, string> = {};
 
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (otpVerification) headers["X-OTP-Verification"] = otpVerification;
 
   return Object.keys(headers).length ? headers : undefined;
 }
@@ -94,7 +162,7 @@ async function request<T = any>(
     try {
       res = await fetchWithTimeout(url, {
         method,
-        headers: await getAuthHeaders(body),
+        headers: await getAuthHeaders(path, body),
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {

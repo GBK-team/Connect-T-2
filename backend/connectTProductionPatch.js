@@ -5,9 +5,11 @@
  * mobile app and hardens high-risk flows without rewriting the large server.
  */
 
-const otpSessions = new Map();
 let pool = null;
 let routesInstalled = false;
+
+const { signToken, verifyOtpProof, verifyRequestToken } = require("./authSecurity");
+const { sendOtp: createOtp, verifyOtp: checkOtp } = require("./otpService");
 
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -32,10 +34,6 @@ function makeNagarsevakId() {
   return `NS${Date.now()}`;
 }
 
-function makeOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
 function makeAccessId() {
   return `SA${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
@@ -54,16 +52,43 @@ function getPool() {
   return pool;
 }
 
-function cleanOtpSessions() {
-  const now = Date.now();
-  for (const [token, session] of otpSessions.entries()) {
-    if (!session || session.expiresAt <= now) otpSessions.delete(token);
+async function requireSuperAdmin(req, res, next) {
+  try {
+    const auth = verifyRequestToken(req);
+    if (!auth?.sub) return sendJson(res, 401, { success: false, error: "Super Admin token required" });
+    const [rows] = await getPool().query(
+      "SELECT role, is_super_admin FROM users WHERE id = ? LIMIT 1",
+      [auth.sub],
+    );
+    if (!rows.length || (rows[0].role !== "super_admin" && !rows[0].is_super_admin)) {
+      return sendJson(res, 401, { success: false, error: "Super Admin token required" });
+    }
+    req.auth = auth;
+    return next();
+  } catch (err) {
+    return sendJson(res, 500, { success: false, error: err.message || "Admin authorization failed" });
   }
 }
 
-async function sendFast2Sms(mobile, otp) {
-  const { sendOtpSms } = require("./smsProvider");
-  return sendOtpSms(mobile, otp);
+async function requireJobMessageUser(req, res, next) {
+  try {
+    const auth = verifyRequestToken(req);
+    const requestedUserId = String(req.query?.userId || req.body?.userId || "").trim();
+    let isSuperAdmin = auth && (auth.role === "super_admin" || auth.isSuperAdmin === true);
+    if (isSuperAdmin) {
+      const [rows] = await getPool().query(
+        "SELECT role, is_super_admin FROM users WHERE id = ? LIMIT 1",
+        [auth.sub],
+      );
+      isSuperAdmin = !!rows.length && (rows[0].role === "super_admin" || !!rows[0].is_super_admin);
+    }
+    if (!auth || (!isSuperAdmin && (auth.scope !== "job_portal" || String(auth.sub) !== requestedUserId))) {
+      return sendJson(res, 401, { success: false, error: "Job Portal login required" });
+    }
+    return next();
+  } catch (err) {
+    return sendJson(res, 500, { success: false, error: err.message || "Message authorization failed" });
+  }
 }
 
 async function ensureSuperAdminAccessTable(db) {
@@ -84,57 +109,44 @@ async function ensureSuperAdminAccessTable(db) {
 
 async function sendOtpAlias(req, res) {
   try {
-    const mobile = normalizeMobile(req.body?.phone || req.body?.mobile);
-
-    if (mobile.length !== 10) {
-      return sendJson(res, 400, { success: false, error: "Valid 10 digit mobile number is required" });
-    }
-
-    cleanOtpSessions();
-    const otp = makeOtp();
-    const sessionToken = `otp_${mobile}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-    await sendFast2Sms(mobile, otp);
-
-    otpSessions.set(sessionToken, {
-      mobile,
-      otp,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+    const { sendOtpSms } = require("./smsProvider");
+    const result = await createOtp({
+      mobile: req.body?.phone || req.body?.mobile,
+      purpose: req.body?.purpose || "login",
+      sendSms: sendOtpSms,
     });
 
-    const response = {
+    return sendJson(res, 200, {
       success: true,
-      sessionToken,
       message: "OTP sent successfully",
-    };
-
-    if (process.env.NODE_ENV !== "production" && !process.env.FAST2SMS_API_KEY) {
-      response.devOtp = otp;
-    }
-
-    return sendJson(res, 200, response);
+      ...result,
+    });
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message || "Failed to send OTP" });
+    return sendJson(res, Number(err?.status || 500), {
+      success: false,
+      error: err?.message || "Failed to send OTP",
+      code: err?.code || "OTP_ERROR",
+      retryAfterSeconds: err?.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : undefined,
+    });
   }
 }
 
 async function verifyOtpAlias(req, res) {
   try {
-    const otp = String(req.body?.otp || "").trim();
-    const sessionToken = String(req.body?.sessionToken || req.body?.session_token || "").trim();
-
-    cleanOtpSessions();
-    const session = otpSessions.get(sessionToken);
-    const valid = !!session && otp === session.otp;
-
-    if (!valid) {
-      return sendJson(res, 400, { valid: false, success: false, error: "Invalid or expired OTP" });
-    }
-
-    otpSessions.delete(sessionToken);
-    return sendJson(res, 200, { valid: true, success: true, mobile: session.mobile });
+    const result = checkOtp({
+      mobile: req.body?.phone || req.body?.mobile,
+      code: req.body?.otp || req.body?.otp_code,
+      purpose: req.body?.purpose || "login",
+      sessionToken: req.body?.sessionToken || req.body?.session_token,
+    });
+    return sendJson(res, 200, { valid: true, success: true, ...result });
   } catch (err) {
-    return sendJson(res, 500, { valid: false, success: false, error: err.message });
+    return sendJson(res, Number(err?.status || 500), {
+      valid: false,
+      success: false,
+      error: err?.message || "OTP verification failed",
+      code: err?.code || "OTP_ERROR",
+    });
   }
 }
 
@@ -342,7 +354,7 @@ async function createSuperAdminAccessCode(req, res) {
     await ensureSuperAdminAccessTable(db);
     const name = String(req.body?.name || "").trim();
     const mobile = normalizeMobile(req.body?.mobile);
-    const createdBy = String(req.body?.createdBy || req.body?.created_by || "main_super_admin").trim();
+    const createdBy = String(req.auth?.sub || "main_super_admin").trim();
 
     if (!name || mobile.length !== 10) {
       return sendJson(res, 400, { success: false, message: "Name and valid mobile are required" });
@@ -375,10 +387,24 @@ async function updateSuperAdminAccessCode(req, res) {
 
     if (!id) return sendJson(res, 400, { success: false, message: "Access id is required" });
 
+    const [accessRows] = await db.query(
+      "SELECT mobile FROM super_admin_access_codes WHERE id = ? LIMIT 1",
+      [id],
+    );
+    if (!accessRows.length) return sendJson(res, 404, { success: false, message: "Access id not found" });
+
     const [result] = await db.query(
       "UPDATE super_admin_access_codes SET status = ? WHERE id = ?",
       [status, id],
     );
+
+    if (status === "revoked") {
+      const mainMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
+      await db.query(
+        "UPDATE users SET role = 'citizen', is_super_admin = 0 WHERE mobile = ? AND mobile <> ?",
+        [accessRows[0].mobile, mainMobile],
+      );
+    }
 
     return sendJson(res, 200, { success: true, updated: result.affectedRows || 0, status });
   } catch (err) {
@@ -397,23 +423,39 @@ async function superAdminAccessLogin(req, res) {
       return sendJson(res, 400, { success: false, message: "Valid 10 digit mobile number is required" });
     }
 
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return sendJson(res, 401, {
+        success: false,
+        message: "Verified OTP is required for Super Admin login",
+      });
+    }
+
     const mainSuperAdminMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
 
     if (!accessCode && mobile === mainSuperAdminMobile) {
+      const user = {
+        id: "SUPER_ADMIN_MAIN",
+        name: "Super Admin",
+        mobile,
+        role: "super_admin",
+        ward: "All Wards",
+        isSuperAdmin: true,
+        nagarsevakId: "SUPER_ADMIN_MAIN",
+        avatarColor: "#16A34A",
+        approvalStatus: "approved",
+      };
+      await db.query(
+        `INSERT INTO users (id, name, mobile, role, ward, is_super_admin, approval_status, nagarsevak_id)
+         VALUES (?, ?, ?, 'super_admin', 'All Wards', 1, 'approved', ?)
+         ON DUPLICATE KEY UPDATE role = 'super_admin', ward = 'All Wards',
+           is_super_admin = 1, approval_status = 'approved'`,
+        [user.id, user.name, mobile, user.nagarsevakId],
+      );
       return sendJson(res, 200, {
         success: true,
         source: "main_super_admin",
-        user: {
-          id: "SUPER_ADMIN_MAIN",
-          name: "Super Admin",
-          mobile,
-          role: "super_admin",
-          ward: "All Wards",
-          isSuperAdmin: true,
-          nagarsevakId: "SUPER_ADMIN_MAIN",
-          avatarColor: "#16A34A",
-          approvalStatus: "approved",
-        },
+        user,
+        token: signToken({ sub: user.id, mobile, role: "super_admin", isSuperAdmin: true, scope: "civic" }),
       });
     }
 
@@ -441,20 +483,30 @@ async function superAdminAccessLogin(req, res) {
       return sendJson(res, 403, { success: false, message: "This unique access ID is revoked" });
     }
 
+    const user = {
+      id: row.id,
+      name: row.name,
+      mobile,
+      role: "super_admin",
+      ward: "All Wards",
+      isSuperAdmin: true,
+      nagarsevakId: row.id,
+      avatarColor: "#16A34A",
+      approvalStatus: "approved",
+      accessCode: row.access_code,
+    };
+    await db.query(
+      `INSERT INTO users (id, name, mobile, role, ward, is_super_admin, approval_status, nagarsevak_id)
+       VALUES (?, ?, ?, 'super_admin', 'All Wards', 1, 'approved', ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), mobile = VALUES(mobile),
+         role = 'super_admin', ward = 'All Wards', is_super_admin = 1,
+         approval_status = 'approved', nagarsevak_id = VALUES(nagarsevak_id)`,
+      [user.id, user.name, mobile, user.nagarsevakId],
+    );
     return sendJson(res, 200, {
       success: true,
-      user: {
-        id: row.id,
-        name: row.name,
-        mobile,
-        role: "super_admin",
-        ward: "All Wards",
-        isSuperAdmin: true,
-        nagarsevakId: row.id,
-        avatarColor: "#16A34A",
-        approvalStatus: "approved",
-        accessCode: row.access_code,
-      },
+      user,
+      token: signToken({ sub: user.id, mobile, role: "super_admin", isSuperAdmin: true, scope: "civic" }),
     });
   } catch (err) {
     return sendJson(res, 500, { success: false, error: err.message, message: err.message });
@@ -521,11 +573,11 @@ try {
     routesInstalled = true;
     originalPost.call(app, "/api/send-otp", sendOtpAlias);
     originalPost.call(app, "/api/verify-otp", verifyOtpAlias);
-    originalGet.call(app, "/api/super-admin/access-codes", listSuperAdminAccessCodes);
-    originalPost.call(app, "/api/super-admin/access-codes", createSuperAdminAccessCode);
-    originalPatch.call(app, "/api/super-admin/access-codes/:id", updateSuperAdminAccessCode);
+    originalGet.call(app, "/api/super-admin/access-codes", requireSuperAdmin, listSuperAdminAccessCodes);
+    originalPost.call(app, "/api/super-admin/access-codes", requireSuperAdmin, createSuperAdminAccessCode);
+    originalPatch.call(app, "/api/super-admin/access-codes/:id", requireSuperAdmin, updateSuperAdminAccessCode);
     originalPost.call(app, "/api/auth/super-admin-access-login", superAdminAccessLogin);
-    originalDelete.call(app, "/api/job-portal/messages/:id", deleteJobMessage);
+    originalDelete.call(app, "/api/job-portal/messages/:id", requireJobMessageUser, deleteJobMessage);
   }
 
   express.application.get = function patchedGet(path, ...handlers) {

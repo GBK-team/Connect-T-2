@@ -1,103 +1,65 @@
 /*
  * Production OTP route patch.
  *
- * Loaded before server.js. Registers /api/auth/send-otp and /api/auth/verify-otp.
- * Sends a real 6 digit OTP through the configured SMS provider and verifies it
- * for mobile login flows across the Connect-T app.
+ * Loaded before server.js so every mobile login uses a server-issued OTP
+ * session, rate limits, attempt limits, and a short-lived verification proof.
  */
 
-const sessions = new Map();
+const { sendOtp: createOtp, verifyOtp: checkOtp } = require("./otpService");
+
 let installed = false;
-
-function normalizeMobile(value) {
-  return String(value || "").replace(/\D/g, "").slice(-10);
-}
-
-function makeCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
   return res.status(status).json(payload);
 }
 
-function cleanup() {
-  const now = Date.now();
-  for (const [token, item] of sessions.entries()) {
-    if (!item || item.expiresAt <= now) sessions.delete(token);
-  }
-}
-
-async function sendSms(mobile, code) {
-  const { sendOtpSms } = require("./smsProvider");
-  return sendOtpSms(mobile, code);
+function otpError(res, err, fallback) {
+  return sendJson(res, Number(err?.status || 500), {
+    success: false,
+    valid: false,
+    error: err?.message || fallback,
+    code: err?.code || "OTP_ERROR",
+    retryAfterSeconds: err?.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : undefined,
+  });
 }
 
 async function sendOtp(req, res) {
   try {
-    const mobile = normalizeMobile(req.body?.mobile || req.body?.phone);
-    const purpose = String(req.body?.purpose || "login").trim() || "login";
-    if (mobile.length !== 10) {
-      return sendJson(res, 400, { success: false, error: "Valid 10 digit mobile number is required" });
-    }
-
-    cleanup();
-    const code = makeCode();
-    const sessionToken = `otp_${purpose}_${mobile}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-    await sendSms(mobile, code);
-
-    sessions.set(sessionToken, {
-      mobile,
-      purpose,
-      code,
-      expiresAt: Date.now() + 5 * 60 * 1000,
+    const { sendOtpSms } = require("./smsProvider");
+    const result = await createOtp({
+      mobile: req.body?.mobile || req.body?.phone,
+      purpose: req.body?.purpose || "login",
+      sendSms: sendOtpSms,
     });
 
     return sendJson(res, 200, {
       success: true,
-      sessionToken,
       message: "OTP sent successfully",
-      otpLength: 6,
+      ...result,
     });
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message || "Failed to send OTP" });
+    return otpError(res, err, "Failed to send OTP");
   }
 }
 
 async function verifyOtp(req, res) {
   try {
-    const code = String(req.body?.otp || req.body?.otp_code || "").trim();
-    const sessionToken = String(req.body?.sessionToken || req.body?.session_token || "").trim();
-    const mobile = normalizeMobile(req.body?.mobile || req.body?.phone);
+    const result = checkOtp({
+      mobile: req.body?.mobile || req.body?.phone,
+      code: req.body?.otp || req.body?.otp_code,
+      purpose: req.body?.purpose || "login",
+      sessionToken: req.body?.sessionToken || req.body?.session_token,
+    });
 
-    cleanup();
-    let session = sessionToken ? sessions.get(sessionToken) : null;
-
-    if (!session && mobile) {
-      for (const item of sessions.values()) {
-        if (item.mobile === mobile && item.code === code) {
-          session = item;
-          break;
-        }
-      }
-    }
-
-    if (!session || session.code !== code) {
-      return sendJson(res, 400, { success: false, valid: false, error: "Invalid or expired OTP" });
-    }
-
-    if (sessionToken) sessions.delete(sessionToken);
     return sendJson(res, 200, {
       success: true,
       valid: true,
-      mobile: session?.mobile || mobile,
-      purpose: session?.purpose || "login",
       message: "OTP verified successfully",
+      ...result,
     });
   } catch (err) {
-    return sendJson(res, 500, { success: false, valid: false, error: err.message || "OTP verification failed" });
+    return otpError(res, err, "OTP verification failed");
   }
 }
 
@@ -117,7 +79,7 @@ try {
     return originalPost.call(this, path, ...handlers);
   };
 
-  console.log("[OtpProductionPatch] production 6 digit SMS OTP active");
+  console.log("[OtpProductionPatch] secure 6 digit SMS OTP active");
 } catch (err) {
   console.warn("[OtpProductionPatch] disabled:", err.message);
 }

@@ -11,6 +11,8 @@ let pool = null;
 let installed = false;
 let columnsEnsured = false;
 
+const { signToken, verifyOtpProof } = require("./authSecurity");
+
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
@@ -155,6 +157,13 @@ async function nagarsevakRegister(req, res) {
       });
     }
 
+    if (!verifyOtpProof(req, mobile, ["register"])) {
+      return sendJson(res, 401, {
+        success: false,
+        message: "Verified OTP is required to register",
+      });
+    }
+
     if (!ward) {
       return sendJson(res, 400, { success: false, message: "Ward is required" });
     }
@@ -289,9 +298,20 @@ async function nagarsevakLogin(req, res) {
       });
     }
 
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return sendJson(res, 200, {
+        success: false,
+        message: "OTP_REQUIRED",
+        approvalStatus: "approved",
+      });
+    }
+
+    const user = mapOfficer({ ...row, approval_status: "approved" });
+
     return sendJson(res, 200, {
       success: true,
-      user: mapOfficer({ ...row, approval_status: "approved" }),
+      user,
+      token: signToken({ sub: user.id, mobile: user.mobile, role: user.role, scope: "civic" }),
     });
   } catch (err) {
     return sendJson(res, 500, {

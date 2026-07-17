@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { apiPost, storeAuthToken, clearAuthToken } from "@/lib/api";
+import { apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type UserRole = "citizen" | "nagarsevak" | "super_admin";
 
@@ -77,6 +78,7 @@ function normalizeUser(raw: any): User {
     ward: raw.ward || undefined,
     wardCode: raw.wardCode ?? raw.ward_code ?? null,
     wardNumber: raw.wardNumber || raw.ward_number || undefined,
+    wardChanged: raw.wardChanged ?? raw.ward_changed ?? false,
     isSuperAdmin,
     age: raw.age === undefined || raw.age === null ? undefined : Number(raw.age),
     dob: raw.dob || undefined,
@@ -115,13 +117,14 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
   }
 }
 
-async function upsertBackendUser(userData: User): Promise<void> {
+async function upsertBackendUser(userData: User): Promise<User> {
   const user = normalizeUser(userData);
 
   if (!user.name || !user.mobile) {
     throw new Error("User name and mobile are required.");
   }
 
+  const profilePhoto = await toUploadableMediaUri(user.profilePhoto);
   const response = await apiPost<any>("/api/users", {
     id: user.id,
     name: user.name,
@@ -130,6 +133,7 @@ async function upsertBackendUser(userData: User): Promise<void> {
     ward: user.ward || null,
     ward_code: user.wardCode || null,
     ward_number: user.wardNumber || null,
+    ward_changed: user.wardChanged ? 1 : 0,
     is_super_admin: user.isSuperAdmin ? 1 : 0,
     age: user.age || null,
     dob: user.dob || null,
@@ -137,7 +141,7 @@ async function upsertBackendUser(userData: User): Promise<void> {
     address: user.address || null,
     nagarsevak_id: user.nagarsevakId || user.id,
     avatar_color: user.avatarColor || null,
-    profile_photo: user.profilePhoto || null,
+    profile_photo: profilePhoto,
     notify_email: user.notifyEmail ? 1 : 0,
     notify_whatsapp: user.notifyWhatsapp ? 1 : 0,
     approval_status: user.role === "nagarsevak" ? undefined : "approved",
@@ -151,6 +155,12 @@ async function upsertBackendUser(userData: User): Promise<void> {
   if (response?.token) {
     await storeAuthToken(response.token);
   }
+
+  return normalizeUser({
+    ...user,
+    profilePhoto: response?.profilePhoto || profilePhoto || undefined,
+    wardChanged: response?.wardChanged ?? user.wardChanged ?? false,
+  });
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -159,9 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [logoutTarget, setLogoutTarget] = useState<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(SESSION_KEY)
-      .then((stored) => {
-        if (stored) setUser(normalizeUser(JSON.parse(stored)));
+    Promise.all([AsyncStorage.getItem(SESSION_KEY), getStoredAuthToken()])
+      .then(([stored, token]) => {
+        if (stored && token) setUser(normalizeUser(JSON.parse(stored)));
+        else if (stored) void AsyncStorage.removeItem(SESSION_KEY);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -183,8 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (userData: User) => {
     const normalized = normalizeUser(userData);
     setLogoutTarget(null);
-    await upsertBackendUser(normalized);
-    await persistSession(normalized);
+    const saved = await upsertBackendUser(normalized);
+    await persistSession(saved);
   };
 
   const logout = async (redirectTo?: string) => {
@@ -215,9 +226,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createdAt: existing?.createdAt || new Date().toISOString(),
     });
 
-    await upsertBackendUser(newUser);
-    await persistSession(newUser);
-    return newUser;
+    const saved = await upsertBackendUser(newUser);
+    await persistSession(saved);
+    return saved;
   };
 
   const loginWithPhone = async (mobile: string): Promise<User | null> => {
@@ -259,8 +270,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin: updates.isSuperAdmin ?? user.isSuperAdmin ?? false,
     });
 
-    await upsertBackendUser(updated);
-    await persistSession(updated);
+    const saved = await upsertBackendUser(updated);
+    await persistSession(saved);
   };
 
   return (

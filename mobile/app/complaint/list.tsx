@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/constants/api"; import React, { useEffect, useState } from "react"; import {   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
+import React, { useEffect, useState } from "react"; import {   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ComplaintStatus } from "@/context/ComplaintContext";
 import { useAuth } from "@/context/AuthContext";
+import { apiGet } from "@/lib/api";
 
 type ComplaintItem = {
   id: string;
@@ -188,7 +189,7 @@ export default function ComplaintListScreen() {
         const wardCode =
           (user as any)?.wardCode || (user as any)?.ward_code || null;
 
-        let url = `${API_BASE_URL}/api/complaints`;
+        let path = "/api/complaints";
 
         const isOfficer =
           user?.role === "nagarsevak" || user?.role === "super_admin";
@@ -197,17 +198,16 @@ export default function ComplaintListScreen() {
           // super admin sees all complaints
         } else if (isOfficer && wardCode) {
           // nagarsevak sees only ward complaints
-          url += `?ward_code=${encodeURIComponent(wardCode)}`;
+          path += `?ward_code=${encodeURIComponent(wardCode)}`;
         } else if (user?.id) {
           // citizen sees only own complaints
-          url += `?user_id=${encodeURIComponent(String(user.id))}`;
+          path += `?user_id=${encodeURIComponent(String(user.id))}`;
         } else if (user?.mobile) {
           // fallback
-          url += `?user_mobile=${encodeURIComponent(user.mobile)}`;
+          path += `?user_mobile=${encodeURIComponent(user.mobile)}`;
         }
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await apiGet<any>(path);
 
         if (data.success && Array.isArray(data.complaints)) {
           const mapped: ComplaintItem[] = data.complaints.map((item: any) => ({

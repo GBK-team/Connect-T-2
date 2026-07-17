@@ -6,8 +6,8 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { NAGARSEVAK_WARDS } from "@/data/wards";
-import { getApiUrl } from "@/utils/apiUrl";
 import DobDatePicker from "@/components/DobDatePicker";
+import { apiGet, apiPost } from "@/lib/api";
 
 type Step = "form" | "otp";
 
@@ -54,8 +54,7 @@ export default function NagarsevakRegisterScreen() {
     setCheckingWard(true);
     setWardAvailable(null);
     try {
-      const res = await fetch(getApiUrl(`/api/auth/ward-check?ward=${encodeURIComponent(selectedWard)}`));
-      const data = await res.json().catch(() => ({}));
+      const data = await apiGet<any>(`/api/auth/ward-check?ward=${encodeURIComponent(selectedWard)}`);
       setWardAvailable(data.available !== false);
     } catch {
       setWardAvailable(true);
@@ -84,7 +83,7 @@ export default function NagarsevakRegisterScreen() {
     if (wardAvailable === false) return setError("This ward is already assigned to an approved Nagarsevak");
     if (contact.length !== 10) return setError("Enter a valid 10-digit contact number");
     setOtpSending(true);
-    const otpSend = await sendRealOtp(cleaned, "login");
+    const otpSend = await sendRealOtp(cleaned, "register");
     setOtpSending(false);
 
     if (!otpSend.success) {
@@ -100,15 +99,13 @@ export default function NagarsevakRegisterScreen() {
 
   const verifyAndRegister = async () => {
     const otp = otpDigits.join("");
-    const otpCheck = await verifyRealOtp(mobile, otp, "login");
+    const otpCheck = await verifyRealOtp(mobile, otp, "register");
     if (!otpCheck.success) { setError(otpCheck.error || "Invalid OTP"); return; }
     setLoading(true);
     setError("");
     try {
-      const regRes = await fetch(getApiUrl("/api/auth/nagarsevak-register"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      try {
+        const regData = await apiPost<any>("/api/auth/nagarsevak-register", {
           name: name.trim(),
           dob,
           mobile: cleanMobile(mobile),
@@ -119,17 +116,21 @@ export default function NagarsevakRegisterScreen() {
           residenceAddress: address,
           contactName: name.trim(),
           contactNumber: cleanMobile(contactNumber || mobile),
-        }),
-      });
-      const regData = await regRes.json();
-      if (regData.success || regData.message === "ALREADY_PENDING" || regData.message === "Officer already registered") {
-        router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleanMobile(mobile), from: "register" } });
-      } else if (regData.message === "WARD_TAKEN") {
-        setStep("form");
-        setWardAvailable(false);
-        setError("This ward is already assigned to an approved Nagarsevak.");
-      } else {
-        throw new Error(regData.message || "Registration failed");
+        });
+        if (regData.success) {
+          router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleanMobile(mobile), from: "register" } });
+        }
+      } catch (requestError: any) {
+        const message = String(requestError?.message || "");
+        if (message.includes("ALREADY_PENDING") || message.includes("Officer already registered")) {
+          router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleanMobile(mobile), from: "register" } });
+        } else if (message.includes("WARD_TAKEN")) {
+          setStep("form");
+          setWardAvailable(false);
+          setError("This ward is already assigned to an approved Nagarsevak.");
+        } else {
+          throw requestError;
+        }
       }
     } catch (e: any) {
       setError(e?.message || "Registration failed. Try again.");

@@ -9,6 +9,8 @@
 let pool = null;
 let installed = false;
 
+const { saveDataUri } = require("./mediaStorage");
+
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
   return res.status(status).json(payload);
@@ -67,7 +69,8 @@ async function createMessage(req, res) {
     const receiverId = String(req.body?.receiverId || req.body?.receiver_id || "").trim();
     const message = String(req.body?.message || req.body?.text || "").trim();
     const messageType = String(req.body?.messageType || req.body?.message_type || "text").trim() || "text";
-    const mediaUrl = String(req.body?.mediaUrl || req.body?.media_url || "").trim() || null;
+    const rawMediaUrl = String(req.body?.mediaUrl || req.body?.media_url || "").trim() || null;
+    const mediaUrl = await saveDataUri(rawMediaUrl, "job_message", req);
 
     if (!senderId || !receiverId || (!message && !mediaUrl)) {
       return sendJson(res, 400, { success: false, error: "senderId, receiverId and message/media are required" });

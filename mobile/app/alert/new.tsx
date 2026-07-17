@@ -55,9 +55,11 @@ export default function NewAlertScreen() {
   const [validTo, setValidTo] = useState(new Date(Date.now() + ALERT_ACTIVE_MS).toISOString().split("T")[0]);
   const [notice, setNotice] = useState({ visible: false, title: "", message: "", tone: "info" as NoticeTone });
 
-  const expiresAt = new Date(`${validTo}T23:59:59`).toISOString();
-  const validUntilLabel = formatValidUntil(expiresAt);
-  const canSubmit = title.trim().length > 0 && body.trim().length > 0;
+  const expiresDate = new Date(`${validTo}T23:59:59`);
+  const expiryIsValid = !Number.isNaN(expiresDate.getTime()) && expiresDate.getTime() > Date.now();
+  const expiresAt = expiryIsValid ? expiresDate.toISOString() : "";
+  const validUntilLabel = expiresAt ? formatValidUntil(expiresAt) : "Enter a valid date";
+  const canSubmit = title.trim().length > 0 && body.trim().length > 0 && !!expiresAt;
   const showNotice = (noticeTitle: string, message: string, tone: NoticeTone = "info") => setNotice({ visible: true, title: noticeTitle, message, tone });
   const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace("/(tabs)/feed" as any); };
 
@@ -75,7 +77,8 @@ export default function NewAlertScreen() {
   };
 
   const submit = async () => {
-    if (!canSubmit) return showNotice("Details required", "Please enter title and detailed message.");
+    if (!title.trim() || !body.trim()) return showNotice("Details required", "Please enter title and detailed message.");
+    if (!expiresAt) return showNotice("Valid date required", "Please enter a valid end date in YYYY-MM-DD format.");
 
     try {
       await addAlert({ title: title.trim(), body: contact.trim() ? `${body.trim()}\n\nContact: ${contact.trim()}` : body.trim(), type, priority, category, targetAudience, location: location.trim(), validUntil: validUntilLabel, expiresAt, media }, user?.name || "Nagarsevak", user?.id, targetAudience === "Ward residents" ? user?.ward : undefined);

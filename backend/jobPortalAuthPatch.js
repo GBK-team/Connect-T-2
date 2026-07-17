@@ -9,6 +9,9 @@
 let pool = null;
 let installed = false;
 
+const { signToken, verifyOtpProof } = require("./authSecurity");
+const { saveDataUri } = require("./mediaStorage");
+
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
   return res.status(status).json(payload);
@@ -113,10 +116,18 @@ async function register(req, res) {
 
     if (!["seeker", "employer"].includes(role)) return sendJson(res, 400, { success: false, error: "Valid role is required" });
     if (phone.length !== 10) return sendJson(res, 400, { success: false, error: "Enter a valid 10 digit contact number" });
+    if (!verifyOtpProof(req, phone, ["register"])) {
+      return sendJson(res, 401, { success: false, error: "Verified OTP is required to register" });
+    }
     if (name.length < 3) return sendJson(res, 400, { success: false, error: "Enter a valid full name" });
     if (role === "employer" && !String(req.body?.company || "").trim()) return sendJson(res, 400, { success: false, error: "Company name is required" });
 
     const id = req.body?.id || makeId(role);
+    const profilePhoto = await saveDataUri(
+      req.body?.profilePhoto || req.body?.profile_photo,
+      "job_profile",
+      req,
+    );
     await db.query(
       `INSERT INTO job_portal_users
        (id, role, name, dob, phone, email, avatar_color, profile_photo, qualification, skills, about, current_status, experience, location, languages, company, contact_person, gst_no, industry, website, company_description, address, pincode, whatsapp, latitude, longitude)
@@ -131,7 +142,7 @@ async function register(req, res) {
         phone,
         req.body?.email || null,
         req.body?.avatarColor || req.body?.avatar_color || randomColor(),
-        req.body?.profilePhoto || req.body?.profile_photo || null,
+        profilePhoto || null,
         req.body?.qualification || null,
         req.body?.skills || null,
         req.body?.about || null,
@@ -154,7 +165,12 @@ async function register(req, res) {
     );
 
     const [rows] = await db.query("SELECT * FROM job_portal_users WHERE phone = ? AND role = ? LIMIT 1", [phone, role]);
-    return sendJson(res, 201, { success: true, user: userPayload(rows[0]) });
+    const user = userPayload(rows[0]);
+    return sendJson(res, 201, {
+      success: true,
+      user,
+      token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
+    });
   } catch (err) {
     return sendJson(res, 500, { success: false, error: err.message });
   }
@@ -168,10 +184,18 @@ async function login(req, res) {
     const phone = cleanPhone(req.body?.phone || req.body?.mobile);
     if (!["seeker", "employer"].includes(role)) return sendJson(res, 400, { success: false, error: "Valid role is required" });
     if (phone.length !== 10) return sendJson(res, 400, { success: false, error: "Enter a valid 10 digit contact number" });
+    if (!verifyOtpProof(req, phone, ["login"])) {
+      return sendJson(res, 401, { success: false, error: "Verified OTP is required to login" });
+    }
 
     const [rows] = await db.query("SELECT * FROM job_portal_users WHERE phone = ? AND role = ? LIMIT 1", [phone, role]);
     if (!rows.length) return sendJson(res, 404, { success: false, error: "Account not found. Please register first." });
-    return sendJson(res, 200, { success: true, user: userPayload(rows[0]) });
+    const user = userPayload(rows[0]);
+    return sendJson(res, 200, {
+      success: true,
+      user,
+      token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
+    });
   } catch (err) {
     return sendJson(res, 500, { success: false, error: err.message });
   }

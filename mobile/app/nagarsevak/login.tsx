@@ -3,11 +3,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 
-import { apiPost } from "@/lib/api";
+import { apiPost, storeAuthToken } from "@/lib/api";
 
 type Step = "phone" | "otp" | "pending" | "rejected";
 
@@ -17,9 +17,10 @@ function cleanMobile(value: string) {
 
 export default function NagarsevakLoginScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ phone?: string }>();
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(cleanMobile(String(params.phone || "")));
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
@@ -88,6 +89,7 @@ export default function NagarsevakLoginScreen() {
       }
 
       const officer = response.user || {};
+      await storeAuthToken(response.token);
 
       await login({
         id: officer.id || `NS${cleaned}`,

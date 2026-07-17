@@ -3,6 +3,6 @@ services:
     name: connect-t-2
     env: node
     rootDir: backend
-    buildCommand: npm install
+    buildCommand: npm ci --no-audit --no-fund
     startCommand: npm start
     autoDeploy: true

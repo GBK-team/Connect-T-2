@@ -7,7 +7,7 @@
  */
 
 const mysql = require("mysql2/promise");
-const crypto = require("crypto");
+const { verifyRequestToken } = require("./authSecurity");
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -20,12 +20,7 @@ const db = mysql.createPool({
   queueLimit: 0,
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_KEY || "CHANGE_THIS_CONNECT_T_SECRET";
 let installed = false;
-
-function b64url(input) {
-  return Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
 
 function normalizeWard(value) {
   return String(value || "").trim();
@@ -42,24 +37,7 @@ function normalizeWardCode(value) {
 }
 
 function verifyToken(req) {
-  const header = String(req.headers.authorization || "");
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (!token) return null;
-
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-
-  const unsigned = `${parts[0]}.${parts[1]}`;
-  const expected = crypto.createHmac("sha256", JWT_SECRET).update(unsigned).digest("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  if (expected !== parts[2]) return null;
-
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+  return verifyRequestToken(req);
 }
 
 async function ensureUtilityStatusSchema() {

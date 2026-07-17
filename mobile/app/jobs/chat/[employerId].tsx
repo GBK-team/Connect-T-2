@@ -11,6 +11,7 @@ import TopShade from "@/components/TopShade";
 import { useJobs } from "@/context/JobsContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -90,7 +91,8 @@ export default function JobChatScreen() {
     setMessages((prev) => [...prev, temp]);
     setText("");
     try {
-      const res = await apiPost<{ success: boolean; message: any }>("/api/job-portal/messages", { jobId: job.id, senderId: currentUserId, receiverId: peerId, message: message || "Photo", messageType: localImageUri ? "image" : "text", mediaUrl: localImageUri || undefined });
+      const mediaUrl = await toUploadableMediaUri(localImageUri);
+      const res = await apiPost<{ success: boolean; message: any }>("/api/job-portal/messages", { jobId: job.id, senderId: currentUserId, receiverId: peerId, message: message || "Photo", messageType: localImageUri ? "image" : "text", mediaUrl: mediaUrl || undefined });
       const saved = normalizeMessage(res.message);
       setMessages((prev) => prev.map((m) => m.id === temp.id ? { ...saved, localImageUri: localImageUri || saved.mediaUrl || undefined } : m));
     } catch (err: any) {
