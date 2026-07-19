@@ -76,6 +76,41 @@ async function createMessage(req, res) {
       return sendJson(res, 400, { success: false, error: "senderId, receiverId and message/media are required" });
     }
 
+    const [people] = await db.query(
+      "SELECT id, role FROM job_portal_users WHERE id IN (?, ?)",
+      [senderId, receiverId],
+    );
+    const sender = people.find((person) => String(person.id) === senderId);
+    const receiver = people.find((person) => String(person.id) === receiverId);
+    if (!sender || !receiver || sender.role === receiver.role || !["seeker", "employer"].includes(sender.role) || !["seeker", "employer"].includes(receiver.role)) {
+      return sendJson(res, 403, { success: false, error: "Chat is available only between a job seeker and employer." });
+    }
+
+    if (sender.role === "seeker") {
+      const [replyRows] = await db.query(
+        `SELECT id, created_at FROM job_portal_messages
+         WHERE job_id <=> ? AND sender_id = ? AND receiver_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [jobId, receiverId, senderId],
+      );
+      const lastReply = replyRows[0] || null;
+      let countSql = `SELECT COUNT(*) AS sent_count FROM job_portal_messages
+                      WHERE job_id <=> ? AND sender_id = ? AND receiver_id = ?`;
+      const countParams = [jobId, senderId, receiverId];
+      if (lastReply) {
+        countSql += " AND (created_at > ? OR (created_at = ? AND id > ?))";
+        countParams.push(lastReply.created_at, lastReply.created_at, lastReply.id);
+      }
+      const [countRows] = await db.query(countSql, countParams);
+      if (Number(countRows[0]?.sent_count || 0) >= 2) {
+        return sendJson(res, 429, {
+          success: false,
+          code: "SEEKER_MESSAGE_LIMIT",
+          error: "You can send two messages while waiting. You can message again after the employer replies.",
+        });
+      }
+    }
+
     await db.query(
       `INSERT INTO job_portal_messages
        (id, job_id, application_id, sender_id, receiver_id, message, message_type, media_url)

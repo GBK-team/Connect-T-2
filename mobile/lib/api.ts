@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { API_BASE_URL, apiUrl } from "@/constants/api";
+import { apiUrl } from "@/constants/api";
 
 const GET_CACHE_TTL_MS = 20_000;
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -10,6 +10,29 @@ const OTP_VERIFICATION_KEY = "connect_t_otp_verification_v1";
 
 const getCache = new Map<string, { at: number; data: unknown }>();
 const inFlightGets = new Map<string, Promise<unknown>>();
+
+export class ApiError extends Error {
+  status?: number;
+  code?: string;
+  internalMessage?: string;
+
+  constructor(message: string, options: { status?: number; code?: string; internalMessage?: string } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options.status;
+    this.code = options.code;
+    this.internalMessage = options.internalMessage;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export function getUserErrorMessage(error: unknown, fallback = "Something went wrong. Please try again after some time.") {
+  if (isApiError(error)) return error.message || fallback;
+  return fallback;
+}
 
 export async function storeAuthToken(token?: string | null) {
   if (token) {
@@ -81,7 +104,8 @@ async function getAuthHeaders(path: string, body?: unknown) {
     AsyncStorage.getItem(JOB_AUTH_TOKEN_KEY),
     AsyncStorage.getItem(OTP_VERIFICATION_KEY),
   ]);
-  const token = path.startsWith("/api/job-portal/")
+  const isUnifiedJobsSession = path === "/api/job-portal/session";
+  const token = path.startsWith("/api/job-portal/") && !isUnifiedJobsSession
     ? isSuperAdminToken(civicToken)
       ? civicToken
       : jobsToken || civicToken
@@ -95,15 +119,18 @@ async function getAuthHeaders(path: string, body?: unknown) {
   return Object.keys(headers).length ? headers : undefined;
 }
 
-async function readError(res: Response, fallback: string) {
+async function readError(res: Response, fallback: string): Promise<{ message: string; code?: string }> {
   const text = await res.text().catch(() => "");
-  if (!text) return fallback;
+  if (!text) return { message: fallback };
 
   try {
     const parsed = JSON.parse(text);
-    return parsed?.error || parsed?.message || text;
+    return {
+      message: String(parsed?.error || parsed?.message || fallback),
+      code: parsed?.code ? String(parsed.code) : undefined,
+    };
   } catch {
-    return text;
+    return { message: text || fallback };
   }
 }
 
@@ -115,14 +142,21 @@ function clearGetCache() {
   getCache.clear();
 }
 
-function apiFailureMessage(method: string, path: string, url: string, error: unknown) {
-  const rawMessage = error instanceof Error ? error.message : String(error || "Unknown network error");
-  return [
-    `${method} ${path} failed`,
-    `Base URL: ${API_BASE_URL}`,
-    `Request URL: ${url}`,
-    `Error: ${rawMessage}`,
-  ].join("\n");
+function friendlyStatusMessage(status: number, serverMessage: string) {
+  if (status === 401) return "Your session could not be verified. Please log in again.";
+  if (status === 403) return "You do not have permission to perform this action.";
+  if (status === 404) return serverMessage || "The requested information was not found.";
+  if (status === 408 || status === 429) return serverMessage || "Please wait a moment and try again.";
+  if (status >= 500) return "Something went wrong. Please try again after some time.";
+
+  // Validation and conflict messages are intentionally supplied by our API and
+  // help the user correct a field. Never expose transport or infrastructure text.
+  if ([400, 409, 422].includes(status)) {
+    const unsafe = /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+)/i.test(serverMessage);
+    return unsafe ? "We could not complete that request. Please check the details and try again." : serverMessage;
+  }
+
+  return "We could not complete that request. Please try again.";
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit) {
@@ -166,18 +200,17 @@ async function request<T = any>(
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
-      throw new Error(apiFailureMessage(method, path, url, error));
+      const internalMessage = error instanceof Error ? error.message : String(error || "Network request failed");
+      throw new ApiError("Unable to connect right now. Check your internet and try again.", { internalMessage });
     }
 
     if (!res.ok) {
-      throw new Error(
-        [
-          `${method} ${path} failed with ${res.status}`,
-          `Base URL: ${API_BASE_URL}`,
-          `Request URL: ${url}`,
-          await readError(res, `${method} ${path} failed with ${res.status}`),
-        ].join("\n"),
-      );
+      const serverError = await readError(res, "");
+      throw new ApiError(friendlyStatusMessage(res.status, serverError.message), {
+        status: res.status,
+        code: serverError.code,
+        internalMessage: `${method} ${path}: ${res.status} ${serverError.message}`,
+      });
     }
 
     if (res.status === 204) return {} as T;

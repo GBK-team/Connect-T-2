@@ -1,5 +1,5 @@
-import React, { useRef } from "react";
-import { Animated, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React from "react";
+import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -10,36 +10,13 @@ const { width } = Dimensions.get("window");
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
 
-export type SplashPortal = "portal_select" | "secret_access";
+export type SplashPortal = "login";
 
 interface AppSplashProps {
   onFinish: (portal: SplashPortal) => void;
 }
 
 export function AppSplash({ onFinish }: AppSplashProps) {
-  const logoTapCount = useRef(0);
-  const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pressScale = useRef(new Animated.Value(1)).current;
-
-  const animateLogoTap = () => {
-    Animated.sequence([
-      Animated.timing(pressScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
-      Animated.timing(pressScale, { toValue: 1, duration: 120, useNativeDriver: true }),
-    ]).start();
-  };
-
-  const handleLogoPress = () => {
-    animateLogoTap();
-    logoTapCount.current += 1;
-    if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
-    if (logoTapCount.current >= 7) {
-      logoTapCount.current = 0;
-      onFinish("secret_access");
-      return;
-    }
-    logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2500);
-  };
-
   return (
     <View style={styles.container}>
       <LinearGradient colors={["#9A3412", DARK, ORANGE, "#F97316", "#FB923C"]} locations={[0, 0.25, 0.55, 0.8, 1]} style={StyleSheet.absoluteFill} />
@@ -51,11 +28,11 @@ export function AppSplash({ onFinish }: AppSplashProps) {
       <View style={[decor.ring, decor.r3]} />
 
       <View style={styles.centre}>
-        <TouchableOpacity activeOpacity={0.95} onPress={handleLogoPress} style={styles.logoTouch}>
-          <Animated.View style={[styles.logoWrap, { transform: [{ scale: pressScale }] }]}> 
+        <View style={styles.logoTouch}>
+          <View style={styles.logoWrap}>
             <Image source={require("../assets/images/connectt-logo-v3.png")} style={styles.logoImg} resizeMode="contain" />
-          </Animated.View>
-        </TouchableOpacity>
+          </View>
+        </View>
         <Text style={styles.appName}>Connect T</Text>
         <View style={styles.taglineWrap}>
           <Text style={styles.taglineEn}>Civic Services Platform</Text>
@@ -65,7 +42,7 @@ export function AppSplash({ onFinish }: AppSplashProps) {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.continueBtn} onPress={() => onFinish("portal_select")} activeOpacity={0.84}>
+        <TouchableOpacity style={styles.continueBtn} onPress={() => onFinish("login")} activeOpacity={0.84}>
           <View style={styles.continueBtnInner}>
             <Text style={styles.continueBtnText}>Continue</Text>
             <View style={styles.continueBtnIcon}><Feather name="arrow-right" size={18} color={ORANGE} /></View>

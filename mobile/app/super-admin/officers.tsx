@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Platform, TextInput } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Platform, TextInput, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,6 +23,7 @@ export default function OfficersScreen() {
   const { complaints } = useComplaints();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"officers" | "wards">("officers");
+  const [refreshing, setRefreshing] = useState(false);
 
   const { officers: allOfficers, loading: officersLoading, approveOfficer, refetch } = useOfficers();
   const [activeStatus, setActiveStatus] = useState<"approved" | "pending" | "rejected">("approved");
@@ -42,6 +43,12 @@ export default function OfficersScreen() {
   const handleApprove = async (id: string, status: "approved" | "rejected") => {
     await approveOfficer(id, status);
     refetch();
+  };
+
+  const refreshScreen = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
   };
 
   function getOfficerStats(officer: any) {
@@ -91,8 +98,8 @@ export default function OfficersScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => router.push("/super-admin/settings" as any)}
+          <View style={{ flexDirection: "row", gap: 8, marginLeft: 12 }}><TouchableOpacity
+            onPress={() => router.push("/super-admin/officer/new" as any)}
             activeOpacity={0.86}
             style={{
               width: 40,
@@ -101,7 +108,6 @@ export default function OfficersScreen() {
               backgroundColor: "rgba(255,255,255,0.96)",
               alignItems: "center",
               justifyContent: "center",
-              marginLeft: 12,
               shadowColor: "#052E16",
               shadowOpacity: 0.18,
               shadowRadius: 10,
@@ -111,8 +117,8 @@ export default function OfficersScreen() {
               borderColor: "rgba(22,163,74,0.22)",
             }}
           >
-            <Feather name="settings" size={19} color="#16A34A" />
-          </TouchableOpacity>
+            <Feather name="user-plus" size={19} color="#16A34A" />
+          </TouchableOpacity><TouchableOpacity onPress={() => router.push("/super-admin/settings" as any)} activeOpacity={0.86} style={{ width: 40, height: 40, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.96)", alignItems: "center", justifyContent: "center", shadowColor: "#052E16", shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8, borderWidth: 1, borderColor: "rgba(22,163,74,0.22)" }}><Feather name="settings" size={19} color="#16A34A" /></TouchableOpacity></View>
         </View>
 
         <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 16, padding: 14 }}>
@@ -176,7 +182,7 @@ export default function OfficersScreen() {
         </View>
       )}
 
-      <ScrollView style={{ flex: 1, backgroundColor: "#F0F4F8" }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1, backgroundColor: "#F0F4F8" }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} colors={["#16A34A"]} tintColor="#16A34A" />}>
         {activeTab === "officers" ? (
           <>
             <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 }}>

@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -81,8 +82,8 @@ export default function SuperAdminAccessScreen() {
     const finalName = name.trim();
     const finalMobile = cleanMobile(mobile);
 
-    if (!finalName) {
-      showNotice("Name required", "Enter the person name.");
+    if (finalName.split(/\s+/).length < 2) {
+      showNotice("Full name required", "Enter the person's full name, including surname.");
       return;
     }
 
@@ -111,7 +112,7 @@ export default function SuperAdminAccessScreen() {
     } catch (e: any) {
       showNotice(
         "Could not create access",
-        e?.message || "Database setup may be pending. Please create the super_admin_access_codes table.",
+        e?.message || "Could not create this access ID. Please try again after some time.",
         "danger",
       );
     } finally {
@@ -170,7 +171,8 @@ export default function SuperAdminAccessScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.flex}
       >
-        <ScrollView
+        <AppScrollView
+          onAppRefresh={refetch}
           style={styles.flex}
           contentContainerStyle={[
             styles.content,
@@ -293,12 +295,8 @@ export default function SuperAdminAccessScreen() {
             ) : error ? (
               <View style={styles.warningBox}>
                 <Feather name="alert-triangle" size={18} color="#D97706" />
-                <Text style={styles.warningTitle}>Database setup pending</Text>
-                <Text style={styles.warningText}>
-                  {error.includes("doesn't exist")
-                    ? "Create the super_admin_access_codes table in MySQL to enable this feature."
-                    : error}
-                </Text>
+                <Text style={styles.warningTitle}>Access records unavailable</Text>
+                <Text style={styles.warningText}>Could not load access records. Please try again after some time.</Text>
               </View>
             ) : accessCodes.length === 0 ? (
               <View style={styles.emptyBox}>
@@ -366,7 +364,7 @@ export default function SuperAdminAccessScreen() {
               })
             )}
           </View>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
       <NoticeModal visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
     </View>

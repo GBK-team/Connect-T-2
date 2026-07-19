@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React from "react";
 import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -120,7 +121,7 @@ export default function AlertDetailScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 12) + 24 }} showsVerticalScrollIndicator={false}>
+      <AppScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 12) + 24 }} showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: "white", borderRadius: 18, padding: 16, marginBottom: 14, elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8 }}>
           <Text style={{ fontSize: 15, color: "#0F172A", fontFamily: "Inter_700Bold", marginBottom: 10 }}>Message</Text>
           <Text style={{ fontSize: 14, color: "#334155", fontFamily: "Inter_400Regular", lineHeight: 22 }}>
@@ -150,7 +151,7 @@ export default function AlertDetailScreen() {
           <DetailRow icon="clock" label="Valid Until" value={alert.validUntil || formatDate(alert.expiresAt)} />
           <DetailRow icon="user" label="Posted By" value={alert.postedBy} />
         </View>
-      </ScrollView>
+      </AppScrollView>
     </View>
   );
 }

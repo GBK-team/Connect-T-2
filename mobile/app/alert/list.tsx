@@ -79,7 +79,8 @@ function AlertRow({ item, onRemove }: { item: AppAlert; onRemove: (id: string) =
 export default function AlertListScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 54 : insets.top;
-  const { alerts: allAlerts, removeAlert } = useAlerts();
+  const { alerts: allAlerts, removeAlert, refreshAlerts } = useAlerts();
+  const [refreshing, setRefreshing] = React.useState(false);
   const { user } = useAuth();
   const alerts = user?.role === "nagarsevak"
     ? allAlerts.filter((a) => a.postedById ? a.postedById === user.id : a.postedBy === user.name)
@@ -119,6 +120,8 @@ export default function AlertListScreen() {
       </LinearGradient>
 
       <FlatList
+        refreshing={refreshing}
+        onRefresh={async () => { setRefreshing(true); await refreshAlerts(); setRefreshing(false); }}
         data={alerts}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <AlertRow item={item} onRemove={removeAlert} />}

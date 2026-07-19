@@ -1,5 +1,6 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useMemo, useState } from "react";
-import { Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -16,7 +17,6 @@ const BG = "#ebeffc";
 
 type NoticeTone = "info" | "success" | "danger";
 
-function cleanPhone(value?: string) { return String(value || "").replace(/\D/g, "").slice(-10); }
 function displayDate(value?: string) { if (!value) return ""; const date = new Date(value); if (Number.isNaN(date.getTime())) return value; return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
 function goBack(router: any) { if (router.canGoBack?.()) router.back(); else router.replace("/jobs/(tabs)" as any); }
 
@@ -47,14 +47,10 @@ export default function JobDetailScreen() {
     return <View style={s.root}><LinearGradient colors={[DARK, ORANGE, "#F97316", "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad }]}><TopShade height={110} /><DecorativeCircles /><View style={s.headerTop}><TouchableOpacity onPress={() => goBack(router)} style={s.backBtn} activeOpacity={0.84}><Feather name="chevron-left" size={22} color="white" /></TouchableOpacity><View style={s.headerBadge}><Feather name="briefcase" size={11} color="rgba(255,255,255,0.86)" /><Text style={s.headerBadgeText}>Job Detail</Text></View></View><View style={s.notFoundHero}><View style={s.heroIcon}><Feather name="search" size={28} color={ORANGE} /></View><Text style={s.headerTitle}>Job Details</Text><Text style={s.headerSub}>This job listing was not found.</Text></View></LinearGradient><View style={s.emptyCard}><Feather name="alert-circle" size={38} color={ORANGE} /><Text style={s.emptyTitle}>Job not available</Text><Text style={s.emptyText}>The job may have been removed or is no longer active.</Text><TouchableOpacity style={s.emptyBtn} onPress={() => goBack(router)} activeOpacity={0.84}><Text style={s.emptyBtnText}>Go Back</Text></TouchableOpacity></View></View>;
   }
 
-  const contactPhone = job.employerWhatsApp || job.employerPhone;
   const canChat = !!jobsUser && jobsUser.id !== job.employerId;
   const canApply = !!jobsUser && jobsUser.role === "seeker" && jobsUser.id !== job.employerId;
   const applied = canApply && hasApplied(job.id, jobsUser.id);
   const workingTime = [job.workStartTime, job.workEndTime].filter(Boolean).join(" - ");
-  const phone = cleanPhone(contactPhone);
-
-  const openWhatsApp = async () => { if (!phone) return showNotice("WhatsApp unavailable", "Employer WhatsApp number is not available."); const message = encodeURIComponent(`Hi, I’m interested in ${job.title}.`); await Linking.openURL(`https://wa.me/91${phone}?text=${message}`); };
   const openChat = () => { if (!canChat) return showNotice("Chat unavailable", "Chat is available after login as a job seeker."); router.push({ pathname: "/jobs/chat/[employerId]", params: { employerId: job.employerId, jobId: job.id, peerName: job.employerName || job.company } } as any); };
   const shareResume = () => { if (!jobsUser || jobsUser.role !== "seeker") return showNotice("Resume unavailable", "Login as job seeker to share your resume."); router.push("/jobs/resume" as any); };
   const handleApply = async () => {
@@ -72,13 +68,13 @@ export default function JobDetailScreen() {
         <View style={s.heroRow}><View style={s.heroIcon}><Feather name="briefcase" size={27} color={ORANGE} /></View><View style={{ flex: 1, minWidth: 0 }}><View style={s.headerPill}><Text style={s.headerPillText}>{job.urgentHiring ? "URGENT HIRING" : "VERIFIED LOCAL JOB"}</Text></View><Text style={s.headerTitle} numberOfLines={2}>{job.title}</Text><Text style={s.headerSub} numberOfLines={2}>{job.company} · {job.location}</Text></View></View>
         <View style={s.summaryCard}><View><Text style={s.summaryNumber}>{job.openings}</Text><Text style={s.summaryLabel}>Openings</Text></View><View style={s.summaryDivider} /><View style={{ flex: 1 }}><Text style={s.summarySalary}>{job.salary}</Text><Text style={s.summaryText}>Salary / compensation</Text></View></View>
       </LinearGradient>
-      <ScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 86 }]} showsVerticalScrollIndicator={false}>
+      <AppScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 86 }]} showsVerticalScrollIndicator={false}>
         <View style={s.card}><View style={s.metaRow}><View style={s.metaPill}><Feather name="clock" size={12} color={ORANGE} /><Text style={s.metaPillText}>{job.type}</Text></View>{!!job.shift && <View style={s.metaPill}><Feather name="sun" size={12} color={ORANGE} /><Text style={s.metaPillText}>{job.shift}</Text></View>}{!!job.jobMode && <View style={s.metaPill}><Feather name="map" size={12} color={ORANGE} /><Text style={s.metaPillText}>{job.jobMode}</Text></View>}<View style={s.metaPill}><Feather name="users" size={12} color={ORANGE} /><Text style={s.metaPillText}>{job.openings} openings</Text></View></View><Text style={s.sectionTitle}>Company Details</Text><DetailRow icon="user" label="Employer" value={job.employerName} /><DetailRow icon="briefcase" label="Company" value={job.company} /><DetailRow icon="map-pin" label="Location" value={job.location} /><DetailRow icon="navigation" label="Address" value={job.address} /></View>
         <View style={s.card}><Text style={s.sectionTitle}>Work Details</Text><DetailRow icon="clock" label="Work Time" value={workingTime} /><DetailRow icon="calendar" label="Working Days" value={job.workingDays} /><DetailRow icon="coffee" label="Weekly Off" value={job.weeklyOff} /><DetailRow icon="sun" label="Shift" value={job.shift} /><DetailRow icon="map" label="Job Mode" value={job.jobMode} /><DetailRow icon="zap" label="Joining Preference" value={job.joiningPreference} /><DetailRow icon="calendar" label="Last Date To Apply" value={displayDate(job.lastDateToApply)} /></View>
         <View style={s.card}><Text style={s.sectionTitle}>About the Job</Text><Text style={s.body}>{job.description || "No description provided."}</Text></View>
         <View style={s.card}><Text style={s.sectionTitle}>Requirements</Text><Text style={s.body}>{job.requirements || "No requirements provided."}</Text><DetailRow icon="award" label="Education" value={job.educationRequired} /><DetailRow icon="briefcase" label="Experience" value={job.experienceRequired} /><DetailRow icon="tool" label="Skills" value={job.skillsRequired} /><DetailRow icon="gift" label="Benefits" value={job.benefits} /></View>
-        <View style={s.card}><Text style={s.sectionTitle}>Contact Employer</Text><Text style={s.body}>Apply, share your Connect T resume, chat in-app, or WhatsApp the employer directly.</Text><View style={s.actionRow}>{canApply && <TouchableOpacity style={[s.actionBtn, applied && s.appliedBtn]} onPress={handleApply} activeOpacity={0.85} disabled={applied}><Feather name={applied ? "check" : "send"} size={16} color={applied ? ORANGE : "white"} /><Text style={[s.actionText, applied && { color: ORANGE }]}>{applied ? "Applied" : "Apply"}</Text></TouchableOpacity>}{canApply && <TouchableOpacity style={s.resumeBtn} onPress={shareResume} activeOpacity={0.85}><Feather name="file-text" size={16} color={ORANGE} /><Text style={s.resumeText}>Resume</Text></TouchableOpacity>}<TouchableOpacity style={[s.actionBtn, !canChat && s.disabledBtn]} onPress={openChat} activeOpacity={0.85} disabled={!canChat}><Feather name="message-circle" size={16} color="white" /><Text style={s.actionText}>Chat</Text></TouchableOpacity>{phone ? <TouchableOpacity style={s.whatsappBtn} onPress={openWhatsApp} activeOpacity={0.85}><Feather name="phone" size={16} color="white" /><Text style={s.actionText}>WhatsApp</Text></TouchableOpacity> : null}</View>{!canChat && <Text style={s.noteText}>Chat is available for job seekers contacting an employer.</Text>}</View>
-      </ScrollView>
+        <View style={s.card}><Text style={s.sectionTitle}>Contact Employer</Text><Text style={s.body}>Apply, share your Connect T resume, and contact the employer through secure in-app chat.</Text><View style={s.actionRow}>{canApply && <TouchableOpacity style={[s.actionBtn, applied && s.appliedBtn]} onPress={handleApply} activeOpacity={0.85} disabled={applied}><Feather name={applied ? "check" : "send"} size={16} color={applied ? ORANGE : "white"} /><Text style={[s.actionText, applied && { color: ORANGE }]}>{applied ? "Applied" : "Apply"}</Text></TouchableOpacity>}{canApply && <TouchableOpacity style={s.resumeBtn} onPress={shareResume} activeOpacity={0.85}><Feather name="file-text" size={16} color={ORANGE} /><Text style={s.resumeText}>Resume</Text></TouchableOpacity>}<TouchableOpacity style={[s.actionBtn, !canChat && s.disabledBtn]} onPress={openChat} activeOpacity={0.85} disabled={!canChat}><Feather name="message-circle" size={16} color="white" /><Text style={s.actionText}>Chat</Text></TouchableOpacity></View>{!canChat && <Text style={s.noteText}>Chat is available for job seekers contacting an employer.</Text>}</View>
+      </AppScrollView>
       <AppNotice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((p) => ({ ...p, visible: false }))} />
     </View>
   );

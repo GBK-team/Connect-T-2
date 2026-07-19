@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import { sendRealOtp, verifyRealOtp } from "../lib/otpApi";
 import React, { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -14,6 +15,7 @@ import { ambernathWards } from "@/data/mumbaiServices";
 
 type AuthTab = "register" | "login";
 type Step = "form" | "otp" | "notifications" | "success";
+type AccountType = "citizen" | "admin";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -41,8 +43,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [wardModal, setWardModal] = useState(false);
-  const [logoTapCount, setLogoTapCount] = useState(0);
-  const [showAdminAccess, setShowAdminAccess] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>("citizen");
 
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -64,20 +65,10 @@ export default function LoginScreen() {
     setOtp("");
   };
 
-  const handleSecretTap = () => {
-    const next = logoTapCount + 1;
-    if (next >= 7) {
-      setLogoTapCount(0);
-      setShowAdminAccess(true);
-      return;
-    }
-    setLogoTapCount(next);
-  };
-
   const continueToOtp = async () => {
     setError("");
     if (tab === "register") {
-      if (regName.trim().length < 2) return setError("Enter full name");
+      if (regName.trim().split(/\s+/).length < 2) return setError("Enter your full name, including surname");
       if (!isValidDob(regDob.trim())) return setError("Select valid date of birth");
       if (!regAddress.trim()) return setError("Enter address");
       if (cleanPhone(regPhone).length !== 10) return setError("Enter valid 10 digit mobile number");
@@ -114,7 +105,7 @@ export default function LoginScreen() {
           setStep("form");
           return;
         }
-        router.replace(user.role === "super_admin" || user.isSuperAdmin ? ("/super-admin" as any) : user.role === "nagarsevak" ? ("/(tabs)/admin" as any) : ("/(tabs)" as any));
+        router.replace(user.role === "super_admin" || user.isSuperAdmin ? ("/super-admin" as any) : user.role === "nagarsevak" ? ("/(tabs)/admin" as any) : ("/portal-select" as any));
       }
     } catch (e: any) {
       setError(e?.message || "OTP verification failed");
@@ -139,7 +130,7 @@ export default function LoginScreen() {
         notifyWhatsapp,
       } as any);
       setStep("success");
-      setTimeout(() => router.replace("/(tabs)" as any), 800);
+      setTimeout(() => router.replace("/portal-select" as any), 800);
     } catch (e: any) {
       setError(e?.message || "Registration failed");
     } finally {
@@ -151,15 +142,20 @@ export default function LoginScreen() {
     <LinearGradient colors={["#9A3412", DARK, ORANGE, "#F97316", "#FB923C"]} locations={[0, 0.2, 0.45, 0.75, 1]} style={[s.root, { paddingTop: Platform.OS === "web" ? 44 : insets.top }]}> 
       <TopShade height={220} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={[s.scroll, { paddingBottom: Math.max(insets.bottom, 24) + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
-          <TouchableOpacity activeOpacity={1} onPress={handleSecretTap}><Text style={s.connectTitle}>Connect T</Text></TouchableOpacity>
+        <AppScrollView contentContainerStyle={[s.scroll, { paddingBottom: Math.max(insets.bottom, 24) + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+          <Text style={s.connectTitle}>Connect T</Text>
 
-          <View style={s.tabBar}>
-            <TabButton label="Register" icon="user-plus" active={tab === "register"} onPress={() => switchTab("register")} />
-            <TabButton label="Login" icon="log-in" active={tab === "login"} onPress={() => switchTab("login")} />
+          <View style={s.accountBar}>
+            <AccountButton label="Citizen" icon="user" active={accountType === "citizen"} onPress={() => { setAccountType("citizen"); setError(""); }} />
+            <AccountButton label="Admin / Officer" icon="shield" active={accountType === "admin"} onPress={() => { setAccountType("admin"); setError(""); }} />
           </View>
 
-          {step === "form" && tab === "register" && (
+          {accountType === "citizen" && <View style={s.tabBar}>
+            <TabButton label="Register" icon="user-plus" active={tab === "register"} onPress={() => switchTab("register")} />
+            <TabButton label="Login" icon="log-in" active={tab === "login"} onPress={() => switchTab("login")} />
+          </View>}
+
+          {accountType === "citizen" && step === "form" && tab === "register" && (
             <View style={s.formCard}>
               <Field label="Full Name *" value={regName} onChangeText={setRegName} placeholder="Enter full name" />
               <Field label="Email Address (optional)" value={regEmail} onChangeText={setRegEmail} placeholder="Enter email address" keyboardType="email-address" autoCapitalize="none" />
@@ -174,7 +170,7 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {step === "form" && tab === "login" && (
+          {accountType === "citizen" && step === "form" && tab === "login" && (
             <View style={s.formCard}>
               <Text style={s.fieldLabel}>Phone Number</Text>
               <View style={s.phoneRow}><View style={s.countryCode}><Text style={s.countryCodeText}>IN +91</Text></View><TextInput style={[s.input, s.phoneInput]} placeholder="Enter phone number" placeholderTextColor="#94A3B8" keyboardType="phone-pad" maxLength={10} value={loginPhone} onChangeText={setLoginPhone} /></View>
@@ -183,7 +179,7 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {step === "otp" && (
+          {accountType === "citizen" && step === "otp" && (
             <View style={s.otpSection}>
               <View style={s.otpIconWrap}><Feather name="smartphone" size={28} color={ORANGE} /></View>
               <Text style={s.otpTitle}>OTP Verification</Text>
@@ -196,7 +192,7 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {step === "notifications" && (
+          {accountType === "citizen" && step === "notifications" && (
             <View style={s.formCard}>
               <View style={s.otpIconWrap}><Feather name="check-circle" size={28} color={GREEN} /></View>
               <Text style={s.otpTitle}>Phone Verified</Text>
@@ -208,18 +204,17 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {step === "success" && <View style={s.successCard}><Feather name="check-circle" size={48} color={GREEN} /><Text style={s.successTitle}>Registration Successful</Text><Text style={s.successSub}>Redirecting...</Text></View>}
+          {accountType === "citizen" && step === "success" && <View style={s.successCard}><Feather name="check-circle" size={48} color={GREEN} /><Text style={s.successTitle}>Registration Successful</Text><Text style={s.successSub}>Redirecting...</Text></View>}
 
-          {showAdminAccess && <View style={s.adminBox}><Text style={s.adminTitle}>Officer Access</Text><TouchableOpacity onPress={() => router.push("/nagarsevak/login" as any)} style={s.adminBtn}><Text style={s.adminBtnText}>Nagarsevak Login</Text></TouchableOpacity><TouchableOpacity onPress={() => router.push("/super-admin-login" as any)} style={[s.adminBtn, { backgroundColor: "#22C55E" }]}><Text style={s.adminBtnText}>Super Admin Login</Text></TouchableOpacity></View>}
-          <TouchableOpacity style={s.backPill} onPress={() => router.replace("/portal-select" as any)} activeOpacity={0.8}><Feather name="arrow-left" size={14} color={ORANGE} /><Text style={s.backPillText}>Back</Text></TouchableOpacity>
-        </ScrollView>
+          {accountType === "admin" && <View style={s.adminBox}><Text style={s.adminTitle}>Admin & Officer Access</Text><Text style={s.adminSub}>Choose your authorized account type.</Text><TouchableOpacity onPress={() => router.push("/nagarsevak/login" as any)} style={s.adminBtn}><Feather name="shield" size={17} color="white" /><Text style={s.adminBtnText}>Nagarsevak Login</Text></TouchableOpacity><TouchableOpacity onPress={() => router.push("/nagarsevak/register" as any)} style={s.adminBtn}><Feather name="user-plus" size={17} color="white" /><Text style={s.adminBtnText}>Nagarsevak Registration</Text></TouchableOpacity><TouchableOpacity onPress={() => router.push("/super-admin-login" as any)} style={[s.adminBtn, { backgroundColor: "#22C55E" }]}><Feather name="user-check" size={17} color="white" /><Text style={s.adminBtnText}>Super Admin Login</Text></TouchableOpacity></View>}
+        </AppScrollView>
       </KeyboardAvoidingView>
 
       <Modal visible={wardModal} transparent animationType="slide" onRequestClose={() => setWardModal(false)}>
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setWardModal(false)}>
           <TouchableOpacity style={s.modalSheet} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
             <View style={s.modalHeader}><Text style={s.modalTitle}>Select Ward</Text><TouchableOpacity onPress={() => setWardModal(false)}><Feather name="x" size={20} color="#64748B" /></TouchableOpacity></View>
-            <ScrollView showsVerticalScrollIndicator={false}>{ambernathWards.map((ward) => <TouchableOpacity key={ward} style={[s.wardRow, regWard === ward && s.wardRowActive]} onPress={() => { setRegWard(ward); setWardModal(false); }} activeOpacity={0.8}><Feather name="map-pin" size={14} color={regWard === ward ? ORANGE : "#94A3B8"} /><Text style={[s.wardRowText, regWard === ward && { color: ORANGE, fontWeight: "700" }]}>{ward}</Text>{regWard === ward && <Feather name="check" size={14} color={ORANGE} />}</TouchableOpacity>)}</ScrollView>
+            <AppScrollView showsVerticalScrollIndicator={false}>{ambernathWards.map((ward) => <TouchableOpacity key={ward} style={[s.wardRow, regWard === ward && s.wardRowActive]} onPress={() => { setRegWard(ward); setWardModal(false); }} activeOpacity={0.8}><Feather name="map-pin" size={14} color={regWard === ward ? ORANGE : "#94A3B8"} /><Text style={[s.wardRowText, regWard === ward && { color: ORANGE, fontWeight: "700" }]}>{ward}</Text>{regWard === ward && <Feather name="check" size={14} color={ORANGE} />}</TouchableOpacity>)}</AppScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -240,6 +235,10 @@ function TabButton({ label, icon, active, onPress }: { label: string; icon: keyo
   return <TouchableOpacity style={[s.tab, active && s.tabActive]} onPress={onPress} activeOpacity={0.8}><Feather name={icon} size={14} color={active ? ORANGE : "#94A3B8"} /><Text style={[s.tabText, active && s.tabTextActive]}>{label}</Text></TouchableOpacity>;
 }
 
+function AccountButton({ label, icon, active, onPress }: { label: string; icon: keyof typeof Feather.glyphMap; active: boolean; onPress: () => void }) {
+  return <TouchableOpacity style={[s.accountBtn, active && s.accountBtnActive]} onPress={onPress} activeOpacity={0.8}><Feather name={icon} size={15} color={active ? ORANGE : "rgba(255,255,255,0.76)"} /><Text style={[s.accountText, active && s.accountTextActive]}>{label}</Text></TouchableOpacity>;
+}
+
 function CheckRow({ checked, onPress, title, sub }: { checked: boolean; onPress: () => void; title: string; sub: string }) {
   return <TouchableOpacity style={s.checkRow} onPress={onPress} activeOpacity={0.8}><View style={[s.checkbox, checked && s.checkboxActive]}>{checked && <Feather name="check" size={14} color="white" />}</View><View style={{ flex: 1 }}><Text style={s.checkLabel}>{title}</Text><Text style={s.checkSub}>{sub}</Text></View></TouchableOpacity>;
 }
@@ -248,6 +247,11 @@ const s = StyleSheet.create({
   root: { flex: 1 },
   scroll: { padding: 20, alignItems: "center", flexGrow: 1 },
   connectTitle: { fontSize: 28, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.5, textAlign: "center", marginBottom: 16 },
+  accountBar: { flexDirection: "row", backgroundColor: "rgba(124,45,18,0.32)", borderRadius: 16, padding: 4, marginBottom: 12, width: "100%", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
+  accountBtn: { flex: 1, minHeight: 42, borderRadius: 12, flexDirection: "row", gap: 7, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  accountBtnActive: { backgroundColor: "white" },
+  accountText: { fontSize: 12, color: "rgba(255,255,255,0.76)", fontFamily: "Inter_700Bold" },
+  accountTextActive: { color: ORANGE },
   tabBar: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 16, padding: 4, marginBottom: 16, width: "100%", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 12, gap: 6 },
   tabActive: { backgroundColor: "white" },
@@ -283,7 +287,8 @@ const s = StyleSheet.create({
   successSub: { fontSize: 14, color: "#64748B", fontFamily: "Inter_400Regular", textAlign: "center" },
   adminBox: { marginTop: 18, backgroundColor: "#166534", borderRadius: 20, padding: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", width: "100%" },
   adminTitle: { color: "white", fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 14, textAlign: "center" },
-  adminBtn: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 12 },
+  adminSub: { color: "rgba(255,255,255,0.68)", fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: -8, marginBottom: 14 },
+  adminBtn: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, marginBottom: 12 },
   adminBtnText: { color: "white", fontFamily: "Inter_700Bold" },
   backPill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "white", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5, borderColor: "#FED7AA", alignSelf: "center", marginTop: 20, marginBottom: 8 },
   backPillText: { fontSize: 13, color: ORANGE, fontFamily: "Inter_600SemiBold", fontWeight: "600" },

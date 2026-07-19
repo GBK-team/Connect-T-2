@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -8,8 +9,10 @@ import { router, useLocalSearchParams } from "expo-router";
 import { NAGARSEVAK_WARDS } from "@/data/wards";
 import DobDatePicker from "@/components/DobDatePicker";
 import { apiGet, apiPost } from "@/lib/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Step = "form" | "otp";
+const PENDING_APPROVAL_KEY = "connect_t_nagarsevak_pending_v1";
 
 function cleanMobile(value: string) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -76,7 +79,7 @@ export default function NagarsevakRegisterScreen() {
     setError("");
     const cleaned = cleanMobile(mobile);
     const contact = cleanMobile(contactNumber || cleaned);
-    if (name.trim().length < 2) return setError("Enter your full name");
+    if (name.trim().split(/\s+/).length < 2) return setError("Enter your full name, including surname");
     if (!isValidDob(dob)) return setError("Select valid date of birth");
     if (cleaned.length !== 10) return setError("Enter a valid 10-digit mobile number");
     if (!ward) return setError("Select your ward");
@@ -118,6 +121,12 @@ export default function NagarsevakRegisterScreen() {
           contactNumber: cleanMobile(contactNumber || mobile),
         });
         if (regData.success) {
+          if (regData.approvalToken) {
+            await AsyncStorage.setItem(PENDING_APPROVAL_KEY, JSON.stringify({
+              mobile: cleanMobile(mobile),
+              token: String(regData.approvalToken),
+            }));
+          }
           router.replace({ pathname: "/nagarsevak/status" as any, params: { phone: cleanMobile(mobile), from: "register" } });
         }
       } catch (requestError: any) {
@@ -156,7 +165,7 @@ export default function NagarsevakRegisterScreen() {
         <View style={styles.topBadge}><Feather name="user-plus" size={13} color="white" /><Text style={styles.topBadgeText}>Nagarsevak Registration</Text></View>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+        <AppScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
             {step === "form" && <>
               <View style={styles.cardHeader}><View style={styles.headerIcon}><Feather name="clipboard" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Register as Nagarsevak</Text><Text style={styles.cardSub}>Submit once. Super Admin approval is required before login.</Text></View>
@@ -165,7 +174,7 @@ export default function NagarsevakRegisterScreen() {
               <Field label="DATE OF BIRTH *"><DobDatePicker label="" value={dob} onChange={setDob} placeholder="Select date of birth" /></Field>
               <Field label="MOBILE NUMBER *"><View style={styles.phoneRow}><View style={styles.countryCode}><Text style={styles.countryCodeText}>+91</Text></View><TextInput style={[styles.input, { flex: 1, borderWidth: 0, borderRadius: 0 }]} value={mobile} onChangeText={setMobile} placeholder="10-digit mobile" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></View></Field>
               <Field label="WARD *"><TouchableOpacity style={[styles.input, styles.wardPicker]} onPress={() => setWardModal(true)} activeOpacity={0.8}><Text style={[styles.wardPickerText, !ward && { color: "#CBD5E1" }]}>{ward || "Select your ward"}</Text>{checkingWard ? <ActivityIndicator size="small" color="#EA580C" /> : ward ? <View style={[styles.wardBadge, { backgroundColor: wardAvailable === false ? "#FEE2E2" : "#D1FAE5" }]}><Feather name={wardAvailable === false ? "x" : "check"} size={11} color={wardAvailable === false ? "#DC2626" : "#059669"} /><Text style={[styles.wardBadgeText, { color: wardAvailable === false ? "#DC2626" : "#059669" }]}>{wardAvailable === false ? "Taken" : "Available"}</Text></View> : <Feather name="chevron-down" size={16} color="#94A3B8" />}</TouchableOpacity>{ward && wardAvailable === false && <Text style={styles.wardTakenMsg}>Only approved Nagarsevak can reserve a ward. Try another ward.</Text>}</Field>
-              <Field label="CONTACT NUMBER *"><TextInput style={styles.input} value={contactNumber} onChangeText={setContactNumber} placeholder="Public contact number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></Field>
+              <Field label="OFFICE CONTACT *"><TextInput style={styles.input} value={contactNumber} onChangeText={setContactNumber} placeholder="Office contact number" placeholderTextColor="#CBD5E1" keyboardType="phone-pad" maxLength={10} /></Field>
               <Field label="OFFICE ADDRESS"><TextInput style={[styles.input, styles.textarea]} value={officeAddress} onChangeText={setOfficeAddress} placeholder="Ward office address" placeholderTextColor="#CBD5E1" multiline textAlignVertical="top" /></Field>
               <Field label="RESIDENCE ADDRESS"><TextInput style={[styles.input, styles.textarea]} value={address} onChangeText={setAddress} placeholder="Your residence address" placeholderTextColor="#CBD5E1" multiline textAlignVertical="top" /></Field>
               <View style={styles.noticeCard}><Feather name="info" size={14} color="#D97706" /><Text style={styles.noticeText}>If this mobile already has a pending request, the app will show pending verification and will not submit again.</Text></View>
@@ -180,7 +189,7 @@ export default function NagarsevakRegisterScreen() {
             </>}
             
           </View>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
       <Modal visible={wardModal} transparent animationType="slide" onRequestClose={() => setWardModal(false)}><View style={styles.modalOverlay}><View style={styles.modalSheet}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Select Ward</Text><TouchableOpacity onPress={() => setWardModal(false)}><Feather name="x" size={20} color="#64748B" /></TouchableOpacity></View><TextInput style={styles.searchInput} value={wardSearch} onChangeText={setWardSearch} placeholder="Search ward" placeholderTextColor="#94A3B8" /><FlatList data={filteredWards} keyExtractor={(item) => item} renderItem={({ item }) => <TouchableOpacity style={styles.wardRow} onPress={() => selectWard(item)} activeOpacity={0.8}><Text style={styles.wardRowText}>{item}</Text>{ward === item && <Feather name="check" size={16} color="#EA580C" />}</TouchableOpacity>} /></View></View></Modal>
     </View>

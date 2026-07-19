@@ -57,6 +57,11 @@ export interface Complaint {
   userAddress?: string;
   userAge?: number;
   userEmail?: string;
+  userDob?: string;
+  userProfilePhoto?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationAccuracy?: number | null;
 }
 
 export type NewComplaintData = {
@@ -74,6 +79,11 @@ export type NewComplaintData = {
   userAddress?: string;
   userAge?: number;
   userEmail?: string;
+  userDob?: string;
+  userProfilePhoto?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationAccuracy?: number | null;
 };
 
 interface ComplaintContextType {
@@ -219,6 +229,11 @@ function normalizeComplaint(item: any): Complaint {
         : item.userAge,
 
     userEmail: item.user_email || item.userEmail,
+    userDob: item.user_dob || item.userDob,
+    userProfilePhoto: item.user_profile_photo || item.userProfilePhoto,
+    latitude: item.latitude === null || item.latitude === undefined ? null : Number(item.latitude),
+    longitude: item.longitude === null || item.longitude === undefined ? null : Number(item.longitude),
+    locationAccuracy: item.location_accuracy === null || item.location_accuracy === undefined ? null : Number(item.location_accuracy),
   };
 }
 
@@ -323,6 +338,11 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
       user_address: data.userAddress || user?.address || null,
       user_age: data.userAge || user?.age || null,
       user_email: data.userEmail || user?.email || null,
+      user_dob: data.userDob || user?.dob || null,
+      user_profile_photo: data.userProfilePhoto || user?.profilePhoto || null,
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      location_accuracy: data.locationAccuracy ?? null,
     };
 
     const result = await apiPost<any>("/api/complaints", payload);

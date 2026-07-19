@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Platform, Modal, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -79,8 +80,8 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { handleScroll } = useTabBarVisibility();
-  const { alerts: allAlerts } = useAlerts();
-  const { complaints } = useComplaints();
+  const { alerts: allAlerts, refreshAlerts } = useAlerts();
+  const { complaints, refreshComplaints } = useComplaints();
   const [selectedAlert, setSelectedAlert] = useState<AppAlert | null>(null);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [selectedUtility, setSelectedUtility] = useState<UtilityStatus | null>(null);
@@ -277,7 +278,8 @@ export default function HomeScreen() {
 
       </LinearGradient>
 
-      <ScrollView
+      <AppScrollView
+        onAppRefresh={() => Promise.all([refreshAlerts(), refreshComplaints()]).then(() => undefined)}
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 60 }]}
         showsVerticalScrollIndicator={false}
@@ -432,7 +434,7 @@ export default function HomeScreen() {
           <Text style={styles.pageFooterSub}>Civic Services · सबका साथ, सबका विकास</Text>
           <Text style={styles.pageFooterVersion}>v1.0</Text>
         </View>
-      </ScrollView>
+      </AppScrollView>
 
       {/* Notification Panel Modal */}
       <Modal visible={showNotifPanel} transparent animationType="fade" onRequestClose={() => setShowNotifPanel(false)}>
@@ -442,7 +444,7 @@ export default function HomeScreen() {
               <Feather name="bell" size={20} color="#EA580C" />
               <Text style={styles.modalTitle}>Notifications</Text>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420, width: "100%" }}>
+            <AppScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420, width: "100%" }}>
               {notifItems.length === 0 ? (
                 <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
                   <Feather name="bell-off" size={32} color="#CBD5E1" />
@@ -523,7 +525,7 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </AppScrollView>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowNotifPanel(false)} activeOpacity={0.85}>
               <Text style={styles.modalCloseBtnText}>{t("cancel")}</Text>
             </TouchableOpacity>
@@ -535,7 +537,7 @@ export default function HomeScreen() {
       <Modal visible={!!selectedUtility} transparent animationType="fade" onRequestClose={() => setSelectedUtility(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
+            <AppScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
               {selectedUtility && (() => {
                 const isWater = selectedUtility.utilityType === "water";
                 const color = isWater ? "#0EA5E9" : "#D97706";
@@ -576,7 +578,7 @@ export default function HomeScreen() {
                   </>
                 );
               })()}
-            </ScrollView>
+            </AppScrollView>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedUtility(null)} activeOpacity={0.85}>
               <Text style={styles.modalCloseBtnText}>{t("cancel")}</Text>
             </TouchableOpacity>
@@ -588,7 +590,7 @@ export default function HomeScreen() {
       <Modal visible={!!selectedAlert} transparent animationType="fade" onRequestClose={() => setSelectedAlert(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
+            <AppScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
               {selectedAlert && (() => {
                 const isAlert = selectedAlert.type === "alert";
                 const cardColor = isAlert ? "#DC2626" : "#EA580C";
@@ -659,7 +661,7 @@ export default function HomeScreen() {
                   </>
                 );
               })()}
-            </ScrollView>
+            </AppScrollView>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedAlert(null)} activeOpacity={0.85}>
               <Text style={styles.modalCloseBtnText}>{t("cancel")}</Text>
             </TouchableOpacity>

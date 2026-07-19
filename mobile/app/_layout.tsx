@@ -14,7 +14,6 @@ import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSplash, SplashPortal } from "@/components/AppSplash";
@@ -28,7 +27,6 @@ import { TabBarVisibilityProvider } from "@/context/TabBarVisibilityContext";
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const JOB_SESSION_KEY = "connectt_jobs_session_v2";
 const NAGARSEVAK_ALLOWED_TABS = new Set(["admin", "ward", "news", "profile"]);
 
 function isSuperAdminUser(user: any) {
@@ -36,10 +34,10 @@ function isSuperAdminUser(user: any) {
 }
 
 function dashboardForUser(user: any) {
-  if (!user) return "/portal-select";
+  if (!user) return "/login";
   if (isSuperAdminUser(user)) return "/super-admin";
   if (user.role === "nagarsevak") return "/(tabs)/admin";
-  return "/(tabs)";
+  return "/portal-select";
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -55,17 +53,16 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inTabs = first === "(tabs)";
     const inJobs = first === "jobs";
     const inPortalSelect = first === "portal-select";
-    const inSecretAccess = first === "secret-access";
     const inSuperAdminLogin = first === "super-admin-login";
     const inSuperAdmin = first === "super-admin";
     const inNagarsevak = first === "nagarsevak";
     const inAlert = first === "alert";
     const inComplaint = first === "complaint";
     const currentTab = inTabs ? String(segments[1] || "") : undefined;
-    const isPublicRoute = !first || inLogin || inJobs || inPortalSelect || inSecretAccess || inSuperAdminLogin || inNagarsevak;
+    const isPublicRoute = !first || inLogin || inJobs || inPortalSelect || inSuperAdminLogin || inNagarsevak;
 
     if (!user && !isPublicRoute) {
-      const target = logoutTarget || "/portal-select";
+      const target = logoutTarget || "/login";
       router.replace(target as any);
       if (logoutTarget) clearLogoutTarget();
       return;
@@ -106,19 +103,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      try {
-        const savedJobUser = await AsyncStorage.getItem(JOB_SESSION_KEY);
-        if (savedJobUser) {
-          if (!alive) return;
-          setSplashDone(true);
-          staticRouter.replace("/jobs/(tabs)" as any);
-          setBootChecked(true);
-          return;
-        }
-      } catch {
-        // Ignore stored job-session read failures and show default splash.
-      }
-
       if (!alive) return;
       setBootChecked(true);
     };
@@ -130,17 +114,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const handleFinish = async (portal: SplashPortal) => {
     setSplashDone(true);
 
-    if (portal === "portal_select") {
-      staticRouter.replace("/portal-select" as any);
-      return;
-    }
-
-    if (portal === "secret_access") {
-      staticRouter.replace("/secret-access" as any);
-      return;
-    }
-
-    staticRouter.replace("/portal-select" as any);
+    staticRouter.replace("/login" as any);
   };
 
   return (

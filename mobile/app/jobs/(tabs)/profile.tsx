@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState } from "react";
 import { Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -127,7 +128,7 @@ export default function JobPortalProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { jobsUser, updateJobsUser, logoutJobs } = useJobsAuth();
+  const { jobsUser, updateJobsUser } = useJobsAuth();
   const { jobs } = useJobs();
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ visible: boolean; title: string; message: string; tone?: "success" | "danger" | "info"; onConfirm?: () => void; confirmText?: string }>({ visible: false, title: "", message: "" });
@@ -187,7 +188,7 @@ export default function JobPortalProfileScreen() {
 
   const saveProfile = async () => {
     if (saving) return;
-    if (name.trim().length < 3) return showNotice("Check profile", "Enter a valid full name.", "info");
+    if (name.trim().split(/\s+/).length < 2) return showNotice("Check profile", "Enter your full name, including surname.", "info");
     if (!validEmail(email)) return showNotice("Check profile", "Enter a valid email address.", "info");
     if (!isEmployer && about.trim() && countWords(about) > 80) return showNotice("Check profile", "About / Objective must be maximum 80 words.", "info");
     if (isEmployer && companyDescription.trim() && countWords(companyDescription) > 100) return showNotice("Check profile", "Company description must be maximum 100 words.", "info");
@@ -206,19 +207,6 @@ export default function JobPortalProfileScreen() {
       setSaving(false);
     }
   };
-
-  const confirmLogout = () => setNotice({
-    visible: true,
-    title: "Logout",
-    message: "Logout from Job Portal?",
-    tone: "danger",
-    confirmText: "Logout",
-    onConfirm: async () => {
-      setNotice((prev) => ({ ...prev, visible: false }));
-      await logoutJobs();
-      router.replace("/jobs/login" as any);
-    },
-  });
 
   const quickActions = isEmployer
     ? [
@@ -271,10 +259,12 @@ export default function JobPortalProfileScreen() {
       </LinearGradient>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+        <AppScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
           <View style={s.section}><Text style={s.sectionLabel}>QUICK ACTIONS</Text><View style={s.card}>{quickActions.map((item, idx) => <ActionRow key={item.label} {...item} border={idx < quickActions.length - 1} />)}</View></View>
 
           <View style={s.section}><Text style={s.sectionLabel}>ACCOUNT DETAILS</Text><View style={s.card}>{isEmployer ? <><DetailRow icon="user" label="Owner / HR Name" value={name} /><DetailRow icon="briefcase" label="Company" value={company} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="message-circle" label="WhatsApp" value={cleanPhone(whatsapp) ? `+91 ${cleanPhone(whatsapp)}` : "Not added"} /><DetailRow icon="map-pin" label="Address" value={address} border={false} /></> : <><DetailRow icon="user" label="Full Name" value={name} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="map-pin" label="Location" value={location} /><DetailRow icon="award" label="Qualification" value={qualification} /><DetailRow icon="tool" label="Skills" value={skills} border={false} /></>}</View></View>
+
+          <View style={s.section}><Text style={s.sectionLabel}>JOB PORTAL ROLE</Text><View style={s.card}><ActionRow icon="repeat" label={`Switch to ${isEmployer ? "Job Seeker" : "Employer"}`} sub="Keep the same verified mobile and set up the other role" color="#2563EB" bg="#EFF6FF" onPress={() => router.push({ pathname: "/jobs/login" as any, params: { role: isEmployer ? "seeker" : "employer" } })} /></View></View>
 
           <Section title="Basic Details" icon="user">
             <Input label={isEmployer ? "Owner / HR Name" : "Full Name"} value={name} onChangeText={setName} placeholder="Full name" />
@@ -324,8 +314,8 @@ export default function JobPortalProfileScreen() {
               <Text style={s.saveText}>{saving ? "Saving..." : "Save Profile"}</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity style={s.logoutBtn} onPress={confirmLogout} activeOpacity={0.85}><View style={s.logoutInner}><Feather name="log-out" size={18} color="#DC2626" /><Text style={s.logoutText}>Logout from Job Portal</Text></View></TouchableOpacity>
-        </ScrollView>
+          <TouchableOpacity style={s.logoutBtn} onPress={() => router.replace("/portal-select" as any)} activeOpacity={0.85}><View style={s.logoutInner}><Feather name="repeat" size={18} color="#DC2626" /><Text style={s.logoutText}>Switch Civic / Job Portal</Text></View></TouchableOpacity>
+        </AppScrollView>
       </KeyboardAvoidingView>
       <AppNotice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} confirmText={notice.confirmText} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} onConfirm={notice.onConfirm} />
     </View>

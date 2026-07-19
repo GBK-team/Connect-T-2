@@ -32,8 +32,8 @@ function normalizeWardKey(value) {
 
 function normalizeWardCode(value) {
   if (!value) return null;
-  const match = String(value).trim().toUpperCase().match(/(\d{1,2})\s*([ABC])/);
-  return match ? `${Number(match[1])}${match[2]}` : String(value).trim().toUpperCase();
+  const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
+  return match ? `${Number(match[1])}` : String(value).trim().toUpperCase();
 }
 
 function verifyToken(req) {

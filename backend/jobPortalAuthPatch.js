@@ -9,7 +9,7 @@
 let pool = null;
 let installed = false;
 
-const { signToken, verifyOtpProof } = require("./authSecurity");
+const { signToken, verifyOtpProof, verifyRequestToken } = require("./authSecurity");
 const { saveDataUri } = require("./mediaStorage");
 
 function sendJson(res, status, payload) {
@@ -119,7 +119,7 @@ async function register(req, res) {
     if (!verifyOtpProof(req, phone, ["register"])) {
       return sendJson(res, 401, { success: false, error: "Verified OTP is required to register" });
     }
-    if (name.length < 3) return sendJson(res, 400, { success: false, error: "Enter a valid full name" });
+    if (name.split(/\s+/).filter(Boolean).length < 2) return sendJson(res, 400, { success: false, error: "Enter your full name, including surname" });
     if (role === "employer" && !String(req.body?.company || "").trim()) return sendJson(res, 400, { success: false, error: "Company name is required" });
 
     const id = req.body?.id || makeId(role);
@@ -201,6 +201,91 @@ async function login(req, res) {
   }
 }
 
+async function unifiedSession(req, res) {
+  try {
+    const db = getPool();
+    await ensureSchema(db);
+    const auth = verifyRequestToken(req);
+    if (!auth?.sub || auth.scope === "job_portal") {
+      return sendJson(res, 401, { success: false, message: "Please log in to Connect T first." });
+    }
+
+    const [civicRows] = await db.query(
+      `SELECT id, name, mobile, dob, email, address, profile_photo, role
+       FROM users WHERE id = ? LIMIT 1`,
+      [auth.sub],
+    );
+    const civicUser = civicRows[0];
+    if (!civicUser || civicUser.role !== "citizen") {
+      return sendJson(res, 403, { success: false, message: "Job Portal is available from a citizen account." });
+    }
+
+    const phone = cleanPhone(civicUser.mobile);
+    const requestedRole = String(req.body?.role || "").trim();
+    if (requestedRole && !["seeker", "employer"].includes(requestedRole)) {
+      return sendJson(res, 400, { success: false, message: "Choose Job Seeker or Employer." });
+    }
+
+    const params = [phone];
+    let lookup = "SELECT * FROM job_portal_users WHERE phone = ?";
+    if (requestedRole) {
+      lookup += " AND role = ?";
+      params.push(requestedRole);
+    }
+    lookup += " ORDER BY updated_at DESC LIMIT 1";
+    let [jobRows] = await db.query(lookup, params);
+
+    if (!jobRows.length && !requestedRole) {
+      return sendJson(res, 404, { success: false, code: "JOB_PROFILE_REQUIRED", message: "Choose how you want to use the Job Portal." });
+    }
+
+    if (!jobRows.length) {
+      const name = String(req.body?.name || civicUser.name || "").trim();
+      if (name.split(/\s+/).filter(Boolean).length < 2) {
+        return sendJson(res, 400, { success: false, message: "Enter your full name, including surname." });
+      }
+      const company = String(req.body?.company || "").trim();
+      if (requestedRole === "employer" && company.length < 2) {
+        return sendJson(res, 400, { success: false, message: "Company or business name is required." });
+      }
+
+      const id = makeId(requestedRole);
+      await db.query(
+        `INSERT INTO job_portal_users
+         (id, role, name, dob, phone, email, avatar_color, profile_photo, current_status,
+          location, company, contact_person, address, whatsapp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          requestedRole,
+          name,
+          civicUser.dob || null,
+          phone,
+          civicUser.email || null,
+          req.body?.avatarColor || randomColor(),
+          civicUser.profile_photo || null,
+          requestedRole === "seeker" ? "unemployed" : null,
+          req.body?.location || civicUser.address || null,
+          requestedRole === "employer" ? company : null,
+          requestedRole === "employer" ? String(req.body?.contactPerson || name).trim() : null,
+          req.body?.address || req.body?.location || civicUser.address || null,
+          requestedRole === "employer" ? phone : null,
+        ],
+      );
+      [jobRows] = await db.query("SELECT * FROM job_portal_users WHERE id = ? LIMIT 1", [id]);
+    }
+
+    const user = userPayload(jobRows[0]);
+    return sendJson(res, 200, {
+      success: true,
+      user,
+      token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
+    });
+  } catch (err) {
+    return sendJson(res, 500, { success: false, message: "Job Portal could not be opened right now." });
+  }
+}
+
 try {
   const mysql = require("mysql2/promise");
   const originalCreatePool = mysql.createPool;
@@ -220,9 +305,10 @@ try {
     installed = true;
     originalPost.call(app, "/api/job-portal/register", register);
     originalPost.call(app, "/api/job-portal/login", login);
+    originalPost.call(app, "/api/job-portal/session", unifiedSession);
   }
   express.application.post = function patchedPost(path, ...handlers) {
-    if (path === "/api/job-portal/register" || path === "/api/job-portal/login") install(this);
+    if (path === "/api/job-portal/register" || path === "/api/job-portal/login" || path === "/api/job-portal/session") install(this);
     return originalPost.call(this, path, ...handlers);
   };
   console.log("[JobPortalAuthPatch] reliable login/register routes active");

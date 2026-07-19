@@ -26,7 +26,8 @@ export default function NagarsevakWardScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 54 : insets.top;
   const { user } = useAuth();
-  const { complaints } = useComplaints();
+  const { complaints, refreshComplaints } = useComplaints();
+  const [refreshing, setRefreshing] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CitizenSummary | null>(null);
@@ -95,6 +96,8 @@ export default function NagarsevakWardScreen() {
       </View>
 
       <FlatList
+        refreshing={refreshing}
+        onRefresh={async () => { setRefreshing(true); await Promise.all([loadUsers(), refreshComplaints()]); setRefreshing(false); }}
         data={wardMembers}
         keyExtractor={(item) => item.id || item.mobile}
         contentContainerStyle={{ padding: 14, paddingBottom: Math.max(insets.bottom, 8) + 92 }}

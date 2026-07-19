@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,7 +22,7 @@ const categoryConfig: Record<string, { icon: string; color: string; label: strin
 export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { complaints } = useComplaints();
+  const { complaints, refreshComplaints } = useComplaints();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"reports" | "security">("reports");
 
@@ -31,7 +32,7 @@ export default function ReportsScreen() {
   const rejected = complaints.filter((c) => c.status === "rejected").length;
   const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
 
-  const { officers: officerList } = useOfficers("approved");
+  const { officers: officerList, refetch: refreshOfficers } = useOfficers("approved");
   const officers = officerList.filter((o) => o.wardCode);
 
   const wardPerformance = officers.map((officer) => {
@@ -148,7 +149,7 @@ export default function ReportsScreen() {
         ))}
       </View>
 
-      <ScrollView style={{ flex: 1, backgroundColor: "#F0F4F8" }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <AppScrollView onAppRefresh={() => Promise.all([refreshComplaints(), refreshOfficers()]).then(() => undefined)} style={{ flex: 1, backgroundColor: "#F0F4F8" }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         {activeTab === "reports" ? (
           <>
             <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
@@ -346,7 +347,7 @@ export default function ReportsScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </AppScrollView>
     </View>
   );
 }

@@ -112,10 +112,11 @@ export default function ComplaintsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const router = useRouter();
-  const { complaints } = useComplaints();
+  const { complaints, refreshComplaints } = useComplaints();
   const { t } = useLanguage();
   const { handleScroll } = useTabBarVisibility();
   const [filter, setFilter] = useState("all");
+  const [refreshing, setRefreshing] = useState(false);
 
   const filterTabs = [
     { id: "all", label: t("complaints"), icon: "file-text", color: "#92400E" },
@@ -179,6 +180,8 @@ export default function ComplaintsScreen() {
       </LinearGradient>
 
       <FlatList
+        refreshing={refreshing}
+        onRefresh={async () => { setRefreshing(true); await refreshComplaints(); setRefreshing(false); }}
         data={filtered}
         keyExtractor={(c) => c.id}
         renderItem={({ item }) => <ComplaintCard complaint={item} onPress={() => router.push({ pathname: "/complaint/[id]", params: { id: item.id } })} />}

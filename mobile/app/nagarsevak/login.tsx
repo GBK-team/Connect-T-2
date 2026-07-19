@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -133,11 +134,11 @@ export default function NagarsevakLoginScreen() {
     <View style={styles.root}>
       <LinearGradient colors={["#9A3412", "#C2410C", "#EA580C", "#F97316", "#FB923C"]} locations={[0, 0.25, 0.55, 0.8, 1]} style={StyleSheet.absoluteFill} />
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}> 
-        <TouchableOpacity onPress={() => router.replace("/secret-access" as any)} style={styles.backBtn} activeOpacity={0.8}><Feather name="chevron-left" size={22} color="white" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.replace("/login" as any)} style={styles.backBtn} activeOpacity={0.8}><Feather name="chevron-left" size={22} color="white" /></TouchableOpacity>
         <View style={styles.topBadge}><Feather name="shield" size={13} color="white" /><Text style={styles.topBadgeText}>Nagarsevak Portal</Text></View>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+        <AppScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}> 
             {step === "phone" && <>
               <View style={styles.cardHeader}><View style={styles.shieldIcon}><Feather name="shield" size={27} color="#EA580C" /></View><Text style={styles.cardTitle}>Nagarsevak Login</Text><Text style={styles.cardSub}>Enter mobile number to receive OTP.</Text></View>
@@ -156,14 +157,14 @@ export default function NagarsevakLoginScreen() {
             {step === "pending" && <Status icon="clock" color="#D97706" bg="#FEF3C7" title="Approval Pending" msg="Your Nagarsevak account is waiting for Super Admin approval. Once approved, login again with OTP received by SMS." />}
             {step === "rejected" && <Status icon="x-circle" color="#DC2626" bg="#FEE2E2" title="Account Rejected" msg="Your registration was rejected. Please contact Super Admin." />}
           </Animated.View>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
 function Status({ icon, color, bg, title, msg }: { icon: keyof typeof Feather.glyphMap; color: string; bg: string; title: string; msg: string }) {
-  return <View style={styles.statusWrap}><View style={[styles.statusIcon, { backgroundColor: bg }]}><Feather name={icon} size={34} color={color} /></View><Text style={[styles.statusTitle, { color }]}>{title}</Text><Text style={styles.statusMsg}>{msg}</Text><TouchableOpacity style={styles.backToHomeBtn} onPress={() => router.replace("/secret-access" as any)} activeOpacity={0.8}><Text style={styles.backToHomeBtnText}>Back to Home</Text></TouchableOpacity></View>;
+  return <View style={styles.statusWrap}><View style={[styles.statusIcon, { backgroundColor: bg }]}><Feather name={icon} size={34} color={color} /></View><Text style={[styles.statusTitle, { color }]}>{title}</Text><Text style={styles.statusMsg}>{msg}</Text><TouchableOpacity style={styles.backToHomeBtn} onPress={() => router.replace("/login" as any)} activeOpacity={0.8}><Text style={styles.backToHomeBtnText}>Back to Login</Text></TouchableOpacity></View>;
 }
 
 const styles = StyleSheet.create({

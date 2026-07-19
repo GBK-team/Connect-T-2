@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, Modal, Platform, ActivityIndicator, Keyboard, KeyboardAvoidingView } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -5,9 +6,11 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { useComplaints, ComplaintCategory } from "@/context/ComplaintContext";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const GREEN = "#059669";
@@ -101,6 +104,10 @@ export default function NewComplaintScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [detectingLocation, setDetectingLocation] = useState(false);
   const [contactNumber, setContactNumber] = useState(user?.mobile || "");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<NoticeState>({ visible: false, title: "", message: "", tone: "info" });
@@ -110,6 +117,43 @@ export default function NewComplaintScreen() {
   };
 
   const closeNotice = () => setNotice((prev) => ({ ...prev, visible: false, onDone: undefined }));
+
+  const detectLocation = async (showFailure = true) => {
+    if (detectingLocation) return;
+    setDetectingLocation(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        if (showFailure) showNotice("Location permission needed", "Allow location access to detect the complaint coordinates. You can still enter the location manually.");
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const { latitude: nextLatitude, longitude: nextLongitude, accuracy } = current.coords;
+      setLatitude(nextLatitude);
+      setLongitude(nextLongitude);
+      setLocationAccuracy(typeof accuracy === "number" ? accuracy : null);
+
+      const addresses = await Location.reverseGeocodeAsync({ latitude: nextLatitude, longitude: nextLongitude }).catch(() => []);
+      const address = addresses[0];
+      const detectedAddress = address
+        ? [address.name, address.street, address.district, address.city, address.postalCode]
+            .filter(Boolean)
+            .filter((value, index, list) => list.indexOf(value) === index)
+            .join(", ")
+        : "";
+      if (detectedAddress) setLocation(detectedAddress);
+      else if (!location.trim()) setLocation(`${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}`);
+    } catch {
+      if (showFailure) showNotice("Location unavailable", "We could not detect your location right now. Please enter the location or nearby landmark manually.");
+    } finally {
+      setDetectingLocation(false);
+    }
+  };
+
+  useEffect(() => {
+    void detectLocation(false);
+  }, []);
 
   const handleCamera = async () => {
     if (Platform.OS === "web") {
@@ -162,6 +206,11 @@ export default function NewComplaintScreen() {
         userAddress: user?.address,
         userAge: user?.age,
         userEmail: user?.email,
+        userDob: user?.dob,
+        userProfilePhoto: user?.profilePhoto,
+        latitude,
+        longitude,
+        locationAccuracy,
       });
       showNotice("Complaint submitted", "Your complaint has been registered successfully.", "success", () => {
         closeNotice();
@@ -169,7 +218,7 @@ export default function NewComplaintScreen() {
       });
     } catch (error) {
       console.error("Complaint submit failed", error);
-      showNotice("Submission Failed", error instanceof Error ? error.message : "Could not submit complaint. Please try again.", "danger");
+      showNotice("Submission Failed", getUserErrorMessage(error, "Could not submit complaint. Please try again."), "danger");
     } finally {
       setSubmitting(false);
     }
@@ -186,7 +235,7 @@ export default function NewComplaintScreen() {
       </LinearGradient>
 
       <KeyboardAvoidingView style={styles.keyboardArea} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
-        <ScrollView
+        <AppScrollView
           style={styles.scroll}
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + (keyboardVisible ? 28 : 112) }]}
           showsVerticalScrollIndicator={false}
@@ -210,6 +259,8 @@ export default function NewComplaintScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>LOCATION *</Text>
             <View style={styles.locationRow}><View style={styles.locationIcon}><Feather name="map-pin" size={16} color={ORANGE} /></View><TextInput style={[styles.input, styles.locationInput]} value={location} onChangeText={setLocation} placeholder="Enter exact location / landmark manually" placeholderTextColor="#CBD5E1" returnKeyType="next" /></View>
+            <TouchableOpacity style={styles.detectLocationBtn} onPress={() => detectLocation(true)} disabled={detectingLocation} activeOpacity={0.82}>{detectingLocation ? <ActivityIndicator size="small" color={ORANGE} /> : <Feather name="crosshair" size={14} color={ORANGE} />}<Text style={styles.detectLocationText}>{detectingLocation ? "Detecting location..." : latitude !== null && longitude !== null ? "Refresh exact location" : "Detect exact location"}</Text></TouchableOpacity>
+            {latitude !== null && longitude !== null ? <Text style={styles.coordinateText}>Coordinates: {latitude.toFixed(6)}, {longitude.toFixed(6)}{locationAccuracy ? ` · Accuracy about ${Math.round(locationAccuracy)} m` : ""}</Text> : null}
             <Text style={styles.wardText}>Ward: {user?.ward || "Ward Pending"}</Text>
           </View>
 
@@ -220,7 +271,7 @@ export default function NewComplaintScreen() {
           </View>
 
           <View style={styles.noticeCard}><Feather name="info" size={14} color={ORANGE} /><Text style={styles.noticeText}>{t("complaintNotice")}</Text></View>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
 
       {!keyboardVisible && <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}><TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}><LinearGradient colors={[GREEN, "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBtnGrad}>{submitting ? <ActivityIndicator color="white" /> : <><Feather name="send" size={18} color="white" /><Text style={styles.submitBtnText}>{t("submitComplaint")}</Text></>}</LinearGradient></TouchableOpacity></View>}
@@ -266,6 +317,9 @@ const styles = StyleSheet.create({
   locationIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   locationInput: { flex: 1 },
   wardText: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 8 },
+  detectLocationBtn: { alignSelf: "flex-start", marginTop: 9, flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#FFF7ED", borderRadius: 999, borderWidth: 1, borderColor: "#FED7AA", paddingHorizontal: 12, paddingVertical: 8 },
+  detectLocationText: { fontSize: 11, color: ORANGE, fontFamily: "Inter_700Bold" },
+  coordinateText: { marginTop: 7, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_500Medium" },
   noticeCard: { flexDirection: "row", gap: 10, backgroundColor: "#FFF7ED", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#FFEDD5", alignItems: "flex-start" },
   noticeText: { flex: 1, fontSize: 12, color: ORANGE, fontFamily: "Inter_400Regular", lineHeight: 18 },
   submitBar: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, backgroundColor: "white", borderTopWidth: 1, borderTopColor: "#F1F5F9" },

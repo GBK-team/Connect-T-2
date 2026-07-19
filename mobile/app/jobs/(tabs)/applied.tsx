@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobsAuth } from "@/context/JobsAuthContext";
 import { useJobs, typeConfig, Job } from "@/context/JobsContext";
+import { AppScrollView } from "@/components/AppScrollView";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -61,7 +62,8 @@ export default function AppliedJobsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { jobsUser } = useJobsAuth();
-  const { jobs } = useJobs();
+  const { jobs, refreshJobs } = useJobs();
+  const [refreshing, setRefreshing] = useState(false);
   const appliedJobs = jobs.filter((job) => jobsUser && job.applicants.includes(jobsUser.id));
   const hiredCount = appliedJobs.filter((job) => jobsUser && job.hired.includes(jobsUser.id)).length;
   const shortlistedCount = appliedJobs.filter((job) => jobsUser && job.shortlisted.includes(jobsUser.id)).length;
@@ -73,7 +75,7 @@ export default function AppliedJobsScreen() {
         <View style={s.headerTop}><View style={s.headerIcon}><Feather name="briefcase" size={22} color={ORANGE} /></View><View style={{ flex: 1 }}><View style={s.headerPill}><Text style={s.headerPillText}>JOB SEEKER TRACKING</Text></View><Text style={s.headerTitle}>Applied Jobs</Text><Text style={s.headerSub}>Track applications and employer responses</Text></View></View>
         <View style={s.summaryRow}><Summary value={appliedJobs.length} label="Applied" /><View style={s.summaryDivider} /><Summary value={pendingCount} label="In Review" /><View style={s.summaryDivider} /><Summary value={shortlistedCount + hiredCount} label="Positive" /></View>
       </LinearGradient>
-      {appliedJobs.length === 0 ? <View style={s.emptyWrap}><View style={s.empty}><View style={s.emptyIcon}><Feather name="briefcase" size={36} color={ORANGE} /></View><Text style={s.emptyTitle}>No applications yet</Text><Text style={s.emptySub}>Jobs you apply for will appear here so you can track their status.</Text></View></View> : <FlatList data={appliedJobs} keyExtractor={(job) => job.id} contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 8) + 92 }]} showsVerticalScrollIndicator={false} renderItem={({ item }) => <AppliedCard job={item} userId={jobsUser?.id} />} />}
+      {appliedJobs.length === 0 ? <AppScrollView onAppRefresh={refreshJobs} contentContainerStyle={{ flexGrow: 1 }}><View style={s.emptyWrap}><View style={s.empty}><View style={s.emptyIcon}><Feather name="briefcase" size={36} color={ORANGE} /></View><Text style={s.emptyTitle}>No applications yet</Text><Text style={s.emptySub}>Jobs you apply for will appear here so you can track their status.</Text></View></View></AppScrollView> : <FlatList refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refreshJobs(); setRefreshing(false); }} data={appliedJobs} keyExtractor={(job) => job.id} contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 8) + 92 }]} showsVerticalScrollIndicator={false} renderItem={({ item }) => <AppliedCard job={item} userId={jobsUser?.id} />} />}
     </View>
   );
 }

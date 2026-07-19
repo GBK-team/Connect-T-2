@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS complaints (
   user_address TEXT NULL,
   user_age INT NULL,
   user_email VARCHAR(190) NULL,
+  user_dob VARCHAR(40) NULL,
+  user_profile_photo LONGTEXT NULL,
+  latitude DECIMAL(10,7) NULL,
+  longitude DECIMAL(10,7) NULL,
+  location_accuracy DECIMAL(10,2) NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'submitted',
   assigned_to VARCHAR(160) NULL,
   resolved_note TEXT NULL,
@@ -386,6 +391,11 @@ CALL ensure_ct_column('complaints', 'user_mobile', 'VARCHAR(20) NULL');
 CALL ensure_ct_column('complaints', 'assigned_to', 'VARCHAR(160) NULL');
 CALL ensure_ct_column('complaints', 'resolved_note', 'TEXT NULL');
 CALL ensure_ct_column('complaints', 'status', "VARCHAR(40) NOT NULL DEFAULT 'submitted'");
+CALL ensure_ct_column('complaints', 'user_dob', 'VARCHAR(40) NULL');
+CALL ensure_ct_column('complaints', 'user_profile_photo', 'LONGTEXT NULL');
+CALL ensure_ct_column('complaints', 'latitude', 'DECIMAL(10,7) NULL');
+CALL ensure_ct_column('complaints', 'longitude', 'DECIMAL(10,7) NULL');
+CALL ensure_ct_column('complaints', 'location_accuracy', 'DECIMAL(10,2) NULL');
 
 CALL ensure_ct_column('job_portal_users', 'current_company', 'VARCHAR(190) NULL');
 CALL ensure_ct_column('job_portal_users', 'current_role', 'VARCHAR(160) NULL');

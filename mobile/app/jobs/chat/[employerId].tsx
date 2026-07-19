@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useEffect, useMemo, useState } from "react";
 import { Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -10,7 +11,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobs } from "@/context/JobsContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 const ORANGE = "#EA580C";
@@ -67,10 +68,10 @@ export default function JobChatScreen() {
     return () => { mounted = false; };
   }, [job?.id, peerId, currentUserId]);
 
-  const visibleMessages = useMemo(() => {
-    const all = messages.length ? messages : (job?.messages || []).map(normalizeMessage);
+  const visibleMessages = useMemo<ChatMessage[]>(() => {
+    const all: ChatMessage[] = messages.length ? messages : (job?.messages || []).map(normalizeMessage);
     if (!peerId) return all;
-    return all.filter((message: any) => {
+    return all.filter((message) => {
       const from = String(message.from || "");
       const to = String(message.to || "");
       if (!to) return from === currentUserId || from === peerId;
@@ -80,12 +81,22 @@ export default function JobChatScreen() {
 
   const peerName = String(params.peerName || "").trim() || (jobsUser?.role === "employer" ? `Applicant ${peerId.slice(-4)}` : job?.employerName || "Employer");
   const peerContact = jobsUser?.role === "employer" ? job?.applications?.find((app: any) => app.seekerId === peerId)?.seekerPhone : job?.employerWhatsApp || job?.employerPhone;
+  const seekerMessagesSinceReply = useMemo(() => {
+    if (jobsUser?.role !== "seeker") return 0;
+    let lastEmployerReply = -1;
+    visibleMessages.forEach((message, index) => { if (message.from === peerId) lastEmployerReply = index; });
+    return visibleMessages.slice(lastEmployerReply + 1).filter((message) => message.from === currentUserId && message.text !== "[deleted]").length;
+  }, [visibleMessages, jobsUser?.role, peerId, currentUserId]);
+  const seekerMessagesRemaining = Math.max(0, 2 - seekerMessagesSinceReply);
+  const canSend = jobsUser?.role !== "seeker" || seekerMessagesRemaining > 0;
+  const starterMessage = `Hello Sir/Madam, my name is ${jobsUser?.name || ""}. I am interested in the ${job?.title || "job"} position.`;
   const topPad = (Platform.OS === "web" ? 54 : insets.top) + 14;
   const show = (title: string, message: string) => setNotice({ visible: true, title, message });
 
   const postMessage = async (bodyText: string, localImageUri?: string) => {
     const message = bodyText.trim();
     if (!message && !localImageUri) return;
+    if (!canSend) { show("Waiting for employer", "You have sent two messages. You can message again after the employer replies."); return; }
     if (!job || !peerId) { show("No chat found", "Open this chat again from the job or applicant screen."); return; }
     const temp: ChatMessage = { id: `local_${Date.now()}`, from: currentUserId, to: peerId, text: message || "Photo", createdAt: new Date().toISOString(), localImageUri, mediaUrl: localImageUri || null, messageType: localImageUri ? "image" : "text" };
     setMessages((prev) => [...prev, temp]);
@@ -97,7 +108,7 @@ export default function JobChatScreen() {
       setMessages((prev) => prev.map((m) => m.id === temp.id ? { ...saved, localImageUri: localImageUri || saved.mediaUrl || undefined } : m));
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== temp.id));
-      show("Message failed", err?.message || "Please try again.");
+      show("Message failed", getUserErrorMessage(err, "Your message could not be sent. Please try again."));
     }
   };
 
@@ -141,13 +152,15 @@ export default function JobChatScreen() {
         <View style={s.heroRow}><View style={s.heroIcon}><Feather name="message-circle" size={24} color={ORANGE} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={s.headerTitle} numberOfLines={1}>{peerName}</Text><Text style={s.headerSub} numberOfLines={2}>{job ? `${job.company} · ${job.title}` : "Connect T Job Portal conversation"}</Text></View></View>
       </LinearGradient>
 
-      <ScrollView style={s.messagesScroll} contentContainerStyle={s.messagesContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
-        {visibleMessages.length === 0 ? <View style={s.emptyCard}><View style={s.emptyIcon}><Feather name="message-circle" size={34} color={ORANGE} /></View><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyText}>Send a message in Connect T or use WhatsApp for direct contact.</Text></View> : visibleMessages.map((message: ChatMessage, index: number) => { const mine = message.from === currentUserId; const deleted = message.text === "[deleted]"; const imageUri = message.localImageUri || message.mediaUrl || undefined; return <TouchableOpacity key={`${message.id || message.createdAt || "message"}-${index}`} activeOpacity={0.82} onLongPress={() => setSelected(message)} style={[s.messageWrap, mine ? s.myWrap : s.otherWrap]}><View style={[s.messageBubble, mine ? s.myBubble : s.otherBubble]}>{!!imageUri && !deleted && <Image source={{ uri: imageUri }} style={s.msgImage} />}<Text style={[s.messageText, mine ? s.myMessageText : s.otherMessageText, deleted && s.deletedText]}>{deleted ? "Message deleted" : message.text}</Text><View style={s.messageMeta}><Text style={[s.messageTime, mine ? s.myTime : s.otherTime]}>{timeLabel(message.createdAt)}</Text>{mine && <Text style={[s.messageTime, s.myTime]}>{message.readAt ? "Seen" : "Sent"}</Text>}</View></View></TouchableOpacity>; })}
-      </ScrollView>
+      <AppScrollView style={s.messagesScroll} contentContainerStyle={s.messagesContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+        {visibleMessages.length === 0 ? <View style={s.emptyCard}><View style={s.emptyIcon}><Feather name="message-circle" size={34} color={ORANGE} /></View><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyText}>{jobsUser?.role === "seeker" ? "Introduce yourself with the suggested message below. The employer can reply here in Connect T." : "Reply to the applicant in Connect T, or contact them on WhatsApp."}</Text></View> : visibleMessages.map((message: ChatMessage, index: number) => { const mine = message.from === currentUserId; const deleted = message.text === "[deleted]"; const imageUri = message.localImageUri || message.mediaUrl || undefined; return <TouchableOpacity key={`${message.id || message.createdAt || "message"}-${index}`} activeOpacity={0.82} onLongPress={() => setSelected(message)} style={[s.messageWrap, mine ? s.myWrap : s.otherWrap]}><View style={[s.messageBubble, mine ? s.myBubble : s.otherBubble]}>{!!imageUri && !deleted && <Image source={{ uri: imageUri }} style={s.msgImage} />}<Text style={[s.messageText, mine ? s.myMessageText : s.otherMessageText, deleted && s.deletedText]}>{deleted ? "Message deleted" : message.text}</Text><View style={s.messageMeta}><Text style={[s.messageTime, mine ? s.myTime : s.otherTime]}>{timeLabel(message.createdAt)}</Text>{mine && <Text style={[s.messageTime, s.myTime]}>{message.readAt ? "Seen" : "Sent"}</Text>}</View></View></TouchableOpacity>; })}
+      </AppScrollView>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}> 
-        <View style={s.inputRow}><TouchableOpacity style={s.attachBtn} onPress={pickImage} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /></TouchableOpacity><TextInput style={s.input} placeholder="Type message..." placeholderTextColor="#94A3B8" value={text} onChangeText={setText} multiline maxLength={500} /><TouchableOpacity style={[s.sendBtn, !text.trim() && s.sendBtnDisabled]} activeOpacity={0.85} onPress={sendMessage} disabled={!text.trim()}><Feather name="send" size={17} color="white" /></TouchableOpacity></View>
-        <TouchableOpacity style={[s.whatsappBtn, !cleanPhone(peerContact) && s.whatsappBtnDisabled]} activeOpacity={0.85} onPress={openWhatsApp} disabled={!cleanPhone(peerContact)}><Feather name="message-circle" size={16} color="white" /><Text style={s.whatsappText}>{cleanPhone(peerContact) ? "Open WhatsApp" : "WhatsApp unavailable"}</Text></TouchableOpacity>
+        {jobsUser?.role === "seeker" && visibleMessages.length === 0 ? <TouchableOpacity style={s.templateBtn} onPress={() => setText(starterMessage)} activeOpacity={0.84}><Feather name="zap" size={14} color={ORANGE} /><Text style={s.templateText}>Use introduction template</Text></TouchableOpacity> : null}
+        {jobsUser?.role === "seeker" ? <Text style={[s.limitText, !canSend && { color: "#DC2626" }]}>{canSend ? `${seekerMessagesRemaining} message${seekerMessagesRemaining === 1 ? "" : "s"} available before the employer replies` : "Waiting for the employer to reply"}</Text> : null}
+        <View style={s.inputRow}><TouchableOpacity style={[s.attachBtn, !canSend && s.sendBtnDisabled]} onPress={pickImage} disabled={!canSend} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /></TouchableOpacity><TextInput style={s.input} placeholder={canSend ? "Type message..." : "Waiting for employer reply"} placeholderTextColor="#94A3B8" value={text} onChangeText={setText} editable={canSend} multiline maxLength={500} /><TouchableOpacity style={[s.sendBtn, (!text.trim() || !canSend) && s.sendBtnDisabled]} activeOpacity={0.85} onPress={sendMessage} disabled={!text.trim() || !canSend}><Feather name="send" size={17} color="white" /></TouchableOpacity></View>
+        {jobsUser?.role === "employer" ? <TouchableOpacity style={[s.whatsappBtn, !cleanPhone(peerContact) && s.whatsappBtnDisabled]} activeOpacity={0.85} onPress={openWhatsApp} disabled={!cleanPhone(peerContact)}><Feather name="message-circle" size={16} color="white" /><Text style={s.whatsappText}>{cleanPhone(peerContact) ? "Open WhatsApp" : "WhatsApp unavailable"}</Text></TouchableOpacity> : null}
       </View>
 
       <Modal visible={!!selected} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
@@ -191,6 +204,9 @@ const s = StyleSheet.create({
   otherTime: { color: "#94A3B8" },
   msgImage: { width: 180, height: 132, borderRadius: 14, marginBottom: 8, backgroundColor: "rgba(255,255,255,0.18)" },
   footer: { backgroundColor: "white", borderTopWidth: 1, borderTopColor: "#FFEDD5", paddingTop: 12, paddingHorizontal: 16, shadowColor: DARK, shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 },
+  templateBtn: { marginBottom: 8, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  templateText: { fontSize: 10.5, color: ORANGE, fontFamily: "Inter_700Bold" },
+  limitText: { marginBottom: 8, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_600SemiBold", textAlign: "center" },
   inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   attachBtn: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED", borderWidth: 1.5, borderColor: "#FED7AA" },
   input: { flex: 1, maxHeight: 106, minHeight: 48, borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 16, paddingHorizontal: 13, paddingVertical: 12, fontSize: 13, color: "#0F172A", fontFamily: "Inter_400Regular", backgroundColor: "#F8FAFC" },

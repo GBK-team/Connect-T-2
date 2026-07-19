@@ -1,169 +1,145 @@
-import { sendRealOtp, verifyRealOtp } from "../../lib/otpApi";
-import React, { useMemo, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppScrollView } from "@/components/AppScrollView";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
-import OtpDigitInput from "@/components/OtpDigitInput";
-import { JobsUserRole, randomColor, useJobsAuth } from "@/context/JobsAuthContext";
+import { useAuth } from "@/context/AuthContext";
+import { JobsUserRole, useJobsAuth } from "@/context/JobsAuthContext";
+import { getUserErrorMessage } from "@/lib/api";
 
-type Tab = "login" | "register";
-type Step = "form" | "otp";
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
 const BG = "#ebeffc";
 
-function cleanPhone(v: string) { return v.replace(/\D/g, "").slice(-10); }
-function validName(v: string) { return /^[A-Za-z .'-]{3,80}$/.test(v.trim()); }
-
-export default function JobPortalLoginScreen() {
+export default function JobPortalProfileSetupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ role?: string }>();
   const insets = useSafeAreaInsets();
-  const { registerJobs, loginJobs } = useJobsAuth();
-  const [tab, setTab] = useState<Tab>("login");
-  const [step, setStep] = useState<Step>("form");
+  const { user } = useAuth();
+  const { activateJobs } = useJobsAuth();
   const [role, setRole] = useState<JobsUserRole>("seeker");
+  const [name, setName] = useState(user?.name || "");
+  const [location, setLocation] = useState(user?.address || "");
+  const [company, setCompany] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [contactPerson, setContactPerson] = useState("");
-  const [location, setLocation] = useState("");
-  const phone10 = useMemo(() => cleanPhone(phone), [phone]);
 
-  const goBack = () => router.replace("/portal-select" as any);
-
-  const validate = () => {
-    if (phone10.length !== 10) return "Enter a valid 10 digit mobile number.";
-    if (tab === "login") return "";
-    if (role === "seeker") {
-      if (!validName(name)) return "Enter your full name.";
-      if (location.trim().length < 3) return "Enter your area or location.";
-      return "";
+  useEffect(() => {
+    if (!user) {
+      router.replace("/login" as any);
+      return;
     }
-    if (company.trim().length < 3) return "Enter company or shop name.";
-    if (!validName(contactPerson)) return "Enter contact person name.";
-    if (location.trim().length < 3) return "Enter business area or location.";
-    return "";
-  };
+    setName((value) => value || user.name || "");
+    setLocation((value) => value || user.address || "");
+  }, [user?.id, router]);
 
-  const continueToOtp = async () => {
-    const msg = validate();
-    if (msg) { setError(msg); return; }
+  useEffect(() => {
+    if (params.role === "employer" || params.role === "seeker") setRole(params.role);
+  }, [params.role]);
 
-    setError("");
-    setLoading(true);
-    const otpSend = await sendRealOtp(phone10, tab);
-    setLoading(false);
-
-    if (!otpSend.success) {
-      setError(otpSend.error || "Failed to send OTP");
+  const submit = async () => {
+    if (name.trim().split(/\s+/).length < 2) {
+      setError("Enter your full name, including surname.");
+      return;
+    }
+    if (location.trim().length < 3) {
+      setError(role === "employer" ? "Enter your business location." : "Enter your preferred work location.");
+      return;
+    }
+    if (role === "employer" && company.trim().length < 2) {
+      setError("Enter your company, shop, or business name.");
       return;
     }
 
-    setOtp("");
-    setStep("otp");
-  };
-
-  const submit = async () => {
-    const otpCheck = await verifyRealOtp(phone, otp, tab);
-    if (!otpCheck.success) { setError(otpCheck.error || "Invalid OTP"); return; }
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
     try {
-      if (tab === "login") {
-        const ok = await loginJobs(phone10, role);
-        if (!ok) { setError("Account not found. Please register first."); return; }
-      } else if (role === "seeker") {
-        await registerJobs({ role: "seeker", name: name.trim(), phone: phone10, avatarColor: randomColor(), location: location.trim(), currentStatus: "unemployed" });
-      } else {
-        await registerJobs({ role: "employer", name: contactPerson.trim(), phone: phone10, avatarColor: randomColor(), company: company.trim(), contactPerson: contactPerson.trim(), whatsapp: phone10, location: location.trim(), address: location.trim() });
-      }
+      await activateJobs(role, {
+        name: name.trim(),
+        location: location.trim(),
+        address: location.trim(),
+        company: role === "employer" ? company.trim() : undefined,
+        contactPerson: role === "employer" ? name.trim() : undefined,
+        currentStatus: role === "seeker" ? "unemployed" : undefined,
+      });
       router.replace("/jobs/(tabs)" as any);
-    } catch (e: any) {
-      setError(e?.message || "Action failed. Please try again.");
-    } finally { setLoading(false); }
+    } catch (err) {
+      setError(getUserErrorMessage(err, "Job Portal could not be opened. Please try again after some time."));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <View style={s.root}>
-      <LinearGradient colors={["#C2410C", "#EA580C", "#F97316", "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: insets.top + 12 }]}>
+      <LinearGradient colors={[DARK, ORANGE, "#F97316", "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: insets.top + 12 }]}>
         <TopShade height={120} /><DecorativeCircles />
-        <TouchableOpacity style={s.backBtn} onPress={goBack} activeOpacity={0.84}><Feather name="arrow-left" size={18} color="white" /></TouchableOpacity>
+        <TouchableOpacity style={s.backBtn} onPress={() => router.replace("/portal-select" as any)} activeOpacity={0.84}><Feather name="arrow-left" size={18} color="white" /></TouchableOpacity>
         <View style={s.headCenter}>
           <View style={s.headIcon}><Feather name="briefcase" size={22} color={ORANGE} /></View>
-          <View style={s.pill}><Feather name="shield" size={10} color="rgba(255,255,255,0.85)" /><Text style={s.pillText}>CONNECT T JOB PORTAL</Text></View>
-          <Text style={s.title}>{tab === "login" ? "Job Login" : "Job Register"}</Text>
-          <Text style={s.sub}>Enter the 6-digit OTP sent to your mobile number</Text>
+          <Text style={s.title}>Set Up Job Profile</Text>
+          <Text style={s.sub}>Your verified Connect T login works for both Civic Services and Job Portal.</Text>
         </View>
       </LinearGradient>
+
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 28 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+        <AppScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 28 }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
           <View style={s.card}>
-            <View style={s.segment}>{(["seeker", "employer"] as JobsUserRole[]).map((r) => <TouchableOpacity key={r} style={[s.segmentBtn, role === r && s.segmentActive]} onPress={() => { setRole(r); setError(""); setStep("form"); }} activeOpacity={0.9}><Feather name={r === "seeker" ? "user" : "briefcase"} size={14} color={role === r ? "white" : ORANGE} /><Text style={[s.segmentText, role === r && s.segmentTextActive]}>{r === "seeker" ? "Job Seeker" : "Employer"}</Text></TouchableOpacity>)}</View>
-            <View style={s.tabWrap}>{(["login", "register"] as Tab[]).map((t) => <TouchableOpacity key={t} style={[s.tab, tab === t && s.tabActive]} onPress={() => { setTab(t); setError(""); setStep("form"); }} activeOpacity={0.9}><Text style={[s.tabText, tab === t && s.tabTextActive]}>{t === "login" ? "Login" : "Register"}</Text></TouchableOpacity>)}</View>
-            {step === "form" ? <>
-              <Section title={tab === "login" ? "Mobile Login" : role === "seeker" ? "Basic Job Seeker Details" : "Basic Employer Details"} />
-              {tab === "register" && role === "seeker" && <Input label="Full Name *" value={name} onChangeText={setName} placeholder="Your full name" />}
-              {tab === "register" && role === "employer" && <><Input label="Company / Shop Name *" value={company} onChangeText={setCompany} placeholder="Company / shop name" /><Input label="Contact Person *" value={contactPerson} onChangeText={setContactPerson} placeholder="Owner / HR / manager" /></>}
-              <View style={s.inputGroup}><Text style={s.label}>Mobile Number *</Text><View style={s.phoneRow}><View style={s.countryBox}><Text style={s.countryText}>+91</Text></View><TextInput value={phone} onChangeText={(v) => setPhone(cleanPhone(v))} placeholder="10 digit mobile number" keyboardType="phone-pad" maxLength={10} style={s.phoneInput} placeholderTextColor="#94A3B8" /></View></View>
-              {tab === "register" && <Input label={role === "seeker" ? "Area / Location *" : "Business Area / Location *"} value={location} onChangeText={setLocation} placeholder="Ambernath East / West" />}
-              {tab === "register" && <View style={s.infoBox}><Feather name="info" size={15} color={ORANGE} /><Text style={s.infoText}>Complete photo, DOB, skills and company details from Profile after login.</Text></View>}
-              {!!error && <View style={s.errorBox}><Feather name="alert-circle" size={16} color="#DC2626" /><Text style={s.errorText}>{error}</Text></View>}
-              <TouchableOpacity style={s.primaryBtn} onPress={continueToOtp} activeOpacity={0.9}><Text style={s.primaryText}>Continue to OTP</Text><Feather name="arrow-right" size={18} color="white" /></TouchableOpacity>
-              <Text style={s.note}>{tab === "login" ? "Use your registered mobile number." : "Only basic details now. Full profile can be completed later."}</Text>
-            </> : <>
-              <Section title="6 Digit OTP" />
-              <Text style={s.otpSub}>Enter the 6-digit OTP sent to +91 {phone10}</Text>
-              <OtpDigitInput value={otp} onChange={setOtp} autoFocus />
-              {!!error && <View style={s.errorBox}><Feather name="alert-circle" size={16} color="#DC2626" /><Text style={s.errorText}>{error}</Text></View>}
-              <TouchableOpacity style={[s.primaryBtn, loading && s.primaryBtnDisabled]} disabled={loading} onPress={submit} activeOpacity={0.9}><Text style={s.primaryText}>{loading ? "Please wait..." : tab === "login" ? "Verify & Login" : "Verify & Create Account"}</Text><Feather name="check" size={18} color="white" /></TouchableOpacity>
-              <TouchableOpacity onPress={() => setStep("form")} activeOpacity={0.8}><Text style={s.backLink}>← Change details</Text></TouchableOpacity>
-            </>}
+            <Text style={s.sectionTitle}>How will you use the Job Portal?</Text>
+            <View style={s.segment}>{(["seeker", "employer"] as JobsUserRole[]).map((item) => <TouchableOpacity key={item} style={[s.segmentBtn, role === item && s.segmentActive]} onPress={() => { setRole(item); setError(""); }} activeOpacity={0.9}><Feather name={item === "seeker" ? "user" : "briefcase"} size={15} color={role === item ? "white" : ORANGE} /><Text style={[s.segmentText, role === item && s.segmentTextActive]}>{item === "seeker" ? "Job Seeker" : "Employer"}</Text></TouchableOpacity>)}</View>
+
+            <Input label="Full Name *" value={name} onChangeText={setName} placeholder="Your full name" />
+            <View style={s.inputGroup}><Text style={s.label}>Verified Mobile Number</Text><View style={s.readonlyField}><Feather name="lock" size={14} color="#94A3B8" /><Text style={s.readonlyText}>+91 {user?.mobile || ""}</Text></View><Text style={s.help}>Mobile number is linked to your main Connect T account and cannot be changed here.</Text></View>
+            {role === "employer" ? <Input label="Company / Shop / Business Name *" value={company} onChangeText={setCompany} placeholder="Business name" /> : null}
+            <Input label={role === "employer" ? "Business Location *" : "Preferred Work Location *"} value={location} onChangeText={setLocation} placeholder="Ambernath East / West" />
+
+            <View style={s.infoBox}><Feather name="info" size={15} color={ORANGE} /><Text style={s.infoText}>{role === "seeker" ? "Add skills, qualification, availability and resume from Profile after entering." : "Add company details, verification information and job listings from Profile after entering."}</Text></View>
+            {error ? <View style={s.errorBox}><Feather name="alert-circle" size={16} color="#DC2626" /><Text style={s.errorText}>{error}</Text></View> : null}
+            <TouchableOpacity style={[s.primaryBtn, loading && s.disabled]} onPress={submit} disabled={loading} activeOpacity={0.88}>{loading ? <ActivityIndicator color="white" /> : <><Text style={s.primaryText}>Continue to Job Portal</Text><Feather name="arrow-right" size={18} color="white" /></>}</TouchableOpacity>
           </View>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
-function Section({ title }: { title: string }) { return <View style={s.sectionRow}><View style={s.sectionDot} /><Text style={s.sectionTitle}>{title}</Text></View>; }
-function Input(props: React.ComponentProps<typeof TextInput> & { label: string }) { const { label, style, ...rest } = props; return <View style={s.inputGroup}><Text style={s.label}>{label}</Text><TextInput {...rest} style={[s.input, style]} placeholderTextColor="#94A3B8" /></View>; }
+function Input(props: React.ComponentProps<typeof TextInput> & { label: string }) {
+  const { label, style, ...rest } = props;
+  return <View style={s.inputGroup}><Text style={s.label}>{label}</Text><TextInput {...rest} style={[s.input, style]} placeholderTextColor="#94A3B8" /></View>;
+}
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   header: { paddingHorizontal: 20, paddingBottom: 22, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
-  backBtn: { width: 42, height: 42, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.18)", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  backBtn: { width: 42, height: 42, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.18)", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", marginBottom: 12 },
   headCenter: { alignItems: "center" },
   headIcon: { width: 64, height: 64, borderRadius: 22, backgroundColor: "white", alignItems: "center", justifyContent: "center", shadowColor: DARK, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6, marginBottom: 12 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
-  pillText: { color: "white", fontSize: 9, letterSpacing: 0.8, fontFamily: "Inter_700Bold" },
-  title: { fontSize: 24, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900", letterSpacing: -0.4, marginBottom: 4 },
-  sub: { fontSize: 12, color: "rgba(255,255,255,0.78)", textAlign: "center", fontFamily: "Inter_400Regular" },
+  title: { fontSize: 24, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900", marginBottom: 5 },
+  sub: { maxWidth: 330, fontSize: 12, lineHeight: 17, color: "rgba(255,255,255,0.78)", textAlign: "center", fontFamily: "Inter_400Regular" },
   content: { padding: 16 },
-  card: { backgroundColor: "white", borderRadius: 20, padding: 14, shadowColor: DARK, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3, borderWidth: 1, borderColor: "rgba(255,237,213,0.8)" },
-  segment: { flexDirection: "row", backgroundColor: "#FFF7ED", padding: 4, borderRadius: 16, borderWidth: 1, borderColor: "#FED7AA", marginBottom: 10 },
-  segmentBtn: { flex: 1, borderRadius: 12, paddingVertical: 9, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 },
+  card: { backgroundColor: "white", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "#FED7AA", shadowColor: DARK, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  sectionTitle: { fontSize: 14, color: "#0F172A", fontFamily: "Inter_700Bold", marginBottom: 10 },
+  segment: { flexDirection: "row", backgroundColor: "#FFF7ED", padding: 4, borderRadius: 16, borderWidth: 1, borderColor: "#FED7AA", marginBottom: 16 },
+  segmentBtn: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
   segmentActive: { backgroundColor: ORANGE },
   segmentText: { fontSize: 12, color: ORANGE, fontFamily: "Inter_700Bold" },
   segmentTextActive: { color: "white" },
-  tabWrap: { flexDirection: "row", backgroundColor: "#F8FAFC", borderRadius: 16, padding: 4, marginBottom: 12 },
-  tab: { flex: 1, paddingVertical: 9, alignItems: "center", borderRadius: 12 }, tabActive: { backgroundColor: "white", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  tabText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_700Bold" }, tabTextActive: { color: ORANGE },
-  sectionRow: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 4, marginBottom: 10 }, sectionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ORANGE }, sectionTitle: { fontSize: 13, color: "#0F172A", fontFamily: "Inter_700Bold" },
-  inputGroup: { marginBottom: 11 }, label: { fontSize: 11, color: "#334155", fontFamily: "Inter_700Bold", marginBottom: 6 },
-  input: { height: 48, backgroundColor: "#F8FAFC", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13, color: "#0F172A", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  otpInput: { height: 58, backgroundColor: "#FFF7ED", borderRadius: 16, borderWidth: 1.5, borderColor: "#FED7AA", color: DARK, fontSize: 24, letterSpacing: 8, fontFamily: "Inter_700Bold", marginBottom: 12 },
-  otpSub: { fontSize: 12, color: "#64748B", fontFamily: "Inter_600SemiBold", marginBottom: 10, textAlign: "center" },
-  phoneRow: { flexDirection: "row", gap: 9 }, countryBox: { width: 68, height: 48, borderRadius: 14, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", alignItems: "center", justifyContent: "center" }, countryText: { fontSize: 13, color: DARK, fontFamily: "Inter_700Bold" },
-  phoneInput: { flex: 1, height: 48, backgroundColor: "#F8FAFC", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13, color: "#0F172A", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  infoBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", padding: 10, borderRadius: 14, marginBottom: 11 }, infoText: { flex: 1, fontSize: 11, color: "#9A3412", fontFamily: "Inter_500Medium", lineHeight: 15 },
-  errorBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", padding: 10, borderRadius: 14, marginBottom: 11 }, errorText: { flex: 1, fontSize: 12, color: "#DC2626", fontFamily: "Inter_600SemiBold" },
-  primaryBtn: { height: 52, backgroundColor: ORANGE, borderRadius: 16, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, shadowColor: DARK, shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 }, primaryBtnDisabled: { opacity: 0.6 }, primaryText: { fontSize: 14, color: "white", fontFamily: "Inter_700Bold" },
-  note: { fontSize: 11, color: "#64748B", textAlign: "center", marginTop: 11, fontFamily: "Inter_500Medium" },
-  backLink: { textAlign: "center", color: ORANGE, fontSize: 13, fontFamily: "Inter_700Bold", marginTop: 14 },
+  inputGroup: { marginBottom: 13 },
+  label: { fontSize: 11, color: "#334155", fontFamily: "Inter_700Bold", marginBottom: 6 },
+  input: { height: 49, backgroundColor: "#F8FAFC", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13, color: "#0F172A", fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  readonlyField: { height: 49, flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#F1F5F9", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 13 },
+  readonlyText: { fontSize: 13, color: "#475569", fontFamily: "Inter_700Bold" },
+  help: { marginTop: 5, fontSize: 10.5, lineHeight: 15, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  infoBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", padding: 11, borderRadius: 14, marginBottom: 12 },
+  infoText: { flex: 1, fontSize: 11, color: "#9A3412", fontFamily: "Inter_500Medium", lineHeight: 16 },
+  errorBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", padding: 10, borderRadius: 14, marginBottom: 11 },
+  errorText: { flex: 1, fontSize: 12, color: "#DC2626", fontFamily: "Inter_600SemiBold" },
+  primaryBtn: { height: 52, backgroundColor: ORANGE, borderRadius: 16, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  disabled: { opacity: 0.65 },
+  primaryText: { fontSize: 14, color: "white", fontFamily: "Inter_700Bold" },
 });

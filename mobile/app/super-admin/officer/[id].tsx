@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useMemo, useState } from "react";
 import { Image, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -172,7 +173,7 @@ export default function OfficerDetailScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 12) + 24 }} showsVerticalScrollIndicator={false}>
+      <AppScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 12) + 24 }} showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: "white", borderRadius: 18, paddingHorizontal: 16, paddingTop: 4, marginBottom: 14, elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8 }}>
           <DetailRow icon="award" label="Officer ID" value={officer?.id} />
           <DetailRow icon="user" label="Full Name" value={officer?.name} />
@@ -204,7 +205,7 @@ export default function OfficerDetailScreen() {
             <StatCard label="Closed" value={resolved + rejected} color="#166534" bg="#DCFCE7" />
           </View>
         </View>
-      </ScrollView>
+      </AppScrollView>
 
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" }}>
@@ -229,7 +230,7 @@ export default function OfficerDetailScreen() {
               <Feather name="trash-2" size={20} color="#DC2626" />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, color: "#991B1B", fontFamily: "Inter_700Bold" }}>Delete Officer</Text>
-                <Text style={{ fontSize: 11, color: "#B91C1C", fontFamily: "Inter_400Regular", marginTop: 2 }}>Requires DELETE API on backend</Text>
+                <Text style={{ fontSize: 11, color: "#B91C1C", fontFamily: "Inter_400Regular", marginTop: 2 }}>Permanently remove this officer account</Text>
               </View>
             </TouchableOpacity>
 
