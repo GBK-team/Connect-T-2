@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, FlatList } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -132,6 +133,7 @@ export default function ServicesScreen() {
 
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
   const [selectedCatState, setSelectedCat] = useState<ServiceCategory | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -189,7 +191,7 @@ export default function ServicesScreen() {
         <Text style={styles.headerTitle}>Nearby Services</Text>
         <Text style={styles.headerSub}>Ambernath — Sorted by distance</Text>
 
-        <ScrollView
+        <AppScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
@@ -219,7 +221,7 @@ export default function ServicesScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </AppScrollView>
       </LinearGradient>
 
       <View style={styles.resultsBar}>
@@ -230,6 +232,19 @@ export default function ServicesScreen() {
       </View>
 
       <FlatList
+        refreshing={refreshing}
+        onRefresh={async () => {
+          setRefreshing(true);
+          try {
+            const categories = await fetchServiceCatalog();
+            setServiceCategories(categories);
+            setSelectedCat((current) => categories.find((item) => item.id === current?.id) || categories[0] || null);
+          } catch {
+            // Keep the last successfully loaded catalog visible.
+          } finally {
+            setRefreshing(false);
+          }
+        }}
         data={sortedData}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (

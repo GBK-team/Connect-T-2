@@ -11,7 +11,7 @@ let pool = null;
 let installed = false;
 let columnsEnsured = false;
 
-const { signToken, verifyOtpProof } = require("./authSecurity");
+const { bearerToken, signToken, verifyOtpProof, verifySignedToken } = require("./authSecurity");
 
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -19,9 +19,9 @@ function normalizeMobile(value) {
 
 function normalizeWardCode(value) {
   if (!value) return null;
-  const match = String(value).trim().toUpperCase().match(/(\d{1,2})\s*([ABC])/);
+  const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
   if (!match) return null;
-  return `${Number(match[1])}${match[2]}`;
+  return `${Number(match[1])}`;
 }
 
 function normalizeApproval(value) {
@@ -150,10 +150,10 @@ async function nagarsevakRegister(req, res) {
     const wardCode = normalizeWardCode(req.body?.wardCode || req.body?.ward_code || ward);
     const dob = String(req.body?.dob || req.body?.dateOfBirth || req.body?.date_of_birth || "").trim() || null;
 
-    if (!name || name.length < 2 || mobile.length !== 10) {
+    if (name.split(/\s+/).filter(Boolean).length < 2 || mobile.length !== 10) {
       return sendJson(res, 400, {
         success: false,
-        message: "Name and valid mobile number are required",
+        message: "Full name and a valid mobile number are required",
       });
     }
 
@@ -180,6 +180,20 @@ async function nagarsevakRegister(req, res) {
 
     if (existingMobile.length) {
       const status = normalizeApproval(existingMobile[0].approval_status);
+      if (status === "pending") {
+        return sendJson(res, 200, {
+          success: true,
+          message: "Registration is already under review",
+          officerId: existingMobile[0].id,
+          approvalStatus: status,
+          approvalToken: signToken({
+            sub: String(existingMobile[0].id),
+            mobile,
+            role: "nagarsevak",
+            scope: "nagarsevak_pending",
+          }),
+        });
+      }
       return sendJson(res, 409, {
         success: false,
         message: status === "pending" ? "ALREADY_PENDING" : "Officer already registered",
@@ -220,7 +234,7 @@ async function nagarsevakRegister(req, res) {
         mobile,
         ward,
         wardCode || null,
-        wardCode ? wardCode.replace(/[A-Z]/g, "") : null,
+        wardCode || null,
         dob,
         req.body?.address || null,
         id,
@@ -239,12 +253,62 @@ async function nagarsevakRegister(req, res) {
       officerId: id,
       approvalStatus: "pending",
       wardCode,
+      approvalToken: signToken({ sub: String(id), mobile, role: "nagarsevak", scope: "nagarsevak_pending" }),
     });
   } catch (err) {
     return sendJson(res, 500, {
       success: false,
       message: err.message || "REGISTRATION_FAILED",
     });
+  }
+}
+
+async function nagarsevakStatus(req, res) {
+  try {
+    const db = getPool();
+    await ensureUsersProfileColumns();
+    const approvalToken = String(req.body?.approvalToken || req.body?.approval_token || bearerToken(req) || "").trim();
+    const proof = verifySignedToken(approvalToken);
+    const mobile = normalizeMobile(req.body?.mobile || proof?.mobile);
+
+    if (!proof || proof.scope !== "nagarsevak_pending" || proof.role !== "nagarsevak") {
+      return sendJson(res, 401, { success: false, code: "PENDING_SESSION_EXPIRED", message: "Registration session expired. Please verify your mobile again." });
+    }
+    if (mobile.length !== 10 || normalizeMobile(proof.mobile) !== mobile) {
+      return sendJson(res, 401, { success: false, code: "PENDING_SESSION_INVALID", message: "Registration could not be verified." });
+    }
+
+    const [rows] = await db.query(
+      `SELECT * FROM users
+       WHERE role = 'nagarsevak'
+         AND (id = ? OR ${mobileSql("mobile")} = ?)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [String(proof.sub || ""), mobile],
+    );
+
+    if (!rows.length) {
+      return sendJson(res, 404, { success: false, code: "NOT_FOUND", message: "No registration was found for this mobile number." });
+    }
+
+    const approvalStatus = normalizeApproval(rows[0].approval_status);
+    if (approvalStatus !== "approved") {
+      return sendJson(res, 200, {
+        success: true,
+        approvalStatus,
+        message: approvalStatus === "rejected" ? "Registration was not approved." : "Registration is under review.",
+      });
+    }
+
+    const user = mapOfficer({ ...rows[0], approval_status: "approved" });
+    return sendJson(res, 200, {
+      success: true,
+      approvalStatus: "approved",
+      user,
+      token: signToken({ sub: user.id, mobile: user.mobile, role: "nagarsevak", scope: "civic" }),
+    });
+  } catch (err) {
+    return sendJson(res, 500, { success: false, message: "Status could not be checked right now." });
   }
 }
 
@@ -373,6 +437,7 @@ try {
     originalGet.call(app, "/api/auth/officers", listOfficers);
     originalPost.call(app, "/api/auth/nagarsevak-register", nagarsevakRegister);
     originalPost.call(app, "/api/auth/nagarsevak-login", nagarsevakLogin);
+    originalPost.call(app, "/api/auth/nagarsevak-status", nagarsevakStatus);
   }
 
   express.application.get = function patchedGet(path, ...handlers) {
@@ -381,7 +446,7 @@ try {
   };
 
   express.application.post = function patchedPost(path, ...handlers) {
-    if (path === "/api/auth/nagarsevak-login" || path === "/api/auth/nagarsevak-register") install(this);
+    if (path === "/api/auth/nagarsevak-login" || path === "/api/auth/nagarsevak-register" || path === "/api/auth/nagarsevak-status") install(this);
     return originalPost.call(this, path, ...handlers);
   };
 

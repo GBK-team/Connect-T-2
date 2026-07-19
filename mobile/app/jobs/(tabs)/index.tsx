@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useMemo, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -104,7 +105,7 @@ function NotificationsModal({ visible, onClose, jobs }: { visible: boolean; onCl
           <View style={s.sheetHandle} />
           <View style={s.sheetHeader}><View><Text style={s.sheetTitle}>Job Updates</Text><Text style={s.sheetSub}>Latest openings near you</Text></View><TouchableOpacity style={s.sheetClose} onPress={onClose}><Feather name="x" size={18} color="#64748B" /></TouchableOpacity></View>
           {recentJobs.length === 0 ? <Empty icon="bell-off" title="No updates yet" sub="New job notifications will appear here." /> : (
-            <ScrollView showsVerticalScrollIndicator={false}>{recentJobs.map((job) => <View key={job.id} style={s.notificationItem}><View style={s.notificationIcon}><Feather name={getIcon(job) as any} size={15} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.notificationTitle} numberOfLines={1}>{job.title}</Text><Text style={s.notificationSub} numberOfLines={1}>{job.company} · {job.location}</Text></View><Text style={s.notificationTime}>{timeAgo(job.createdAt)}</Text></View>)}</ScrollView>
+            <AppScrollView showsVerticalScrollIndicator={false}>{recentJobs.map((job) => <View key={job.id} style={s.notificationItem}><View style={s.notificationIcon}><Feather name={getIcon(job) as any} size={15} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.notificationTitle} numberOfLines={1}>{job.title}</Text><Text style={s.notificationSub} numberOfLines={1}>{job.company} · {job.location}</Text></View><Text style={s.notificationTime}>{timeAgo(job.createdAt)}</Text></View>)}</AppScrollView>
           )}
         </View>
       </View>
@@ -181,7 +182,7 @@ export default function JobsHomeScreen() {
   const router = useRouter();
   const topPad = Platform.OS === "web" ? 66 : insets.top;
   const { jobsUser } = useJobsAuth();
-  const { jobs, applyJob, hasApplied, toggleJobActive, deleteJob } = useJobs();
+  const { jobs, applyJob, hasApplied, toggleJobActive, deleteJob, refreshJobs } = useJobs();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notice, setNotice] = useState({ visible: false, title: "", message: "" });
   const isEmployer = jobsUser?.role === "employer";
@@ -208,9 +209,9 @@ export default function JobsHomeScreen() {
         <View style={s.headerRow}><View style={{ flex: 1 }}><View style={s.headerPill}><Feather name="briefcase" size={10} color="rgba(255,255,255,0.9)" /><Text style={s.headerPillText}>{isEmployer ? "EMPLOYER PORTAL" : "LOCAL JOBS"}</Text></View><Text style={s.headerTitle}>{isEmployer ? "Employer Dashboard" : "Connect T Jobs"}</Text><Text style={s.headerSub} numberOfLines={2}>{isEmployer ? `${jobsUser?.company || jobsUser?.name || "Company"} · Hiring workspace` : `Hello, ${jobsUser?.name?.split(" ")[0] || "there"} · Find trusted local work`}</Text></View>{!isEmployer && <TouchableOpacity style={s.headerIcon} onPress={() => setShowNotifications(true)}><Feather name="bell" size={18} color="white" />{activeJobs.length > 0 && <View style={s.headerDot} />}</TouchableOpacity>}</View>
         {!isEmployer && <TouchableOpacity style={s.searchCard} activeOpacity={0.9} onPress={() => router.push("/jobs/search" as any)}><View style={s.searchIcon}><Feather name="search" size={18} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.searchTitle}>Nearby job openings</Text><Text style={s.searchSub}>Tap to view jobs list with filters</Text></View><Feather name="sliders" size={18} color="#94A3B8" /></TouchableOpacity>}
       </LinearGradient>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 92 }]}> 
+      <AppScrollView onAppRefresh={refreshJobs} showsVerticalScrollIndicator={false} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 92 }]}>
         {isEmployer ? <EmployerDashboard jobs={jobs} employerId={jobsUser?.id || ""} onPostJob={() => router.push("/jobs/(tabs)/post" as any)} onToggle={toggleJobActive} onDelete={deleteJob} /> : <View style={s.sectionBlock}><SectionHeader title="Nearby Jobs" sub="Local openings with search and filters" count={list.length} /><TouchableOpacity onPress={() => router.push("/jobs/search" as any)} style={s.seeAllBtn}><Text style={s.seeAllText}>See all jobs</Text><Feather name="arrow-right" size={13} color={ORANGE} /></TouchableOpacity>{list.length === 0 ? <Empty icon="briefcase" title="No jobs right now" sub="New verified local jobs will appear here." /> : list.slice(0, 8).map((job) => <JobCard key={job.id} job={job} applied={!!jobsUser && hasApplied(job.id, jobsUser.id)} near={nearbyJobs.some((j) => j.id === job.id)} onOpen={() => router.push(`/jobs/detail/${job.id}` as any)} onApply={() => handleApply(job)} />)}</View>}
-      </ScrollView>
+      </AppScrollView>
       <NotificationsModal visible={showNotifications} onClose={() => setShowNotifications(false)} jobs={activeJobs} />
       <AppNotice visible={notice.visible} title={notice.title} message={notice.message} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
     </View>

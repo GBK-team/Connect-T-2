@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import { sendRealOtp, verifyRealOtp } from "../lib/otpApi";
 import React, { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
@@ -46,7 +47,7 @@ export default function SuperAdminLoginScreen() {
 
   const continueToOtp = async () => {
     if (finalMobile.length !== 10) return showNotice("Mobile required", "Enter a valid 10 digit mobile number.");
-    // Backend validates the unique ID during final login.
+    if (!isMainSuperAdmin && !finalAccessId) return showNotice("Access ID required", "Enter the unique access ID provided by the main Super Admin.");
 
     setSubmitting(true);
     const otpSend = await sendRealOtp(finalMobile, "login");
@@ -61,7 +62,7 @@ export default function SuperAdminLoginScreen() {
   };
 
   const handleLogin = async () => {
-    const otpCheck = await verifyRealOtp(mobile, otp, "login");
+    const otpCheck = await verifyRealOtp(finalMobile, otp, "login");
     if (!otpCheck.success) return showNotice("Invalid OTP", otpCheck.error || "Invalid OTP", "danger");
 
     try {
@@ -69,7 +70,11 @@ export default function SuperAdminLoginScreen() {
 
       const response = await apiPost<any>("/api/auth/super-admin-access-login", {
         mobile: finalMobile,
+        phone: finalMobile,
         accessCode: finalAccessId,
+        access_code: finalAccessId,
+        accessId: finalAccessId,
+        uniqueAccessId: isMainSuperAdmin ? "SUPER_ADMIN_MAIN" : finalAccessId,
       });
 
       const backendUser = response.user || response.data || response;
@@ -101,8 +106,8 @@ export default function SuperAdminLoginScreen() {
       <LinearGradient colors={["#020617", "#052E16", "#064E3B", "#047857"]} locations={[0, 0.38, 0.72, 1]} style={StyleSheet.absoluteFill} />
       <View style={styles.glowTop} /><View style={styles.glowBottom} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 30 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
-          <View style={styles.topBar}><TouchableOpacity style={styles.backBtn} onPress={() => router.replace("/secret-access" as any)} activeOpacity={0.85}><Feather name="chevron-left" size={22} color="#ECFDF5" /></TouchableOpacity><View style={styles.secureBadge}><View style={styles.liveDot} /><Text style={styles.secureBadgeText}>ADMIN ACCESS</Text></View></View>
+        <AppScrollView style={styles.flex} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 30 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
+          <View style={styles.topBar}><TouchableOpacity style={styles.backBtn} onPress={() => router.replace("/login" as any)} activeOpacity={0.85}><Feather name="chevron-left" size={22} color="#ECFDF5" /></TouchableOpacity><View style={styles.secureBadge}><View style={styles.liveDot} /><Text style={styles.secureBadgeText}>ADMIN ACCESS</Text></View></View>
           <View style={styles.hero}><View style={styles.adminMarkOuter}><View style={styles.adminMark}><Feather name="shield" size={34} color="#047857" /></View></View><Text style={styles.kicker}>Connect T Control Center</Text><Text style={styles.title}>Super Admin Login</Text><Text style={styles.subtitle}>Protected dashboard for city-wide access, officer control, alerts, jobs and civic operations.</Text></View>
           <View style={styles.securityPanel}>
             <View style={styles.panelHeader}><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.panelTitle}>Identity Verification</Text><Text style={styles.panelSub}>{otpStep ? "Enter the 6-digit OTP sent to your mobile number." : "Enter authorized mobile number to continue."}</Text></View><View style={styles.panelIcon}><Feather name="lock" size={18} color="#047857" /></View></View>
@@ -115,7 +120,7 @@ export default function SuperAdminLoginScreen() {
           </View>
           <View style={styles.rulesCard}><View style={styles.rulesHeader}><Feather name="alert-triangle" size={15} color="#FDE68A" /><Text style={styles.rulesTitle}>Restricted Area</Text></View><Text style={styles.rulesText}>This login is not for citizens or officers. Unauthorized access attempts should be denied by backend verification.</Text></View>
           <Text style={styles.footer}>CONNECT T · SECURE ADMIN PORTAL</Text>
-        </ScrollView>
+        </AppScrollView>
       </KeyboardAvoidingView>
       <AppNotice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
     </View>

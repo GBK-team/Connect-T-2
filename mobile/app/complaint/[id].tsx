@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"; import {   ActivityIndicator, Animated, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react"; import { ActivityIndicator, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,6 +24,11 @@ type ComplaintDetail = {
   userAddress?: string | null;
   userAge?: number | null;
   userEmail?: string | null;
+  userDob?: string | null;
+  userProfilePhoto?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationAccuracy?: number | null;
   createdAt: string;
   updatedAt?: string;
   timeline: {
@@ -149,6 +154,7 @@ export default function ComplaintDetailScreen() {
 
   const [complaint, setComplaint] = useState<ComplaintDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<ComplaintStatus | null>(null);
   const [notice, setNotice] = useState({ visible: false, title: "", message: "", tone: "info" as "info" | "success" | "danger", onConfirm: undefined as undefined | (() => void), confirmText: undefined as undefined | string });
   const fadeAnim = useRef(new Animated.Value(fresh === "1" ? 0 : 1)).current;
@@ -156,9 +162,9 @@ export default function ComplaintDetailScreen() {
   const closeNotice = () => setNotice((prev) => ({ ...prev, visible: false, onConfirm: undefined }));
   const showNotice = (title: string, message: string, tone: "info" | "success" | "danger" = "info") => setNotice({ visible: true, title, message, tone, onConfirm: undefined, confirmText: undefined });
 
-  const loadComplaint = async () => {
+  const loadComplaint = async (background = false) => {
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       const data = await apiGet<any>(`/api/complaints/${id}`);
       const apiComplaint = data.complaint;
       const createdAt = apiComplaint.created_at || apiComplaint.createdAt || new Date().toISOString();
@@ -178,6 +184,11 @@ export default function ComplaintDetailScreen() {
         userAddress: apiComplaint.user_address || apiComplaint.userAddress,
         userAge: apiComplaint.user_age || apiComplaint.userAge,
         userEmail: apiComplaint.user_email || apiComplaint.userEmail,
+        userDob: apiComplaint.user_dob || apiComplaint.userDob,
+        userProfilePhoto: apiComplaint.user_profile_photo || apiComplaint.userProfilePhoto,
+        latitude: apiComplaint.latitude === null || apiComplaint.latitude === undefined ? null : Number(apiComplaint.latitude),
+        longitude: apiComplaint.longitude === null || apiComplaint.longitude === undefined ? null : Number(apiComplaint.longitude),
+        locationAccuracy: apiComplaint.location_accuracy === null || apiComplaint.location_accuracy === undefined ? null : Number(apiComplaint.location_accuracy),
         createdAt,
         updatedAt: apiComplaint.updated_at || apiComplaint.updatedAt,
         timeline: Array.isArray(apiComplaint.timeline) && apiComplaint.timeline.length
@@ -193,8 +204,14 @@ export default function ComplaintDetailScreen() {
       console.error("Load complaint failed", error);
       setComplaint(null);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
+  };
+
+  const refreshComplaint = async () => {
+    setRefreshing(true);
+    await loadComplaint(true);
+    setRefreshing(false);
   };
 
   const updateComplaintStatus = async (nextStatus: ComplaintStatus, note: string) => {
@@ -277,13 +294,13 @@ export default function ComplaintDetailScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 40 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 40 }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshComplaint} colors={[ORANGE]} tintColor={ORANGE} />}>
         {complaint.photoUri ? <View style={styles.photoCard}><Image source={{ uri: complaint.photoUri }} style={styles.photo} /><View style={styles.photoLabel}><Feather name="camera" size={12} color="#64748B" /><Text style={styles.photoLabelText}>{t("problemPhoto")}</Text></View></View> : null}
 
         {isOfficer && complaint.userName ? (
           <View style={styles.complainantCard}>
             <Text style={styles.detailSectionTitle}>{t("complainantProfile")}</Text>
-            <View style={styles.complainantHeader}><View style={styles.complainantAvatar}><Text style={styles.complainantAvatarText}>{complaint.userName.charAt(0).toUpperCase()}</Text></View><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.complainantName}>{complaint.userName}</Text><Text style={styles.complainantRole}>{t("citizen")}</Text></View></View>
+            <View style={styles.complainantHeader}>{complaint.userProfilePhoto ? <Image source={{ uri: complaint.userProfilePhoto }} style={styles.complainantAvatarImage} /> : <View style={styles.complainantAvatar}><Text style={styles.complainantAvatarText}>{complaint.userName.charAt(0).toUpperCase()}</Text></View>}<View style={{ flex: 1, minWidth: 0 }}><Text style={styles.complainantName}>{complaint.userName}</Text><Text style={styles.complainantRole}>{t("citizen")}</Text></View></View>
             <View style={styles.complainantDivider} />
             <View style={styles.complainantDetails}>
               {complaint.userMobile ? <InfoRow icon="phone" label={t("phone")} value={`+91 ${complaint.userMobile}`} color={ORANGE} bg="#FFEDD5" /> : null}
@@ -291,6 +308,7 @@ export default function ComplaintDetailScreen() {
               <InfoRow icon="map-pin" label={t("ward")} value={complaint.ward} color="#059669" bg="#D1FAE5" />
               {complaint.userAddress ? <InfoRow icon="home" label={t("address")} value={complaint.userAddress} color="#D97706" bg="#FEF3C7" /> : null}
               {complaint.userAge ? <InfoRow icon="calendar" label={t("age")} value={`${complaint.userAge} years`} color="#7C3AED" bg="#EDE9FE" /> : null}
+              {complaint.userDob ? <InfoRow icon="gift" label="Date of Birth" value={complaint.userDob} color="#2563EB" bg="#DBEAFE" /> : null}
             </View>
           </View>
         ) : null}
@@ -320,6 +338,7 @@ export default function ComplaintDetailScreen() {
           <DetailRow icon={cat.icon} iconBg={cat.bg} iconColor={cat.color} label={t("category")} value={t(categoryLabelKeys[complaint.category] || "other")} />
           <View style={styles.divider} />
           <DetailRow icon="map-pin" iconBg="#FFF7ED" iconColor={ORANGE} label={t("location")} value={complaint.location} sub={complaint.ward} />
+          {complaint.latitude !== null && complaint.latitude !== undefined && complaint.longitude !== null && complaint.longitude !== undefined ? <><View style={styles.divider} /><DetailRow icon="crosshair" iconBg="#DBEAFE" iconColor="#2563EB" label="GPS Coordinates" value={`${complaint.latitude.toFixed(6)}, ${complaint.longitude.toFixed(6)}`} sub={complaint.locationAccuracy ? `Accuracy about ${Math.round(complaint.locationAccuracy)} m` : "Exact coordinates captured during filing"} /></> : null}
           <View style={styles.divider} />
           <DetailRow icon="calendar" iconBg="#FFF7ED" iconColor={ORANGE} label={t("submittedOn")} value={formatDate(complaint.createdAt)} />
           <View style={styles.divider} />
@@ -407,6 +426,7 @@ const styles = StyleSheet.create({
   complainantCard: { backgroundColor: "white", borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 },
   complainantHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   complainantAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" },
+  complainantAvatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F1F5F9" },
   complainantAvatarText: { fontSize: 18, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
   complainantName: { fontSize: 15, fontWeight: "800", color: "#0F172A", fontFamily: "Inter_700Bold" },
   complainantRole: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", marginTop: 1 },

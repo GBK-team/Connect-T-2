@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useMemo, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -97,12 +98,12 @@ export default function ActiveJobDetailsScreen() {
         <View style={s.heroRow}><View style={s.heroIcon}><Feather name="briefcase" size={22} color={ORANGE} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={s.headerTitle} numberOfLines={2}>{job.title}</Text><Text style={s.headerSub} numberOfLines={2}>{job.company} · {job.location}</Text></View></View>
         <View style={s.headerStats}><HeaderStat value={job.openings} label="Openings" /><View style={s.headerStatDivider} /><HeaderStat value={allApplicants.length} label="Applicants" /><View style={s.headerStatDivider} /><HeaderStat value={hired.length} label="Hired" /></View>
       </LinearGradient>
-      <ScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 86 }]} showsVerticalScrollIndicator={false}>
+      <AppScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 86 }]} showsVerticalScrollIndicator={false}>
         <Section title="Pending Review" count={pending.length}>{render(pending, "pending")}</Section>
         <Section title="Shortlisted" count={shortlisted.length}>{render(shortlisted, "shortlisted")}</Section>
         <Section title="Hired" count={hired.length}>{render(hired, "hired")}</Section>
         <Section title="Rejected" count={rejected.length}>{render(rejected, "rejected")}</Section>
-      </ScrollView>
+      </AppScrollView>
       <AppNotice visible={notice.visible} title={notice.title} message={notice.message} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
     </View>
   );

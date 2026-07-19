@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getApiUrl } from "@/utils/apiUrl";
+import { apiPost, storeAuthToken } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+
+const PENDING_APPROVAL_KEY = "connect_t_nagarsevak_pending_v1";
 
 function cleanMobile(value?: string | string[]) {
   return String(Array.isArray(value) ? value[0] : value || "").replace(/\D/g, "").slice(-10);
@@ -14,6 +18,7 @@ type StatusState = "submitted" | "reviewing" | "approved" | "rejected" | "not_fo
 
 export default function NagarsevakVerificationStatusScreen() {
   const insets = useSafeAreaInsets();
+  const { login } = useAuth();
   const params = useLocalSearchParams<{ phone?: string; mobile?: string; from?: string }>();
   const phone = cleanMobile(params.phone || params.mobile);
   const [status, setStatus] = useState<StatusState>("submitted");
@@ -33,37 +38,35 @@ export default function NagarsevakVerificationStatusScreen() {
     if (!phone || checking) return;
     setChecking(true);
     try {
-      const res = await fetch(getApiUrl("/api/auth/nagarsevak-login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile: phone }),
+      const saved = await AsyncStorage.getItem(PENDING_APPROVAL_KEY);
+      const pending = saved ? JSON.parse(saved) : null;
+      if (!pending?.token || cleanMobile(pending.mobile) !== phone) {
+        setStatus("reviewing");
+        setMessage("For security, please verify your mobile once to continue checking this registration.");
+        if (!auto) router.replace({ pathname: "/nagarsevak/login" as any, params: { phone } });
+        return;
+      }
+      const data = await apiPost<any>("/api/auth/nagarsevak-status", {
+        mobile: phone,
+        approvalToken: pending.token,
       });
-      const data = await res.json().catch(() => ({}));
 
-      if (data.success && data.user) {
+      if (data.success && data.approvalStatus === "approved" && data.user && data.token) {
         setStatus("approved");
-        setMessage("Your profile is approved. Please verify a new OTP to open the Nagarsevak dashboard.");
-        setTimeout(() => {
-          router.replace({ pathname: "/nagarsevak/login" as any, params: { phone } });
-        }, 900);
+        setMessage("Your profile is approved. Opening the Nagarsevak dashboard now.");
+        await storeAuthToken(data.token);
+        await login(data.user);
+        await AsyncStorage.removeItem(PENDING_APPROVAL_KEY);
+        router.replace("/(tabs)/admin" as any);
         return;
       }
 
-      if (data.message === "PENDING") {
+      if (data.approvalStatus === "pending") {
         setStatus(auto ? "reviewing" : "submitted");
         setMessage("Your request is under review by Super Admin. You will be able to login after approval.");
-      } else if (data.message === "REJECTED") {
+      } else if (data.approvalStatus === "rejected") {
         setStatus("rejected");
         setMessage("Your registration was rejected. Please contact Super Admin before submitting again.");
-      } else if (data.message === "NOT_FOUND" || data.notFound) {
-        setStatus("not_found");
-        setMessage("No Nagarsevak registration was found for this mobile number. Please register first.");
-      } else if (data.message === "OTP_REQUIRED") {
-        setStatus("approved");
-        setMessage("Your profile is approved. Please verify a new OTP to open the Nagarsevak dashboard.");
-        setTimeout(() => {
-          router.replace({ pathname: "/nagarsevak/login" as any, params: { phone } });
-        }, 900);
       } else {
         setStatus("reviewing");
         setMessage("Verification is still under review. Please check again later.");
@@ -134,7 +137,7 @@ export default function NagarsevakVerificationStatusScreen() {
             {checking ? <ActivityIndicator color="white" /> : <><Feather name="refresh-cw" size={16} color="white" /><Text style={styles.refreshText}>Check Status</Text></>}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.exitBtn} onPress={() => Platform.OS === "web" ? router.replace("/secret-access" as any) : BackHandler.exitApp()} activeOpacity={0.82}>
+          <TouchableOpacity style={styles.exitBtn} onPress={() => Platform.OS === "web" ? router.replace("/login" as any) : BackHandler.exitApp()} activeOpacity={0.82}>
             <Text style={styles.exitText}>{Platform.OS === "web" ? "Back to Admin Access" : "Close App"}</Text>
           </TouchableOpacity>
         </View>

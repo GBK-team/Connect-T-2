@@ -99,7 +99,7 @@ async function currentCivicUser(auth) {
   if (!auth?.sub) return null;
   const [rows] = await db.query(
     `SELECT id, name, mobile, role, ward, ward_code, is_super_admin, approval_status,
-            address, age, email, avatar_color
+            address, age, dob, email, avatar_color, profile_photo
      FROM users WHERE id = ? LIMIT 1`,
     [auth.sub],
   );
@@ -183,6 +183,8 @@ async function authorizeComplaints(req, res, next) {
         req.body.user_address = user.address || null;
         req.body.user_age = user.age || null;
         req.body.user_email = user.email || null;
+        req.body.user_dob = user.dob || null;
+        req.body.user_profile_photo = user.profile_photo || null;
         req.body.ward = user.ward || req.body.ward;
         req.body.ward_code = user.ward_code || req.body.ward_code;
         delete req.body.assigned_officer_id;
@@ -244,9 +246,12 @@ async function authorizeJobPortal(req, res, next) {
 
     if (
       (method === "GET" && ["/health", "/patch-health"].includes(pathName)) ||
-      (method === "POST" && ["/register", "/login"].includes(pathName))
+      (method === "POST" && ["/register", "/login", "/session"].includes(pathName))
     ) {
-      return next();
+      if (pathName !== "/session") return next();
+      const civicUser = await currentCivicUser(auth);
+      if (auth?.scope !== "job_portal" && civicUser?.role === "citizen") return next();
+      return res.status(401).json({ success: false, error: "Citizen login required" });
     }
 
     let isSuperAdmin = isSuperAdminAuth(auth);
@@ -349,15 +354,15 @@ async function authorizeJobPortal(req, res, next) {
         `SELECT j.employer_id, a.seeker_id
          FROM job_portal_jobs j
          LEFT JOIN job_portal_applications a
-           ON a.job_id = j.id AND a.seeker_id IN (?, ?)
+           ON a.job_id = j.id AND a.seeker_id = ?
          WHERE j.id = ?
          LIMIT 1`,
-        [auth.sub, receiverId, jobId],
+        [auth.role === "employer" ? receiverId : auth.sub, jobId],
       );
       const pair = pairs[0];
       const isJobPair = pair && (
-        (String(pair.employer_id) === String(auth.sub) && String(pair.seeker_id) === receiverId) ||
-        (String(pair.employer_id) === receiverId && String(pair.seeker_id) === String(auth.sub))
+        (auth.role === "seeker" && String(pair.employer_id) === receiverId) ||
+        (auth.role === "employer" && String(pair.employer_id) === String(auth.sub) && String(pair.seeker_id) === receiverId)
       );
       if (!isJobPair) {
         return res.status(403).json({ success: false, error: "Messages are limited to a job's employer and applicant" });
@@ -532,6 +537,27 @@ async function ensureProductionMySQLSchema() {
     await ensureColumn("users", "contact_name", "contact_name VARCHAR(150) NULL AFTER office_timings");
     await ensureColumn("users", "contact_number", "contact_number VARCHAR(20) NULL AFTER contact_name");
     await ensureColumn("users", "ward_changed", "ward_changed TINYINT(1) NOT NULL DEFAULT 0 AFTER ward_number");
+    await ensureColumn("complaints", "user_dob", "user_dob VARCHAR(40) NULL AFTER user_email");
+    await ensureColumn("complaints", "user_profile_photo", "user_profile_photo LONGTEXT NULL AFTER user_dob");
+    await ensureColumn("complaints", "latitude", "latitude DECIMAL(10,7) NULL AFTER location");
+    await ensureColumn("complaints", "longitude", "longitude DECIMAL(10,7) NULL AFTER latitude");
+    await ensureColumn("complaints", "location_accuracy", "location_accuracy DECIMAL(10,2) NULL AFTER longitude");
+
+    // Consolidate legacy A/B sub-wards into the single ward model used by the app.
+    const [legacyUsers] = await db.query("SELECT id, ward, ward_code FROM users WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
+    for (const row of legacyUsers) {
+      const wardCode = normalizeWardCode(row.ward_code || row.ward);
+      if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
+        await db.query("UPDATE users SET ward = ?, ward_code = ?, ward_number = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, wardCode, row.id]);
+      }
+    }
+    const [legacyComplaints] = await db.query("SELECT id, ward, ward_code FROM complaints WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
+    for (const row of legacyComplaints) {
+      const wardCode = normalizeWardCode(row.ward_code || row.ward);
+      if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
+        await db.query("UPDATE complaints SET ward = ?, ward_code = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, row.id]);
+      }
+    }
 
 
     await db.query(`
@@ -621,87 +647,33 @@ async function ensureProductionMySQLSchema() {
 ensureProductionMySQLSchema();
 
 
-const WARD_OFFICER_MAP = {
-  "1A": "NS002",
-  "1B": "NS003",
-  "2A": "NS004",
-  "2B": "NS005",
-  "3A": "NS006",
-  "3B": "NS007",
-  "4A": "NS008",
-  "4B": "NS009",
-  "4C": "NS010",
-  "5A": "NS011",
-  "5B": "NS012",
-  "6A": "NS013",
-  "6B": "NS014",
-  "7A": "NS015",
-  "7B": "NS016",
-  "8A": "NS017",
-  "8B": "NS018",
-  "9A": "NS019",
-  "9B": "NS020",
-  "10A": "NS021",
-  "10B": "NS022",
-  "11A": "NS023",
-  "11B": "NS024",
-  "12A": "NS025",
-  "12B": "NS026",
-  "13A": "NS027",
-  "13B": "NS028",
-  "14A": "NS029",
-  "14B": "NS030",
-  "15A": "NS031",
-  "15B": "NS032",
-  "16A": "NS033",
-  "16B": "NS034",
-  "17A": "NS035",
-  "17B": "NS036",
-  "18A": "NS037",
-  "18B": "NS038",
-  "19A": "NS039",
-  "19B": "NS040",
-  "20A": "NS041",
-  "20B": "NS042",
-  "21A": "NS043",
-  "21B": "NS044",
-  "22A": "NS045",
-  "22B": "NS046",
-  "23A": "NS047",
-  "23B": "NS048",
-  "24A": "NS049",
-  "24B": "NS050",
-  "25A": "NS051",
-  "25B": "NS052",
-  "26A": "NS053",
-  "26B": "NS054",
-  "27A": "NS055",
-  "27B": "NS056",
-  "28A": "NS057",
-  "28B": "NS058",
-  "29A": "NS059",
-  "29B": "NS060",
-};
-
 function normalizeWardCode(value) {
   if (!value) return null;
 
   const match = String(value)
     .trim()
     .toUpperCase()
-    .match(/(\d{1,2})\s*([ABC])/);
+    .match(/(\d{1,2})/);
 
   if (!match) return null;
 
-  return `${Number(match[1])}${match[2]}`;
+  return `${Number(match[1])}`;
 }
 
-function getOfficerIdByWardCode(wardCode) {
+async function getOfficerIdByWardCode(wardCode) {
   const normalizedWardCode = normalizeWardCode(wardCode);
 
   if (!normalizedWardCode) return null;
-
-  return WARD_OFFICER_MAP[normalizedWardCode] || null;
+  const [rows] = await db.query(
+    `SELECT id FROM users
+     WHERE role = 'nagarsevak'
+       AND approval_status = 'approved'
+       AND (ward_code = ? OR ward = ?)
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [normalizedWardCode, `Ward ${normalizedWardCode}`],
+  );
+  return rows[0]?.id || null;
 }
 
 app.get("/", (req, res) => {
@@ -791,6 +763,9 @@ app.post("/api/users", async (req, res) => {
         success: false,
         error: "name and valid 10 digit mobile are required",
       });
+    }
+    if (String(name).trim().split(/\s+/).length < 2) {
+      return res.status(400).json({ success: false, error: "Full name including surname is required" });
     }
     if (String(name).trim().length > 160) {
       return res.status(400).json({ success: false, error: "Name is too long" });
@@ -1050,9 +1025,21 @@ app.get("/api/complaints", async (req, res) => {
 
 app.get("/api/complaints/:id", async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT * FROM complaints WHERE id = ?", [
-      req.params.id,
-    ]);
+    const [rows] = await db.query(
+      `SELECT c.*,
+              COALESCE(c.user_name, u.name) AS user_name,
+              COALESCE(c.user_mobile, u.mobile) AS user_mobile,
+              COALESCE(c.user_address, u.address) AS user_address,
+              COALESCE(c.user_age, u.age) AS user_age,
+              COALESCE(c.user_email, u.email) AS user_email,
+              COALESCE(c.user_dob, u.dob) AS user_dob,
+              COALESCE(c.user_profile_photo, u.profile_photo) AS user_profile_photo
+       FROM complaints c
+       LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.id = ?
+       LIMIT 1`,
+      [req.params.id],
+    );
 
     if (rows.length === 0) {
       return res.status(404).json({
@@ -1097,6 +1084,11 @@ app.post("/api/complaints", async (req, res) => {
       user_address,
       user_age,
       user_email,
+      user_dob,
+      user_profile_photo,
+      latitude,
+      longitude,
+      location_accuracy,
     } = req.body;
 
     if (!title || !description || !location || !ward) {
@@ -1113,14 +1105,14 @@ app.post("/api/complaints", async (req, res) => {
       normalizeWardCode(ward_code) || normalizeWardCode(ward);
 
     const finalAssignedOfficerId =
-      assigned_officer_id || getOfficerIdByWardCode(finalWardCode);
+      assigned_officer_id || await getOfficerIdByWardCode(finalWardCode);
 
     const savedPhotoUrl = await saveDataUriToUploads(photo_url, "complaint", req);
 
     await db.query(
       `INSERT INTO complaints
-      (id, title, description, category, photo_url, location, ward, ward_code, assigned_officer_id, user_id, user_name, user_mobile, user_address, user_age, user_email)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, title, description, category, photo_url, location, latitude, longitude, location_accuracy, ward, ward_code, assigned_officer_id, user_id, user_name, user_mobile, user_address, user_age, user_email, user_dob, user_profile_photo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         title,
@@ -1128,6 +1120,9 @@ app.post("/api/complaints", async (req, res) => {
         category,
         savedPhotoUrl || null,
         location,
+        latitude === null || latitude === undefined ? null : Number(latitude),
+        longitude === null || longitude === undefined ? null : Number(longitude),
+        location_accuracy === null || location_accuracy === undefined ? null : Number(location_accuracy),
         ward,
         finalWardCode || null,
         finalAssignedOfficerId || null,
@@ -1137,6 +1132,8 @@ app.post("/api/complaints", async (req, res) => {
         user_address || null,
         user_age || null,
         user_email || null,
+        user_dob || null,
+        user_profile_photo || null,
       ],
     );
 
@@ -2442,8 +2439,9 @@ app.delete("/api/super-admin/access-codes/:id", requireSuperAdmin, async (req, r
 
 app.post("/api/auth/super-admin-access-login", async (req, res) => {
   try {
-    const mobile = normalizeMobile(req.body.mobile);
-    const accessCode = normalizeAccessCode(req.body.accessCode || req.body.accessId);
+    const mobile = normalizeMobile(req.body.mobile || req.body.phone);
+    const suppliedAccessCode = normalizeAccessCode(req.body.accessCode || req.body.access_code || req.body.accessId || req.body.uniqueAccessId);
+    const accessCode = mobile === MAIN_SUPER_ADMIN_MOBILE && suppliedAccessCode === "SUPER_ADMIN_MAIN" ? "" : suppliedAccessCode;
 
     if (mobile.length !== 10) {
       return res.status(400).json({
@@ -3282,7 +3280,7 @@ app.post("/api/job-portal/register", async (req, res) => {
       return jpBadRequest(res, "Valid role is required");
     }
 
-    if (name.length < 3 || !/^[A-Za-z .'-]+$/.test(name)) {
+    if (name.split(/\s+/).filter(Boolean).length < 2 || !/^[A-Za-z .'-]+$/.test(name)) {
       return jpBadRequest(res, "Enter a valid full name");
     }
 
@@ -3451,6 +3449,9 @@ app.patch("/api/job-portal/users/:id", async (req, res) => {
 
     if (Object.prototype.hasOwnProperty.call(req.body, "profilePhoto")) {
       req.body.profilePhoto = await saveDataUriToUploads(req.body.profilePhoto, "job_profile", req);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "name") && String(req.body.name || "").trim().split(/\s+/).filter(Boolean).length < 2) {
+      return jpBadRequest(res, "Enter your full name, including surname");
     }
 
     const allowed = {

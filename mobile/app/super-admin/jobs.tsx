@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState, useMemo, useCallback, memo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Platform, Modal, FlatList, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -96,7 +97,7 @@ const JobRow = memo(function JobRow({ job, onPress }: { job: Job; onPress: () =>
 function JobDetail({ job, onBack }: { job: Job; onBack: () => void }) {
   const cfg = CAT_COLORS[job.category] || CAT_COLORS.other;
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+    <AppScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
       <TouchableOpacity onPress={onBack} style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
         <Feather name="arrow-left" size={18} color="#16A34A" />
         <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#16A34A", marginLeft: 6 }}>Back to list</Text>
@@ -161,7 +162,7 @@ function JobDetail({ job, onBack }: { job: Job; onBack: () => void }) {
           <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#334155", lineHeight: 20 }}>{job.requirements}</Text>
         </View>
       ) : null}
-    </ScrollView>
+    </AppScrollView>
   );
 }
 
@@ -170,7 +171,7 @@ type CardType = "totalJobs" | "activeJobs" | "expiredJobs" | "employers" | "seek
 export default function JobsAdminScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { jobs, deleteJob, toggleJobActive } = useJobs();
+  const { jobs, deleteJob, toggleJobActive, refreshJobs } = useJobs();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "employers" | "analytics">("overview");
   const [modal, setModal] = useState<{ type: CardType; title: string; sub: string } | null>(null);
@@ -280,7 +281,7 @@ export default function JobsAdminScreen() {
         ))}
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <AppScrollView onAppRefresh={refreshJobs} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         {activeTab === "overview" && (
           <>
             <SectionHeader title="Job Portal Overview" sub="Tap any card to view full data" />
@@ -405,7 +406,7 @@ export default function JobsAdminScreen() {
             )}
           </>
         )}
-      </ScrollView>
+      </AppScrollView>
 
       <Modal visible={!!modal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeModal}>
         {modal && (
@@ -494,7 +495,7 @@ export default function JobsAdminScreen() {
                 }}
               />
             ) : modal.type === "placement" ? (
-              <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+              <AppScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
                 <View style={{ backgroundColor: "#16A34A", borderRadius: 16, padding: 20, marginBottom: 16, alignItems: "center" }}>
                   <Text style={{ fontSize: 48, fontFamily: "Inter_700Bold", color: "white" }}>{stats.placementRate}%</Text>
                   <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.85)" }}>Overall Placement Rate</Text>
@@ -532,7 +533,7 @@ export default function JobsAdminScreen() {
                     ))
                   )}
                 </View>
-              </ScrollView>
+              </AppScrollView>
             ) : (
               <FlatList
                 data={getModalJobs(modal.type)}

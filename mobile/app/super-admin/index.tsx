@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, memo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Platform, Dimensions, Modal, FlatList, TextInput } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Platform, Dimensions, Modal, FlatList, TextInput, Image, RefreshControl } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -125,6 +125,8 @@ function ComplaintDetail({ c, onBack, officers }: { c: Complaint; onBack: () => 
         <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#334155", lineHeight: 20 }}>{c.description}</Text>
       </View>
 
+      {c.photoUri ? <Image source={{ uri: c.photoUri }} style={{ width: "100%", height: 210, borderRadius: 16, marginBottom: 12, backgroundColor: "#E2E8F0" }} resizeMode="cover" /> : null}
+
       <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
         <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#0F172A", marginBottom: 10 }}>Complaint Issued User Detail</Text>
         {[
@@ -135,6 +137,8 @@ function ComplaintDetail({ c, onBack, officers }: { c: Complaint; onBack: () => 
           { label: "Address", value: c.userAddress || "—", icon: "home" },
           { label: "Age", value: c.userAge ? String(c.userAge) : "—", icon: "calendar" },
           { label: "Email", value: c.userEmail || "—", icon: "mail" },
+          { label: "DOB", value: c.userDob || "—", icon: "gift" },
+          { label: "GPS", value: c.latitude !== null && c.latitude !== undefined && c.longitude !== null && c.longitude !== undefined ? `${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}` : "—", icon: "crosshair" },
         ].map((item) => (
           <View key={item.label} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#F8FAFC" }}>
             <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
@@ -191,18 +195,20 @@ function ComplaintDetail({ c, onBack, officers }: { c: Complaint; onBack: () => 
   );
 }
 
-type CardType = "total" | "pending" | "inProgress" | "resolved" | "rejected" | "resolution" | "officers" | "wards";
+type CardType = "total" | "pending" | "inProgress" | "resolved" | "rejected" | "resolution" | "officers" | "wards" | "category";
 
 export default function SuperAdminDashboard() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { user, logout } = useAuth();
-  const { complaints } = useComplaints();
-  const { officers: allOfficers } = useOfficers("approved");
+  const { complaints, refreshComplaints } = useComplaints();
+  const { officers: allOfficers, refetch: refreshOfficers } = useOfficers("approved");
   const router = useRouter();
   const [modal, setModal] = useState<{ type: CardType; title: string; sub: string } | null>(null);
   const [selectedC, setSelectedC] = useState<Complaint | null>(null);
   const [complaintSearch, setComplaintSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const stats = useMemo(() => {
     const total = complaints.length;
@@ -272,9 +278,10 @@ export default function SuperAdminDashboard() {
       case "inProgress": return sorted.filter((c) => c.status === "in_progress" || c.status === "assigned");
       case "resolved": return sorted.filter((c) => c.status === "resolved");
       case "rejected": return sorted.filter((c) => c.status === "rejected");
+      case "category": return selectedCategory ? sorted.filter((c) => c.category === selectedCategory) : sorted;
       default: return sorted;
     }
-  }, [complaints, searchableComplaints, complaintSearch]);
+  }, [complaints, searchableComplaints, complaintSearch, selectedCategory]);
 
   const openModal = useCallback((type: CardType, title: string, sub: string) => {
     setSelectedC(null);
@@ -282,6 +289,12 @@ export default function SuperAdminDashboard() {
   }, []);
 
   const closeModal = useCallback(() => { setModal(null); setSelectedC(null); }, []);
+
+  const refreshDashboard = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshComplaints(), refreshOfficers()]);
+    setRefreshing(false);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: "#F0F4F8" }}>
@@ -317,7 +330,7 @@ export default function SuperAdminDashboard() {
         </View>
       </LinearGradient>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshDashboard} colors={["#16A34A"]} tintColor="#16A34A" />}>
         <SectionHeader title="Complaint Control Center" sub="Search by Complaint ID, citizen, Nagarsevak, ward or category" />
         <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 }}>
           <Feather name="search" size={16} color="#94A3B8" />
@@ -355,7 +368,7 @@ export default function SuperAdminDashboard() {
                 const cfg = categoryConfig[cat] || categoryConfig.other;
                 const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
                 return (
-                  <View key={cat} style={{ marginBottom: 12 }}>
+                  <TouchableOpacity key={cat} style={{ marginBottom: 12 }} activeOpacity={0.78} onPress={() => { setSelectedCategory(cat); openModal("category", `${cfg.label} Complaints`, `${count} complaints in this category`); }}>
                     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
                       <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: cfg.color + "18", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
                         <Feather name={cfg.icon as any} size={14} color={cfg.color} />
@@ -366,7 +379,7 @@ export default function SuperAdminDashboard() {
                     <View style={{ height: 6, backgroundColor: "#F1F5F9", borderRadius: 3, marginLeft: 38 }}>
                       <View style={{ height: 6, width: `${pct}%`, backgroundColor: cfg.color, borderRadius: 3 }} />
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}

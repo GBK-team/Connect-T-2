@@ -176,11 +176,13 @@ export default function ComplaintListScreen() {
 
   const [complaints, setComplaints] = useState<ComplaintItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     const loadComplaints = async () => {
       try {
-        setLoading(true);
+        if (!refreshing) setLoading(true);
 
         const isSuperAdmin =
           (user as any)?.isSuperAdmin === true ||
@@ -253,11 +255,12 @@ export default function ComplaintListScreen() {
         setComplaints([]);
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     };
 
     loadComplaints();
-  }, [user]);
+  }, [user, reload]);
 
   const filtered = complaints
     .filter((item) =>
@@ -318,6 +321,8 @@ export default function ComplaintListScreen() {
         </View>
       ) : (
         <FlatList
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); setReload((value) => value + 1); }}
           data={filtered}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <ComplaintRow complaint={item} />}

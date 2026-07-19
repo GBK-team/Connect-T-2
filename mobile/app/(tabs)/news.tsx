@@ -30,7 +30,8 @@ export default function NagarsevakNewsScreen() {
   const topPad = Platform.OS === "web" ? 54 : insets.top;
   const { user } = useAuth();
   const router = useRouter();
-  const { alerts, addAlert, removeAlert } = useAlerts();
+  const { alerts, addAlert, removeAlert, refreshAlerts } = useAlerts();
+  const [refreshing, setRefreshing] = useState(false);
   const [modal, setModal] = useState(false);
   const [mode, setMode] = useState<Mode>("create");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -94,6 +95,8 @@ export default function NagarsevakNewsScreen() {
       </LinearGradient>
 
       <FlatList
+        refreshing={refreshing}
+        onRefresh={async () => { setRefreshing(true); await refreshAlerts(); setRefreshing(false); }}
         data={myPosts}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 14, paddingBottom: Math.max(insets.bottom, 8) + 92 }}

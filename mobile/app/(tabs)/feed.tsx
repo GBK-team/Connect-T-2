@@ -200,8 +200,8 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H = Platform.OS === "web" ? 72 : 56 + Math.max(insets.bottom, 8);
-  const { posts, toggleLike } = useFeed();
-  const { alerts: allAlerts } = useAlerts();
+  const { posts, toggleLike, refreshFeed } = useFeed();
+  const { alerts: allAlerts, refreshAlerts } = useAlerts();
   const { user } = useAuth();
   const { handleScroll } = useTabBarVisibility();
 
@@ -225,6 +225,7 @@ export default function FeedScreen() {
     : [];
 
   const [activeTab] = useState<FeedTab>("community");
+  const [refreshing, setRefreshing] = useState(false);
 
   let newsItems: Array<{ kind: "news"; createdAt: string; item: AppAlert } | { kind: "post"; createdAt: string; item: any }> = [];
   if (selectedWard) {
@@ -324,6 +325,8 @@ export default function FeedScreen() {
 
       {activeTab === "community" && (
         <FlatList
+          refreshing={refreshing}
+          onRefresh={async () => { setRefreshing(true); await Promise.all([refreshFeed(), refreshAlerts()]); setRefreshing(false); }}
           data={newsItems}
           keyExtractor={(p) => p.item.id}
           renderItem={({ item }) => item.kind === "news" ? <NewsAlertCard item={item.item} /> : <PostCard post={item.item} userId={userId} />}
@@ -565,4 +568,3 @@ const modalStyles = StyleSheet.create({
   postBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 12, paddingHorizontal: 18 },
   postBtnText: { fontSize: 13, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" },
 });
-

@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -54,7 +55,7 @@ export default function EmergencyScreen() {
         <Text style={styles.headerSub}>{t("oneTopAccess")}</Text>
       </LinearGradient>
 
-      <ScrollView
+      <AppScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 8) + 80 }]}
         showsVerticalScrollIndicator={false}
@@ -132,7 +133,7 @@ export default function EmergencyScreen() {
             </TouchableOpacity>
           </LinearGradient>
         </View>
-      </ScrollView>
+      </AppScrollView>
     </View>
   );
 }

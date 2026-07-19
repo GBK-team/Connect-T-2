@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Platform, TextInput, Modal, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -6,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAlerts } from "@/context/AlertContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
+import { NAGARSEVAK_WARDS } from "@/data/wards";
 
 const ALERT_TYPES = [
   {
@@ -38,30 +40,7 @@ const ALERT_TYPES = [
   },
 ];
 
-const WARD_TARGETS = [
-  "All Wards",
-  "Ward 1A",
-  "Ward 1B",
-  "Ward 2A",
-  "Ward 2B",
-  "Ward 3A",
-  "Ward 3B",
-  "Ward 4A",
-  "Ward 4B",
-  "Ward 4C",
-  "Ward 5A",
-  "Ward 5B",
-  "Ward 6A",
-  "Ward 6B",
-  "Ward 7A",
-  "Ward 7B",
-  "Ward 8A",
-  "Ward 8B",
-  "Ward 9A",
-  "Ward 9B",
-  "Ward 10A",
-  "Ward 10B",
-];
+const WARD_TARGETS = ["All Wards", ...NAGARSEVAK_WARDS];
 
 export default function BroadcastScreen() {
   const insets = useSafeAreaInsets();
@@ -118,7 +97,7 @@ export default function BroadcastScreen() {
       setTargetWard("All Wards");
       setShowCompose(false);
     } catch (error: any) {
-      Alert.alert("Post failed", error?.message || "Could not save this broadcast to MySQL.");
+      Alert.alert("Post failed", error?.message || "Could not publish this broadcast. Please try again after some time.");
     } finally {
       setSending(false);
     }
@@ -264,7 +243,7 @@ export default function BroadcastScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView
+      <AppScrollView
         style={{ flex: 1, backgroundColor: "#F0F4F8" }}
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
@@ -523,7 +502,7 @@ export default function BroadcastScreen() {
             })
           )}
         </View>
-      </ScrollView>
+      </AppScrollView>
 
       <Modal
         visible={showCompose}
@@ -579,7 +558,7 @@ export default function BroadcastScreen() {
             >
               ALERT TYPE
             </Text>
-            <ScrollView
+            <AppScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={{ marginBottom: 16 }}
@@ -618,7 +597,7 @@ export default function BroadcastScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </ScrollView>
+            </AppScrollView>
 
             <Text
               style={{
@@ -834,7 +813,7 @@ export default function BroadcastScreen() {
             >
               Select Target Ward
             </Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <AppScrollView showsVerticalScrollIndicator={false}>
               {WARD_TARGETS.map((ward) => (
                 <TouchableOpacity
                   key={ward}
@@ -873,7 +852,7 @@ export default function BroadcastScreen() {
                   )}
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </AppScrollView>
           </View>
         </View>
       </Modal>

@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Modal, TextInput } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -192,8 +193,8 @@ export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { user, logout, updateUser } = useAuth();
-  const { complaints, updateStatus } = useComplaints();
-  const { alerts: allAlerts, removeAlert } = useAlerts();
+  const { complaints, updateStatus, refreshComplaints } = useComplaints();
+  const { alerts: allAlerts, removeAlert, refreshAlerts } = useAlerts();
   const alerts = allAlerts.filter((a) => a.postedById && user?.id ? a.postedById === user.id : a.postedBy === user?.name);
   const router = useRouter();
   const { t } = useLanguage();
@@ -271,7 +272,10 @@ export default function AdminScreen() {
   };
 
   const saveEditProfile = async () => {
-    if (!editName.trim()) return;
+    if (editName.trim().split(/\s+/).length < 2) {
+      setUtilityMessage("Enter your full name, including surname.");
+      return;
+    }
     await updateUser({ name: editName.trim(), ward: editWard || user?.ward });
     setShowEditProfile(false);
   };
@@ -347,7 +351,8 @@ export default function AdminScreen() {
 
       </LinearGradient>
 
-      <ScrollView
+      <AppScrollView
+        onAppRefresh={() => Promise.all([refreshComplaints(), refreshAlerts()]).then(() => undefined)}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 8) + 96 }}
         showsVerticalScrollIndicator={false}
@@ -391,7 +396,7 @@ export default function AdminScreen() {
               <Text style={styles.alertPanelEmptySub}>Tap "Post Alert" to broadcast to all citizens</Text>
             </View>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 2, paddingBottom: 4 }}>
+            <AppScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 2, paddingBottom: 4 }}>
               {alerts.map((a) => {
                 const isAlert = a.type === "alert";
                 const cardColor = isAlert ? "#DC2626" : "#EA580C";
@@ -420,7 +425,7 @@ export default function AdminScreen() {
                   </View>
                 );
               })}
-            </ScrollView>
+            </AppScrollView>
           )}
         </TouchableOpacity>
 
@@ -575,7 +580,7 @@ export default function AdminScreen() {
             ))
           )}
         </View>
-      </ScrollView>
+      </AppScrollView>
 
       {active && (
         <Modal transparent animationType="slide" visible onRequestClose={() => setActive(null)}>
@@ -648,7 +653,7 @@ export default function AdminScreen() {
             </View>
           </LinearGradient>
 
-          <ScrollView style={pStyles.scroll} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 8) + 30 }} showsVerticalScrollIndicator={false}>
+          <AppScrollView style={pStyles.scroll} contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom, 8) + 30 }} showsVerticalScrollIndicator={false}>
             <View style={pStyles.section}>
               <Text style={pStyles.sectionLabel}>PARTY & DESIGNATION</Text>
               <View style={pStyles.card}>
@@ -727,7 +732,7 @@ export default function AdminScreen() {
                 <Text style={pStyles.logoutText}>{t("logout")}</Text>
               </View>
             </TouchableOpacity>
-          </ScrollView>
+          </AppScrollView>
 
           <Modal visible={showEditProfile} transparent animationType="slide" onRequestClose={() => setShowEditProfile(false)}>
             <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>

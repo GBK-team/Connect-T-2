@@ -5,12 +5,22 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopShade from "@/components/TopShade";
+import { useAuth } from "@/context/AuthContext";
 
 const { width } = Dimensions.get("window");
 
 export default function PortalSelectScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  const openPortal = (portal: "civic" | "jobs") => {
+    if (!user) {
+      router.replace("/login" as any);
+      return;
+    }
+    router.replace(portal === "civic" ? ("/(tabs)" as any) : ("/jobs/(tabs)" as any));
+  };
 
   return (
     <View style={styles.root}>
@@ -33,7 +43,7 @@ export default function PortalSelectScreen() {
         </View>
 
         <View style={styles.portalRow}>
-          <TouchableOpacity style={styles.portalCard} onPress={() => router.push("/login" as any)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.portalCard} onPress={() => openPortal("civic")} activeOpacity={0.85}>
             <LinearGradient colors={["#C2410C", "#EA580C"]} style={styles.portalIconWrap}>
               <Feather name="home" size={26} color="white" />
             </LinearGradient>
@@ -42,7 +52,7 @@ export default function PortalSelectScreen() {
             <View style={styles.portalArrow}><Feather name="arrow-right" size={14} color="#EA580C" /></View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.portalCard} onPress={() => router.push("/jobs/login" as any)} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.portalCard} onPress={() => openPortal("jobs")} activeOpacity={0.85}>
             <LinearGradient colors={["#EA580C", "#F97316"]} style={styles.portalIconWrap}>
               <Feather name="briefcase" size={26} color="white" />
             </LinearGradient>

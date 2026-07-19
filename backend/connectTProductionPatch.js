@@ -21,9 +21,9 @@ function mobileSql(column) {
 
 function normalizeWardCode(value) {
   if (!value) return null;
-  const match = String(value).trim().toUpperCase().match(/(\d{1,2})\s*([ABC])/);
+  const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
   if (!match) return null;
-  return `${Number(match[1])}${match[2]}`;
+  return `${Number(match[1])}`;
 }
 
 function normalizeStatus(value) {
@@ -416,8 +416,10 @@ async function superAdminAccessLogin(req, res) {
   try {
     const db = getPool();
     await ensureSuperAdminAccessTable(db);
-    const mobile = normalizeMobile(req.body?.mobile);
-    const accessCode = String(req.body?.accessCode || req.body?.access_code || "").trim().toUpperCase();
+    const mobile = normalizeMobile(req.body?.mobile || req.body?.phone);
+    const mainSuperAdminMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
+    const suppliedAccessCode = String(req.body?.accessCode || req.body?.access_code || req.body?.accessId || req.body?.uniqueAccessId || "").trim().toUpperCase();
+    const accessCode = mobile === mainSuperAdminMobile && suppliedAccessCode === "SUPER_ADMIN_MAIN" ? "" : suppliedAccessCode;
 
     if (mobile.length !== 10) {
       return sendJson(res, 400, { success: false, message: "Valid 10 digit mobile number is required" });
@@ -429,8 +431,6 @@ async function superAdminAccessLogin(req, res) {
         message: "Verified OTP is required for Super Admin login",
       });
     }
-
-    const mainSuperAdminMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604");
 
     if (!accessCode && mobile === mainSuperAdminMobile) {
       const user = {

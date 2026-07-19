@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken } from "@/lib/api";
+import { apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken, isApiError } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type UserRole = "citizen" | "nagarsevak" | "super_admin";
@@ -108,8 +108,7 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
     if (res.token) await storeAuthToken(res.token);
     return res.user ? normalizeUser(res.user) : null;
   } catch (error: any) {
-    const message = String(error?.message || "");
-    if (message.includes("404") || message.toLowerCase().includes("account not found")) {
+    if (isApiError(error) && error.status === 404) {
       return null;
     }
 

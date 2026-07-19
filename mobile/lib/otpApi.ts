@@ -24,6 +24,15 @@ function otpApiUrl(path: string) {
   return `${base}${cleanPath}`;
 }
 
+function safeOtpError(status: number, value: unknown, fallback: string) {
+  const message = String(value || "").trim();
+  if (status >= 500) return "OTP service is temporarily unavailable. Please try again after some time.";
+  if (status === 429) return "Too many attempts. Please wait a moment and try again.";
+  if (status === 401 || status === 403) return fallback;
+  if (!message || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+)/i.test(message)) return fallback;
+  return message;
+}
+
 
 export async function sendRealOtp(mobile: string, purpose = "login") {
   try {
@@ -44,7 +53,7 @@ export async function sendRealOtp(mobile: string, purpose = "login") {
     if (!res.ok || !data.success) {
       return {
         success: false,
-        error: data.error || data.message || "Failed to send OTP",
+        error: safeOtpError(res.status, data.error || data.message, "OTP could not be sent. Please try again."),
       };
     }
 
@@ -95,7 +104,7 @@ export async function verifyRealOtp(mobile: string, otp: string, purpose = "logi
     if (!res.ok || !data.success) {
       return {
         success: false,
-        error: data.error || data.message || "Invalid OTP",
+        error: safeOtpError(res.status, data.error || data.message, "The OTP is invalid or expired. Please try again."),
       };
     }
 

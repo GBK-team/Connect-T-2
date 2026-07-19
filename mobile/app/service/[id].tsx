@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -139,7 +140,7 @@ export default function ServiceDetailScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 8) + 24 }]} showsVerticalScrollIndicator={false}>
+      <AppScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 8) + 24 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <View style={styles.addressRow}>
             <View style={[styles.addressIcon, { backgroundColor: category.bgColor }]}> 
@@ -268,7 +269,7 @@ export default function ServiceDetailScreen() {
         )}
 
         <View style={{ height: 20 }} />
-      </ScrollView>
+      </AppScrollView>
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import { AppScrollView } from "@/components/AppScrollView";
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Platform, Switch, Modal, TextInput } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -165,7 +166,7 @@ export default function SettingsScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView
+      <AppScrollView
         style={{ flex: 1, backgroundColor: "#F0F4F8" }}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
@@ -485,7 +486,7 @@ export default function SettingsScreen() {
             marginBottom: 10,
           }}
         >
-          BACKEND & API
+          APP INFORMATION
         </Text>
         <View
           style={{
@@ -501,22 +502,10 @@ export default function SettingsScreen() {
         >
           {[
             {
-              label: "Database",
-              value: "Hostinger MySQL",
-              icon: "database",
-              color: "#3B82F6",
-            },
-            {
               label: "App Version",
-              value: "v1.0 · Build 2025",
+              value: "v1.0",
               icon: "code",
               color: "#7C3AED",
-            },
-            {
-              label: "Server",
-              value: "Hostinger Node.js API",
-              icon: "server",
-              color: "#059669",
             },
             {
               label: "Auth Mode",
@@ -648,7 +637,7 @@ export default function SettingsScreen() {
             Sign Out
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+      </AppScrollView>
 
       <Modal
         visible={showLogout}
@@ -858,7 +847,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={async () => {
-                  if (!editName.trim()) return;
+                  if (editName.trim().split(/\s+/).length < 2) return;
                   await updateUser({ name: editName.trim() });
                   setShowEditProfile(false);
                 }}
@@ -866,9 +855,9 @@ export default function SettingsScreen() {
                   flex: 2,
                   borderRadius: 14,
                   overflow: "hidden",
-                  opacity: editName.trim() ? 1 : 0.5,
+                  opacity: editName.trim().split(/\s+/).length >= 2 ? 1 : 0.5,
                 }}
-                disabled={!editName.trim()}
+                disabled={editName.trim().split(/\s+/).length < 2}
                 activeOpacity={0.85}
               >
                 <LinearGradient
