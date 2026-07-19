@@ -10,6 +10,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobsAuth } from "@/context/JobsAuthContext";
 import { useJobs, categoryConfig, typeConfig, Job, JobApplication } from "@/context/JobsContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -196,7 +197,7 @@ export default function JobsHomeScreen() {
       await applyJob(job.id, jobsUser.id);
       setNotice({ visible: true, title: "Application Sent", message: `You applied for ${job.title} at ${job.company}.` });
     } catch (err: any) {
-      setNotice({ visible: true, title: "Apply Failed", message: err?.message || "Please try again." });
+      setNotice({ visible: true, title: "Apply Failed", message: getUserErrorMessage(err, "Please try again.") });
     }
   };
 

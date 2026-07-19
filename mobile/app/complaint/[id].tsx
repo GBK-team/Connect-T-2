@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ComplaintStatus } from "@/context/ComplaintContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
-import { apiGet, apiPatch } from "@/lib/api";
+import { apiGet, apiPatch, getUserErrorMessage } from "@/lib/api";
 
 type ComplaintDetail = {
   id: string;
@@ -229,7 +229,7 @@ export default function ComplaintDetailScreen() {
       showNotice("Updated", "Complaint status updated successfully.", "success");
     } catch (error) {
       console.error("Update complaint status failed", error);
-      showNotice("Update failed", error instanceof Error ? error.message : "Status update failed", "danger");
+      showNotice("Update failed", getUserErrorMessage(error, "Status update failed. Please try again."), "danger");
     } finally {
       setUpdatingStatus(null);
     }

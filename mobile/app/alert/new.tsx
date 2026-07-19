@@ -10,6 +10,7 @@ import * as ImagePicker from "expo-image-picker";
 
 import { AlertMedia, AlertPriority, AlertType, useAlerts } from "@/context/AlertContext";
 import { useAuth } from "@/context/AuthContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const MAX_VIDEO_MS = 120000;
 const ALERT_ACTIVE_MS = 12 * 60 * 60 * 1000;
@@ -86,7 +87,7 @@ export default function NewAlertScreen() {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showNotice("Broadcast posted", "Your alert/news update has been published successfully.", "success");
     } catch (error: any) {
-      showNotice("Post failed", error?.message || "Could not publish this update. Please try again after some time.", "danger");
+      showNotice("Post failed", getUserErrorMessage(error, "Could not publish this update. Please try again after some time."), "danger");
     }
   };
 

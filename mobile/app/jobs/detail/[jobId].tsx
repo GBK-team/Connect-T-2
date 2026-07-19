@@ -10,6 +10,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobs } from "@/context/JobsContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -57,7 +58,7 @@ export default function JobDetailScreen() {
     if (!jobsUser || jobsUser.role !== "seeker") return showNotice("Login required", "Please login as a job seeker to apply.");
     if (applied) return;
     try { await applyJob(job.id, jobsUser.id); showNotice("Applied", "Your application and profile details have been sent to the employer.", "success"); }
-    catch (err: any) { showNotice("Apply failed", err?.message || "Please try again.", "danger"); }
+    catch (err: any) { showNotice("Apply failed", getUserErrorMessage(err, "Please try again."), "danger"); }
   };
 
   return (

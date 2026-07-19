@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   android:
-    name: Build native ARM64 APK
+    name: Build internal-test ARM64 APK
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -86,7 +86,9 @@ jobs:
             exit 1
           fi
 
-      - name: Build release ARM64 APK
+      # Installable QA artifact only. Store releases use the EAS production AAB
+      # workflow and its protected Play signing credentials.
+      - name: Build internal-test ARM64 APK
         working-directory: mobile/android
         run: |
           ./gradlew clean :app:assembleRelease \
@@ -109,7 +111,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: connect-t-arm64-native-apk
+          name: connect-t-arm64-internal-test-apk
           path: mobile/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14

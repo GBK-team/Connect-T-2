@@ -6,6 +6,7 @@
  * their own ward; super admins can post for any ward.
  */
 
+const crypto = require("crypto");
 const mysql = require("mysql2/promise");
 const { verifyRequestToken } = require("./authSecurity");
 
@@ -33,7 +34,9 @@ function normalizeWardKey(value) {
 function normalizeWardCode(value) {
   if (!value) return null;
   const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
-  return match ? `${Number(match[1])}` : String(value).trim().toUpperCase();
+  if (!match) return null;
+  const wardNumber = Number(match[1]);
+  return wardNumber >= 1 && wardNumber <= 29 ? `${wardNumber}` : null;
 }
 
 function verifyToken(req) {
@@ -173,11 +176,11 @@ async function createUtilityStatus(req, res) {
     const finalWard = isSuperAdmin ? normalizeWard(req.body.ward || user.ward) : normalizeWard(user.ward);
     const finalWardCode = normalizeWardCode(isSuperAdmin ? (req.body.ward_code || req.body.wardCode || finalWard) : (user.ward_code || finalWard));
 
-    if (!finalWard) {
-      return res.status(400).json({ success: false, error: "ward is required" });
+    if (!finalWard || !finalWardCode) {
+      return res.status(400).json({ success: false, error: "Select a valid ward from Ward 1 to Ward 29" });
     }
 
-    const id = req.body.id || `utility_${utilityType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = req.body.id || `utility_${utilityType}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
     const title = String(req.body.title || (utilityType === "water" ? "Water Supply" : "Electricity")).trim();
     const status = String(req.body.status || "normal").trim().toLowerCase();
 

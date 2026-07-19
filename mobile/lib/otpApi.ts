@@ -29,7 +29,7 @@ function safeOtpError(status: number, value: unknown, fallback: string) {
   if (status >= 500) return "OTP service is temporarily unavailable. Please try again after some time.";
   if (status === 429) return "Too many attempts. Please wait a moment and try again.";
   if (status === 401 || status === 403) return fallback;
-  if (!message || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+)/i.test(message)) return fallback;
+  if (!message || message.length > 300 || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message)) return fallback;
   return message;
 }
 

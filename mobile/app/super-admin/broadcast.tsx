@@ -8,6 +8,7 @@ import { useAlerts } from "@/context/AlertContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
 import { NAGARSEVAK_WARDS } from "@/data/wards";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ALERT_TYPES = [
   {
@@ -97,7 +98,7 @@ export default function BroadcastScreen() {
       setTargetWard("All Wards");
       setShowCompose(false);
     } catch (error: any) {
-      Alert.alert("Post failed", error?.message || "Could not publish this broadcast. Please try again after some time.");
+      Alert.alert("Post failed", getUserErrorMessage(error, "Could not publish this broadcast. Please try again after some time."));
     } finally {
       setSending(false);
     }

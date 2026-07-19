@@ -28,9 +28,10 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
 
   mobile:
-    name: Mobile TypeScript
+    name: Mobile quality and Android export
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -44,7 +45,10 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - run: npm run doctor
       - run: npm run typecheck
+      - run: npm run export:android
+      - run: npm audit --omit=dev --audit-level=high
 
   web:
     name: Web typecheck and build
@@ -63,3 +67,4 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high

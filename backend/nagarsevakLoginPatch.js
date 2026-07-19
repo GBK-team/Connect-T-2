@@ -12,6 +12,7 @@ let installed = false;
 let columnsEnsured = false;
 
 const { bearerToken, signToken, verifyOtpProof, verifySignedToken } = require("./authSecurity");
+const { isIsoDate } = require("./validation");
 
 function normalizeMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -21,7 +22,8 @@ function normalizeWardCode(value) {
   if (!value) return null;
   const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
   if (!match) return null;
-  return `${Number(match[1])}`;
+  const wardNumber = Number(match[1]);
+  return wardNumber >= 1 && wardNumber <= 29 ? `${wardNumber}` : null;
 }
 
 function normalizeApproval(value) {
@@ -149,6 +151,7 @@ async function nagarsevakRegister(req, res) {
     const ward = String(req.body?.ward || "").trim();
     const wardCode = normalizeWardCode(req.body?.wardCode || req.body?.ward_code || ward);
     const dob = String(req.body?.dob || req.body?.dateOfBirth || req.body?.date_of_birth || "").trim() || null;
+    const officeContact = normalizeMobile(req.body?.contactNumber || req.body?.contact_number || mobile);
 
     if (name.split(/\s+/).filter(Boolean).length < 2 || mobile.length !== 10) {
       return sendJson(res, 400, {
@@ -166,6 +169,15 @@ async function nagarsevakRegister(req, res) {
 
     if (!ward) {
       return sendJson(res, 400, { success: false, message: "Ward is required" });
+    }
+    if (!wardCode) {
+      return sendJson(res, 400, { success: false, message: "Select a valid ward from Ward 1 to Ward 29" });
+    }
+    if (!dob || !isIsoDate(dob) || new Date(`${dob}T00:00:00.000Z`).getTime() > Date.now()) {
+      return sendJson(res, 400, { success: false, message: "Select a valid date of birth" });
+    }
+    if (officeContact.length !== 10) {
+      return sendJson(res, 400, { success: false, message: "Enter a valid 10 digit office contact number" });
     }
 
     const [existingMobile] = await db.query(
@@ -242,7 +254,7 @@ async function nagarsevakRegister(req, res) {
         req.body?.residenceAddress || req.body?.residence_address || req.body?.address || null,
         req.body?.officeTimings || req.body?.office_timings || null,
         req.body?.contactName || req.body?.contact_name || name,
-        normalizeMobile(req.body?.contactNumber || req.body?.contact_number || mobile),
+        officeContact,
         req.body?.profilePhoto || req.body?.profile_photo || null,
       ],
     );

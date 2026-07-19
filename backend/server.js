@@ -13,13 +13,31 @@ const {
 } = require("./authSecurity");
 const { sendOtp: createOtpSession, verifyOtp: verifyOtpSession } = require("./otpService");
 const { saveDataUri } = require("./mediaStorage");
+const { installHttpSafety, installSafeErrorHandler } = require("./httpSafety");
+const { isIsoDate, validateCoordinates } = require("./validation");
+const { redactApplicationContact, redactJobContact } = require("./jobPortalPrivacy");
 
 const app = express();
+installHttpSafety(app);
 
 const SERVER_VERSION = "backend-server-wardfix-v2";
 console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
 
-app.use(cors());
+const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
+  allowedHeaders: ["Content-Type", "Authorization", "X-OTP-Verification", "X-Request-Id", "X-Admin-Key"],
+  exposedHeaders: ["X-Request-Id"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+}));
 app.use(express.json({ limit: "15mb" }));
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
@@ -38,7 +56,7 @@ const db = mysql.createPool({
 });
 
 const createId = (prefix) =>
-  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 
 const MAIN_SUPER_ADMIN_MOBILE = String(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604").replace(/\D/g, "").slice(-10);
 
@@ -237,9 +255,23 @@ async function authorizeJobPortal(req, res, next) {
 
     if (method === "GET" && pathName === "/jobs") {
       if (auth?.scope === "job_portal" && auth.sub) {
-        replaceRequestQuery(req, { viewerId: auth.sub });
+        const [jobUsers] = await db.query(
+          "SELECT role FROM job_portal_users WHERE id = ? LIMIT 1",
+          [auth.sub],
+        );
+        if (jobUsers.length && jobUsers[0].role === auth.role) {
+          req.jobPortalViewer = { sub: String(auth.sub), role: auth.role };
+          if (auth.role === "seeker") replaceRequestQuery(req, { viewerId: auth.sub });
+          else replaceRequestQuery(req, {}, ["viewerId"]);
+        } else {
+          replaceRequestQuery(req, {}, ["viewerId"]);
+        }
       } else {
         replaceRequestQuery(req, {}, ["viewerId"]);
+        const civicUser = await currentCivicUser(auth);
+        if (civicUser && (civicUser.role === "super_admin" || !!civicUser.is_super_admin)) {
+          req.jobPortalViewer = { sub: String(civicUser.id), role: "super_admin" };
+        }
       }
       return next();
     }
@@ -270,6 +302,10 @@ async function authorizeJobPortal(req, res, next) {
     if (!isSuperAdmin && !isJobUser) {
       return res.status(401).json({ success: false, error: "Job Portal login required" });
     }
+    req.jobPortalViewer = {
+      sub: String(auth.sub),
+      role: isSuperAdmin ? "super_admin" : auth.role,
+    };
 
     if (pathName === "/admin/analytics") {
       return isSuperAdmin ? next() : res.status(403).json({ success: false, error: "Super admin required" });
@@ -504,8 +540,10 @@ function publicBaseUrl(req) {
   return String(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 }
 
-async function saveDataUriToUploads(value, prefix, req) {
-  return saveDataUri(value, prefix, req);
+const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+async function saveDataUriToUploads(value, prefix, req, options) {
+  return saveDataUri(value, prefix, req, options);
 }
 
 async function columnExists(tableName, columnName) {
@@ -527,6 +565,24 @@ async function ensureColumn(tableName, columnName, ddl) {
   }
 }
 
+async function indexExists(tableName, indexName) {
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS count
+     FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = ?
+       AND index_name = ?`,
+    [tableName, indexName],
+  );
+  return Number(rows?.[0]?.count || 0) > 0;
+}
+
+async function ensureIndex(tableName, indexName, ddl) {
+  if (!(await indexExists(tableName, indexName))) {
+    await db.query(`ALTER TABLE ${tableName} ADD ${ddl}`);
+  }
+}
+
 async function ensureProductionMySQLSchema() {
   try {
     await ensureColumn("users", "dob", "dob VARCHAR(40) NULL AFTER age");
@@ -543,20 +599,39 @@ async function ensureProductionMySQLSchema() {
     await ensureColumn("complaints", "longitude", "longitude DECIMAL(10,7) NULL AFTER latitude");
     await ensureColumn("complaints", "location_accuracy", "location_accuracy DECIMAL(10,2) NULL AFTER longitude");
 
+    await ensureIndex("users", "idx_users_mobile", "INDEX idx_users_mobile (mobile)");
+    await ensureIndex("users", "idx_users_ward_code", "INDEX idx_users_ward_code (ward_code)");
+    await ensureIndex("complaints", "idx_complaints_user_mobile", "INDEX idx_complaints_user_mobile (user_mobile)");
+    await ensureIndex("complaints", "idx_complaints_ward_code", "INDEX idx_complaints_ward_code (ward_code)");
+    await ensureIndex("complaints", "idx_complaints_status", "INDEX idx_complaints_status (status)");
+    await ensureIndex("complaints", "idx_complaints_category", "INDEX idx_complaints_category (category)");
+
     // Consolidate legacy A/B sub-wards into the single ward model used by the app.
-    const [legacyUsers] = await db.query("SELECT id, ward, ward_code FROM users WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
-    for (const row of legacyUsers) {
-      const wardCode = normalizeWardCode(row.ward_code || row.ward);
-      if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
-        await db.query("UPDATE users SET ward = ?, ward_code = ?, ward_number = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, wardCode, row.id]);
+    await db.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      migration_key VARCHAR(120) PRIMARY KEY,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    const wardMigrationKey = "normalize_single_wards_v2";
+    const [appliedWardMigration] = await db.query(
+      "SELECT migration_key FROM schema_migrations WHERE migration_key = ? LIMIT 1",
+      [wardMigrationKey],
+    );
+    if (!appliedWardMigration.length) {
+      const [legacyUsers] = await db.query("SELECT id, ward, ward_code FROM users WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
+      for (const row of legacyUsers) {
+        const wardCode = normalizeWardCode(row.ward_code || row.ward);
+        if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
+          await db.query("UPDATE users SET ward = ?, ward_code = ?, ward_number = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, wardCode, row.id]);
+        }
       }
-    }
-    const [legacyComplaints] = await db.query("SELECT id, ward, ward_code FROM complaints WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
-    for (const row of legacyComplaints) {
-      const wardCode = normalizeWardCode(row.ward_code || row.ward);
-      if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
-        await db.query("UPDATE complaints SET ward = ?, ward_code = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, row.id]);
+      const [legacyComplaints] = await db.query("SELECT id, ward, ward_code FROM complaints WHERE ward IS NOT NULL OR ward_code IS NOT NULL");
+      for (const row of legacyComplaints) {
+        const wardCode = normalizeWardCode(row.ward_code || row.ward);
+        if (wardCode && (String(row.ward_code || "") !== wardCode || String(row.ward || "") !== `Ward ${wardCode}`)) {
+          await db.query("UPDATE complaints SET ward = ?, ward_code = ? WHERE id = ?", [`Ward ${wardCode}`, wardCode, row.id]);
+        }
       }
+      await db.query("INSERT INTO schema_migrations (migration_key) VALUES (?)", [wardMigrationKey]);
     }
 
 
@@ -656,8 +731,8 @@ function normalizeWardCode(value) {
     .match(/(\d{1,2})/);
 
   if (!match) return null;
-
-  return `${Number(match[1])}`;
+  const wardNumber = Number(match[1]);
+  return wardNumber >= 1 && wardNumber <= 29 ? `${wardNumber}` : null;
 }
 
 async function getOfficerIdByWardCode(wardCode) {
@@ -779,7 +854,7 @@ app.post("/api/users", async (req, res) => {
     const authUser = await currentCivicUser(auth);
     const authIsSuperAdmin = !!authUser && (authUser.role === "super_admin" || !!authUser.is_super_admin);
     const [existingRows] = await db.query(
-      `SELECT id, mobile, role, ward, ward_changed, is_super_admin, approval_status
+      `SELECT id, mobile, role, ward, ward_changed, is_super_admin, approval_status, profile_photo
        FROM users WHERE id = ? OR (mobile = ? AND role = ?)
        ORDER BY (id = ?) DESC LIMIT 1`,
       [requestedId, mobile, requestedRole, requestedId],
@@ -818,8 +893,25 @@ app.post("/api/users", async (req, res) => {
     const ward_changed = authIsSuperAdmin
       ? !!requestedWardChanged
       : !!(existing?.ward_changed || wardIsChanging);
+    const effectiveWardCode = role === "super_admin" ? null : normalizeWardCode(ward_code || ward);
+    if (role !== "super_admin" && !effectiveWardCode) {
+      return res.status(400).json({ success: false, error: "Select a valid ward from Ward 1 to Ward 29" });
+    }
+    const effectiveWard = role === "super_admin" ? "All Wards" : `Ward ${effectiveWardCode}`;
 
-    const savedProfilePhoto = await saveDataUriToUploads(profile_photo, "profile", req);
+    if (dob && (!isIsoDate(dob) || new Date(`${dob}T00:00:00.000Z`).getTime() > Date.now())) {
+      return res.status(400).json({ success: false, error: "Enter a valid date of birth" });
+    }
+    const normalizedContactNumber = contact_number
+      ? String(contact_number).replace(/\D/g, "").slice(-10)
+      : null;
+    if (contact_number && normalizedContactNumber.length !== 10) {
+      return res.status(400).json({ success: false, error: "Enter a valid 10 digit office contact number" });
+    }
+
+    const savedProfilePhoto = profile_photo === undefined
+      ? existing?.profile_photo || null
+      : await saveDataUriToUploads(profile_photo, "profile", req, { allowedMimeTypes: IMAGE_MIME_TYPES });
 
     await db.query(
       `INSERT INTO users
@@ -853,9 +945,9 @@ app.post("/api/users", async (req, res) => {
         name,
         mobile,
         role,
-        ward || null,
-        ward_code || null,
-        ward_number || null,
+        effectiveWard,
+        effectiveWardCode,
+        effectiveWardCode,
         ward_changed ? 1 : 0,
         is_super_admin ? 1 : 0,
         age || null,
@@ -872,7 +964,7 @@ app.post("/api/users", async (req, res) => {
         residence_address || null,
         office_timings || null,
         contact_name || null,
-        contact_number || null,
+        normalizedContactNumber,
       ],
     );
 
@@ -1091,58 +1183,87 @@ app.post("/api/complaints", async (req, res) => {
       location_accuracy,
     } = req.body;
 
-    if (!title || !description || !location || !ward) {
+    const cleanTitle = String(title || "").trim();
+    const cleanDescription = String(description || "").trim();
+    const cleanLocation = String(location || "").trim();
+    const cleanWard = String(ward || "").trim();
+    const cleanCategory = String(category || "other").trim() || "other";
+
+    if (!cleanTitle || !cleanDescription || !cleanLocation || !cleanWard) {
       return res.status(400).json({
         success: false,
         error: "title, description, location and ward are required",
       });
     }
-    if (String(title).trim().length > 255 || String(description).trim().length > 10000) {
+    if (cleanTitle.length > 255 || cleanDescription.length > 10000 || cleanLocation.length > 2000) {
       return res.status(400).json({ success: false, error: "Complaint title or description is too long" });
+    }
+    if (cleanWard.length > 80 || cleanCategory.length > 80) {
+      return res.status(400).json({ success: false, error: "Complaint ward or category is invalid" });
+    }
+
+    const coordinates = validateCoordinates(latitude, longitude, location_accuracy);
+    if (!coordinates.valid) {
+      return res.status(400).json({ success: false, error: coordinates.message });
     }
 
     const finalWardCode =
-      normalizeWardCode(ward_code) || normalizeWardCode(ward);
+      normalizeWardCode(ward_code) || normalizeWardCode(cleanWard);
+    if (!finalWardCode) {
+      return res.status(400).json({ success: false, error: "Select a valid ward from Ward 1 to Ward 29" });
+    }
 
     const finalAssignedOfficerId =
       assigned_officer_id || await getOfficerIdByWardCode(finalWardCode);
 
-    const savedPhotoUrl = await saveDataUriToUploads(photo_url, "complaint", req);
+    const savedPhotoUrl = await saveDataUriToUploads(photo_url, "complaint", req, {
+      allowedMimeTypes: IMAGE_MIME_TYPES,
+    });
 
-    await db.query(
-      `INSERT INTO complaints
-      (id, title, description, category, photo_url, location, latitude, longitude, location_accuracy, ward, ward_code, assigned_officer_id, user_id, user_name, user_mobile, user_address, user_age, user_email, user_dob, user_profile_photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        title,
-        description,
-        category,
-        savedPhotoUrl || null,
-        location,
-        latitude === null || latitude === undefined ? null : Number(latitude),
-        longitude === null || longitude === undefined ? null : Number(longitude),
-        location_accuracy === null || location_accuracy === undefined ? null : Number(location_accuracy),
-        ward,
-        finalWardCode || null,
-        finalAssignedOfficerId || null,
-        user_id || null,
-        user_name || null,
-        user_mobile || null,
-        user_address || null,
-        user_age || null,
-        user_email || null,
-        user_dob || null,
-        user_profile_photo || null,
-      ],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        `INSERT INTO complaints
+        (id, title, description, category, photo_url, location, latitude, longitude, location_accuracy, ward, ward_code, assigned_officer_id, user_id, user_name, user_mobile, user_address, user_age, user_email, user_dob, user_profile_photo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          cleanTitle,
+          cleanDescription,
+          cleanCategory,
+          savedPhotoUrl || null,
+          cleanLocation,
+          coordinates.latitude,
+          coordinates.longitude,
+          coordinates.accuracy,
+          cleanWard,
+          finalWardCode || null,
+          finalAssignedOfficerId || null,
+          user_id || null,
+          user_name || null,
+          user_mobile || null,
+          user_address || null,
+          user_age || null,
+          user_email || null,
+          user_dob || null,
+          user_profile_photo || null,
+        ],
+      );
 
-    await db.query(
-      `INSERT INTO complaint_status_updates
-      (complaint_id, status, note, updated_by)
-      VALUES (?, 'submitted', 'Complaint submitted', ?)`,
-      [id, user_name || "citizen"],
-    );
+      await connection.query(
+        `INSERT INTO complaint_status_updates
+        (complaint_id, status, note, updated_by)
+        VALUES (?, 'submitted', 'Complaint submitted', ?)`,
+        [id, user_name || "citizen"],
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     res.status(201).json({
       success: true,
@@ -1158,29 +1279,47 @@ app.post("/api/complaints", async (req, res) => {
 app.patch("/api/complaints/:id/status", async (req, res) => {
   try {
     const { status, note, assigned_to, resolved_note, updated_by } = req.body;
+    const validStatuses = ["assigned", "in_progress", "resolved", "rejected"];
 
-    if (!status) {
+    if (!validStatuses.includes(String(status || ""))) {
       return res.status(400).json({
         success: false,
-        error: "status is required",
+        error: "A valid complaint status is required",
       });
     }
+    if (note && String(note).trim().length > 5000) {
+      return res.status(400).json({ success: false, error: "Complaint note is too long" });
+    }
 
-    await db.query(
-      `UPDATE complaints
-       SET status = ?,
-           assigned_to = COALESCE(?, assigned_to),
-           resolved_note = COALESCE(?, resolved_note)
-       WHERE id = ?`,
-      [status, assigned_to || null, resolved_note || null, req.params.id],
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.query(
+        `UPDATE complaints
+         SET status = ?,
+             assigned_to = COALESCE(?, assigned_to),
+             resolved_note = COALESCE(?, resolved_note)
+         WHERE id = ?`,
+        [status, assigned_to || null, resolved_note || null, req.params.id],
+      );
+      if (!result.affectedRows) {
+        await connection.rollback();
+        return res.status(404).json({ success: false, error: "Complaint not found" });
+      }
 
-    await db.query(
-      `INSERT INTO complaint_status_updates
-      (complaint_id, status, note, updated_by)
-      VALUES (?, ?, ?, ?)`,
-      [req.params.id, status, note || null, updated_by || "admin"],
-    );
+      await connection.query(
+        `INSERT INTO complaint_status_updates
+        (complaint_id, status, note, updated_by)
+        VALUES (?, ?, ?, ?)`,
+        [req.params.id, status, note || null, updated_by || "admin"],
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -1423,7 +1562,9 @@ app.get("/api/feed/posts", async (req, res) => {
 app.post("/api/feed/posts", async (req, res) => {
   try {
     const id = req.body.id || createId("post");
-    const savedImageUri = await saveDataUriToUploads(req.body.image_uri, "feed", req);
+    const savedImageUri = await saveDataUriToUploads(req.body.image_uri, "feed", req, {
+      allowedMimeTypes: IMAGE_MIME_TYPES,
+    });
 
     const {
       author_id,
@@ -2868,22 +3009,48 @@ app.get("/api/auth/officers", async (req, res) => {
 app.patch("/api/auth/officers", async (req, res) => {
   try {
     const id = String(req.body.id || "").trim();
-    const approvalStatus = normalizeApprovalStatus(req.body.approvalStatus);
+    const approvalStatus = String(req.body.approvalStatus || "").trim().toLowerCase();
 
-    if (!id) {
+    if (!id || !["pending", "approved", "rejected"].includes(approvalStatus)) {
       return res.status(400).json({
         success: false,
-        message: "Officer id is required",
+        message: "Officer id and a valid approval status are required",
       });
     }
 
-    await db.query(
+    if (approvalStatus === "approved") {
+      const [officerRows] = await db.query(
+        "SELECT ward, ward_code FROM users WHERE id = ? AND role = 'nagarsevak' LIMIT 1",
+        [id],
+      );
+      if (!officerRows.length) {
+        return res.status(404).json({ success: false, message: "Officer not found" });
+      }
+      const [conflicts] = await db.query(
+        `SELECT id FROM users
+         WHERE role = 'nagarsevak' AND approval_status = 'approved' AND id <> ?
+           AND (ward_code = ? OR (ward_code IS NULL AND ward = ?))
+         LIMIT 1`,
+        [id, officerRows[0].ward_code, officerRows[0].ward],
+      );
+      if (conflicts.length) {
+        return res.status(409).json({
+          success: false,
+          message: "Another approved Nagarsevak is already assigned to this ward",
+        });
+      }
+    }
+
+    const [result] = await db.query(
       `UPDATE users
        SET approval_status = ?
        WHERE id = ?
          AND role = 'nagarsevak'`,
       [approvalStatus, id],
     );
+    if (!result.affectedRows) {
+      return res.status(404).json({ success: false, message: "Officer not found" });
+    }
 
     return res.json({
       success: true,
@@ -2916,11 +3083,21 @@ app.delete("/api/auth/officers/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: "Super Admin accounts cannot be deleted here" });
     }
 
-    await db.query(
-      "UPDATE complaints SET assigned_officer_id = NULL WHERE assigned_officer_id = ?",
-      [id],
-    );
-    await db.query("DELETE FROM users WHERE id = ? AND role = 'nagarsevak'", [id]);
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        "UPDATE complaints SET assigned_officer_id = NULL WHERE assigned_officer_id = ?",
+        [id],
+      );
+      await connection.query("DELETE FROM users WHERE id = ? AND role = 'nagarsevak'", [id]);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
     return res.json({ success: true, id });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message || "Officer deletion failed" });
@@ -2929,10 +3106,6 @@ app.delete("/api/auth/officers/:id", async (req, res) => {
 
 
 /* OTP AUTH */
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
 function normalizeMobile(mobile) {
   return String(mobile || "").replace(/\D/g, "");
 }
@@ -2950,8 +3123,7 @@ function makeNagarsevakId() {
 }
 
 function generateSuperAdminAccessCode() {
-  const raw = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `SA-${raw}`;
+  return `SA-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 }
 
 function normalizeAccessCode(value) {
@@ -3008,7 +3180,7 @@ app.post("/api/auth/verify-otp", async (req, res) => {
 
 /* JOB PORTAL MYSQL API V1 */
 const jpCreateId = (prefix) =>
-  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 
 function jpPhone(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
@@ -3308,6 +3480,7 @@ app.post("/api/job-portal/register", async (req, res) => {
       req.body.profilePhoto || req.body.profile_photo,
       "job_profile",
       req,
+      { allowedMimeTypes: IMAGE_MIME_TYPES },
     );
 
     await db.query(
@@ -3448,10 +3621,27 @@ app.patch("/api/job-portal/users/:id", async (req, res) => {
     await ensureJobPortalSchema();
 
     if (Object.prototype.hasOwnProperty.call(req.body, "profilePhoto")) {
-      req.body.profilePhoto = await saveDataUriToUploads(req.body.profilePhoto, "job_profile", req);
+      req.body.profilePhoto = await saveDataUriToUploads(req.body.profilePhoto, "job_profile", req, {
+        allowedMimeTypes: IMAGE_MIME_TYPES,
+      });
     }
     if (Object.prototype.hasOwnProperty.call(req.body, "name") && String(req.body.name || "").trim().split(/\s+/).filter(Boolean).length < 2) {
       return jpBadRequest(res, "Enter your full name, including surname");
+    }
+    if (req.body.name && String(req.body.name).trim().length > 160) {
+      return jpBadRequest(res, "Full name is too long");
+    }
+    if (req.body.dob && (!isIsoDate(req.body.dob) || new Date(`${req.body.dob}T00:00:00.000Z`).getTime() > Date.now())) {
+      return jpBadRequest(res, "Enter a valid date of birth");
+    }
+    if (req.body.currentStatus && !["employed", "unemployed", "student", "fresher"].includes(req.body.currentStatus)) {
+      return jpBadRequest(res, "Select a valid current status");
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "latitude") || Object.prototype.hasOwnProperty.call(req.body, "longitude")) {
+      const coordinates = validateCoordinates(req.body.latitude, req.body.longitude, undefined);
+      if (!coordinates.valid) return jpBadRequest(res, coordinates.message);
+      req.body.latitude = coordinates.latitude;
+      req.body.longitude = coordinates.longitude;
     }
 
     const allowed = {
@@ -3499,7 +3689,10 @@ app.patch("/api/job-portal/users/:id", async (req, res) => {
     }
 
     params.push(req.params.id);
-    await db.query(`UPDATE job_portal_users SET ${sets.join(", ")} WHERE id = ?`, params);
+    const [result] = await db.query(`UPDATE job_portal_users SET ${sets.join(", ")} WHERE id = ?`, params);
+    if (!result.affectedRows) {
+      return res.status(404).json({ success: false, error: "Job Portal profile not found" });
+    }
 
     const [rows] = await db.query(
       "SELECT * FROM job_portal_users WHERE id = ? LIMIT 1",
@@ -3592,7 +3785,13 @@ app.get("/api/job-portal/jobs", async (req, res) => {
       [...distanceParams, ...viewerParams, ...params],
     );
 
-    res.json({ success: true, jobs: rows.map(jpJob) });
+    const viewer = req.jobPortalViewer;
+    res.json({
+      success: true,
+      jobs: rows.map((row) => {
+        return jpJob(redactJobContact(row, viewer));
+      }),
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -3842,7 +4041,8 @@ app.get("/api/job-portal/applications", async (req, res) => {
       params,
     );
 
-    res.json({ success: true, applications: rows });
+    const applications = rows.map((row) => redactApplicationContact(row, req.jobPortalViewer));
+    res.json({ success: true, applications });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -3893,9 +4093,16 @@ app.get("/api/job-portal/messages", async (req, res) => {
     const where = [];
     const params = [];
 
-    if (userId && peerId) {
+    if (!userId) {
+      return jpBadRequest(res, "userId is required");
+    }
+
+    if (peerId) {
       where.push("((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))");
       params.push(userId, peerId, peerId, userId);
+    } else {
+      where.push("(sender_id = ? OR receiver_id = ?)");
+      params.push(userId, userId);
     }
 
     if (jobId) {
@@ -3908,11 +4115,7 @@ app.get("/api/job-portal/messages", async (req, res) => {
       params.push(applicationId);
     }
 
-    if (!where.length) {
-      return jpBadRequest(res, "userId and peerId, jobId, or applicationId required");
-    }
-
-    if (userId && peerId) {
+    if (peerId) {
       const updateWhere = ["receiver_id = ?", "sender_id = ?", "read_at IS NULL"];
       const updateParams = [userId, peerId];
       if (jobId) {
@@ -3946,10 +4149,14 @@ app.post("/api/job-portal/messages", async (req, res) => {
       req.body.mediaUrl || req.body.media_url,
       "job_message",
       req,
+      { allowedMimeTypes: IMAGE_MIME_TYPES },
     );
 
     if (!senderId || !receiverId || (!message && !mediaUrl)) {
       return jpBadRequest(res, "senderId, receiverId and message or media are required");
+    }
+    if (message.length > 500 || !["text", "image"].includes(messageType)) {
+      return jpBadRequest(res, "Message must be 500 characters or fewer and use a supported type");
     }
 
     const id = jpCreateId("msg");
@@ -4160,6 +4367,7 @@ app.use((req, res) => {
   });
 });
 
+installSafeErrorHandler(app);
 
 
 const PORT = process.env.PORT || 3000;

@@ -2,14 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { apiUrl } from "@/constants/api";
 
-const GET_CACHE_TTL_MS = 20_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 const AUTH_TOKEN_KEY = "connect_t_auth_token_v1";
 const JOB_AUTH_TOKEN_KEY = "connect_t_job_auth_token_v1";
 const OTP_VERIFICATION_KEY = "connect_t_otp_verification_v1";
 
-const getCache = new Map<string, { at: number; data: unknown }>();
 const inFlightGets = new Map<string, Promise<unknown>>();
+let cacheGeneration = 0;
 
 export class ApiError extends Error {
   status?: number;
@@ -31,6 +30,11 @@ export function isApiError(error: unknown): error is ApiError {
 
 export function getUserErrorMessage(error: unknown, fallback = "Something went wrong. Please try again after some time.") {
   if (isApiError(error)) return error.message || fallback;
+  if (error instanceof Error) {
+    const message = String(error.message || "").trim();
+    const unsafe = !message || message.length > 300 || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message);
+    if (!unsafe) return message;
+  }
   return fallback;
 }
 
@@ -99,11 +103,16 @@ export async function getStoredJobsAuthToken() {
 }
 
 async function getAuthHeaders(path: string, body?: unknown) {
-  const [civicToken, jobsToken, otpVerification] = await Promise.all([
+  const [storedCivicToken, storedJobsToken, otpVerification] = await Promise.all([
     AsyncStorage.getItem(AUTH_TOKEN_KEY),
     AsyncStorage.getItem(JOB_AUTH_TOKEN_KEY),
     AsyncStorage.getItem(OTP_VERIFICATION_KEY),
   ]);
+  const civicToken = isUsableToken(storedCivicToken) ? storedCivicToken : null;
+  const jobsToken = isUsableToken(storedJobsToken) ? storedJobsToken : null;
+
+  if (storedCivicToken && !civicToken) void AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  if (storedJobsToken && !jobsToken) void AsyncStorage.removeItem(JOB_AUTH_TOKEN_KEY);
   const isUnifiedJobsSession = path === "/api/job-portal/session";
   const token = path.startsWith("/api/job-portal/") && !isUnifiedJobsSession
     ? isSuperAdminToken(civicToken)
@@ -134,26 +143,34 @@ async function readError(res: Response, fallback: string): Promise<{ message: st
   }
 }
 
-function cacheKey(path: string) {
-  return apiUrl(path);
+function clearGetCache() {
+  cacheGeneration += 1;
+  inFlightGets.clear();
 }
 
-function clearGetCache() {
-  getCache.clear();
+export function invalidateApiCache() {
+  clearGetCache();
+}
+
+function safeServerMessage(serverMessage: string) {
+  const message = String(serverMessage || "").trim();
+  if (!message || message.length > 300) return "";
+  const unsafe = /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message);
+  return unsafe ? "" : message;
 }
 
 function friendlyStatusMessage(status: number, serverMessage: string) {
+  const safeMessage = safeServerMessage(serverMessage);
   if (status === 401) return "Your session could not be verified. Please log in again.";
   if (status === 403) return "You do not have permission to perform this action.";
-  if (status === 404) return serverMessage || "The requested information was not found.";
-  if (status === 408 || status === 429) return serverMessage || "Please wait a moment and try again.";
+  if (status === 404) return safeMessage || "The requested information was not found.";
+  if (status === 408 || status === 429) return safeMessage || "Please wait a moment and try again.";
   if (status >= 500) return "Something went wrong. Please try again after some time.";
 
   // Validation and conflict messages are intentionally supplied by our API and
   // help the user correct a field. Never expose transport or infrastructure text.
   if ([400, 409, 422].includes(status)) {
-    const unsafe = /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+)/i.test(serverMessage);
-    return unsafe ? "We could not complete that request. Please check the details and try again." : serverMessage;
+    return safeMessage || "We could not complete that request. Please check the details and try again.";
   }
 
   return "We could not complete that request. Please try again.";
@@ -176,14 +193,10 @@ async function request<T = any>(
   body?: unknown,
 ): Promise<T> {
   const url = apiUrl(path);
-  const key = cacheKey(path);
+  const requestGeneration = cacheGeneration;
+  const key = `${requestGeneration}:${url}`;
 
   if (method === "GET") {
-    const cached = getCache.get(key);
-    if (cached && Date.now() - cached.at < GET_CACHE_TTL_MS) {
-      return cached.data as T;
-    }
-
     const pending = inFlightGets.get(key);
     if (pending) return pending as Promise<T>;
   } else {
@@ -216,18 +229,23 @@ async function request<T = any>(
     if (res.status === 204) return {} as T;
 
     const text = await res.text().catch(() => "");
-    const data = (text ? JSON.parse(text) : {}) as T;
-
-    if (method === "GET") {
-      getCache.set(key, { at: Date.now(), data });
+    if (!text) return {} as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new ApiError("The server returned an invalid response. Please try again.", {
+        status: res.status,
+        internalMessage: `${method} ${path}: invalid JSON response`,
+      });
     }
-
-    return data;
   })();
 
   if (method === "GET") {
     inFlightGets.set(key, promise);
-    promise.finally(() => inFlightGets.delete(key));
+    void promise.then(
+      () => inFlightGets.delete(key),
+      () => inFlightGets.delete(key),
+    );
   }
 
   return promise;

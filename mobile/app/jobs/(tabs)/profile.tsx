@@ -12,6 +12,7 @@ import TopShade from "@/components/TopShade";
 import DobDatePicker from "@/components/DobDatePicker";
 import { calcProfileCompletion, CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
 import { useJobs } from "@/context/JobsContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -202,7 +203,7 @@ export default function JobPortalProfileScreen() {
       }
       showNotice("Profile saved", "Your Job Portal profile has been updated.", "success");
     } catch (err: any) {
-      showNotice("Save failed", err?.message || "Please try again.", "danger");
+      showNotice("Save failed", getUserErrorMessage(err, "Please try again."), "danger");
     } finally {
       setSaving(false);
     }
