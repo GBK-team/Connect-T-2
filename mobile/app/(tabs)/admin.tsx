@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import { useLanguage } from "@/context/LanguageContext";
 import { wardMatchesNagarsevak } from "@/data/wards";
 import { displayUtilityStatus, postUtilityStatus, UtilityType } from "@/lib/utilityStatusApi";
+import { getUserErrorMessage } from "@/lib/api";
 
 const statusLabelKeys: Record<ComplaintStatus, string> = {
   submitted: "submitted",
@@ -313,7 +314,7 @@ export default function AdminScreen() {
       setUtilitySchedule("");
       setUtilityDescription("");
     } catch (error: any) {
-      setUtilityMessage(error?.message || "Unable to post utility update.");
+      setUtilityMessage(getUserErrorMessage(error, "Unable to post utility update."));
     } finally {
       setUtilitySaving(false);
     }

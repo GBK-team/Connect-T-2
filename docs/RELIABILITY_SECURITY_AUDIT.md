@@ -1,50 +1,67 @@
-# Connect-T Reliability and Security Audit
+# Connect-T Production Reliability and Security Re-audit
 
-## Scope
+**Re-audit date:** 19 July 2026
+**Scope:** Expo mobile app, Node/Express backend, MySQL schema paths, web build, Android configuration, CI, authentication, authorization, uploads, validation, and error handling.
 
-This pass reviewed the production Node backend, Expo mobile app, web build, Android workflows, and repository security surfaces. It intentionally preserved the existing screen structure, styles, colors, and navigation design.
-
-At the time of review, the repository had no open pull requests and no open issues to triage. The work therefore focused on defects found by source inspection and clean-build verification.
+This pass preserved the existing screen layouts, styles, colors, and navigation. It focused on workflow correctness, security, reliability, data integrity, and production build safety.
 
 ## High-impact defects fixed
 
-- Replaced the hardcoded/demo OTP path with cryptographically generated six-digit OTPs, server-issued sessions, expiry, attempt limits, resend throttling, and short-lived verification proofs.
-- Bound registration and login to the verified mobile number and purpose. Civic, Nagarsevak, Super Admin, seeker, and employer sessions now receive signed, scoped tokens.
-- Removed public role escalation and account-token issuance. User updates verify OTP/account ownership, prevent cross-account mobile takeover, preserve server-owned roles, and enforce the one-time ward-change rule.
-- Added server-side authorization for complaints, officers, Super Admin access IDs, alerts, feed posts, likes, blocks, chat, jobs, applications, job messages, profiles, resumes, and notifications.
-- Made Super Admin revocation effective immediately by downgrading the backing account and validating current database state on privileged requests.
-- Added the missing officer-delete and direct job-message-delete routes used by the mobile app.
-- Persisted selected photos/videos through validated server uploads instead of storing device-local URIs that other devices cannot open. Uploads are type checked and limited to 8 MB.
-- Fixed stale cross-session GET caching and invalid persisted sessions in the mobile API layer.
-- Removed committed hardcoded legacy admin credentials.
-- Removed repeated complaint IDs caused by a non-idempotent install patch. Dependency installation no longer rewrites tracked app source.
+- Replaced insecure/random identifier generation in security-sensitive flows with cryptographic randomness.
+- Kept OTP registration and login bound to the verified mobile number and purpose, with signed scoped sessions, expiry, attempt limits, and resend throttling.
+- Enforced current database roles for protected requests so stale or modified tokens cannot grant Super Admin, Nagarsevak, or Job Portal privileges.
+- Enforced Ward 1 through Ward 29 across civic, Nagarsevak, utility, and migration code and made the legacy A/B ward normalization a one-time migration.
+- Added database indexes for common user and complaint filters.
+- Made complaint creation plus its initial timeline event atomic, and made status update plus timeline creation atomic.
+- Added strict GPS pair/range/accuracy validation, ISO date validation, full-name validation, office-contact validation, complaint length limits, and Job Portal profile/message validation.
+- Prevented a second approved Nagarsevak from being assigned to the same ward and made officer removal atomically unassign complaints.
+- Restricted complaint, profile, feed, and chat uploads to supported image types; verified file signatures; enforced the 8 MB limit; and made the uploader honor `UPLOAD_DIR`.
+- Removed the stale 20-second mobile GET response cache so pull-to-refresh always requests current data while retaining duplicate in-flight request protection.
+- Recovered safely from corrupt persisted civic and Job Portal sessions and stopped sending expired tokens.
+- Replaced raw API, SQL, URL, stack, HTML, and 5xx messages with user-safe errors and traceable request IDs. Malformed and oversized JSON bodies now return safe JSON responses.
+- Added security headers, disabled framework disclosure and mobile token backup, disabled Android cleartext traffic, removed unnecessary Android permissions, and removed the stale deep-link scheme.
+- Added configurable browser CORS origins while preserving native-app requests.
+- Clarified that the native GitHub APK is an internal-test artifact. Play releases use the EAS production AAB workflow and protected signing credentials.
 
-## Build and workflow fixes
+## Automated regression coverage
 
-- Added pull-request quality checks for backend tests/syntax, mobile TypeScript, and web typecheck/build.
-- Changed Android GitHub Actions and Codemagic installs to deterministic `npm ci` runs.
-- Aligned Expo SDK 56 packages with the patch versions required by Expo Doctor.
-- Unified backend startup through `backend/hostinger-entry.js` for npm, PM2, Render, and managed-host entry points.
-- Aligned the production API URL configuration and added environment templates.
-- Updated the Hostinger schema with required profile, ward, and message columns.
+Backend tests now cover:
+
+- Signed-token validation and tamper rejection.
+- OTP mobile/purpose binding, expiry behavior, one-time use, and resend throttling.
+- Safe 5xx payloads and request-ID header sanitization.
+- GPS coordinate and ISO date validation.
+- Uploaded file signature validation.
+
+CI now gates pull requests with:
+
+- Backend syntax checks, tests, and production dependency audit.
+- Expo Doctor, mobile TypeScript, Android export, and production dependency audit.
+- Web TypeScript, production build, and production dependency audit.
 
 ## Verification completed
 
 - Backend syntax checks: passed.
-- Backend authentication/OTP tests: 4 passed.
+- Backend tests: 10 passed.
 - Backend production dependency audit: 0 vulnerabilities.
 - Mobile TypeScript: passed.
-- Expo Doctor: 21/21 checks passed from a clean install.
-- Android Expo production export: passed (1,958 modules, Hermes bundle generated).
+- Expo Doctor: 21/21 checks passed.
+- Mobile production dependency audit: 0 vulnerabilities.
+- Android Expo export: passed.
 - Web TypeScript and Vite production build: passed.
-- Backend startup/preloader smoke test: passed; all production patches loaded before the server.
-- pnpm frozen-lock validation: passed.
+- Web production dependency audit: 0 vulnerabilities.
+- Git diff whitespace validation: passed.
 
-## Deployment notes
+## Production configuration still required
 
-1. Configure every value documented in `.env.example`; use a stable random `JWT_SECRET` in production.
-2. Apply `backend/schema-hostinger.sql` to the target database before deploying the backend.
-3. Set `EXPO_PUBLIC_API_URL` to the public backend origin in GitHub/Codemagic.
-4. Run the Android native workflow to produce the signed APK/AAB against the real database and SMS provider.
+Code-level checks cannot replace validation against the real production services. Before public release:
 
-The mobile audit still reports a moderate advisory in Expo's transitive `xcode -> uuid` build-tool chain. npm offers only a forced downgrade to an incompatible Expo Splash Screen release, so that breaking change was not applied. It is not used by the Android app runtime and should be rechecked when Expo publishes a compatible dependency update.
+1. Set every value in `.env.example`, especially stable independent `JWT_SECRET` and `ADMIN_API_KEY` values, `PUBLIC_BASE_URL`, `ALLOWED_ORIGINS`, and the real database/SMS credentials.
+2. Mount `UPLOAD_DIR` on persistent storage or replace local uploads with managed object storage.
+3. Run the database schema/migration path against a production backup first.
+4. Verify OTP delivery and approved DLT/SMS templates with the real provider.
+5. Run citizen, Nagarsevak, Super Admin, seeker, and employer end-to-end tests against a staging database.
+6. Build the Play Store AAB through the EAS production profile and verify protected Android signing credentials.
+7. Configure a real push-notification provider if background device notifications are required. The current product provides in-app alert/notification records but does not include an APNs/FCM delivery service.
+
+No repository-only audit can honestly guarantee that external database, SMS, storage, signing, or store-console configuration is correct; those checks must be completed in staging and the relevant provider dashboards.

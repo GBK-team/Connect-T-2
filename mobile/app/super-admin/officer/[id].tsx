@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useComplaints } from "@/context/ComplaintContext";
 import { Officer, useOfficers } from "@/hooks/useOfficers";
-import { apiDelete } from "@/lib/api";
+import { apiDelete, getUserErrorMessage } from "@/lib/api";
 
 const GREEN = "#16A34A";
 const DARK_GREEN = "#166534";
@@ -108,7 +108,7 @@ export default function OfficerDetailScreen() {
       setMenuVisible(false);
       router.back();
     } catch (error: any) {
-      setActionMsg(error?.message || "Officer could not be deleted.");
+      setActionMsg(getUserErrorMessage(error, "Officer could not be deleted."));
     }
   };
 

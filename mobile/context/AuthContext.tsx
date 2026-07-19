@@ -169,10 +169,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     Promise.all([AsyncStorage.getItem(SESSION_KEY), getStoredAuthToken()])
-      .then(([stored, token]) => {
-        if (stored && token) setUser(normalizeUser(JSON.parse(stored)));
-        else if (stored) void AsyncStorage.removeItem(SESSION_KEY);
+      .then(async ([stored, token]) => {
+        if (!stored || !token) {
+          if (stored) await AsyncStorage.removeItem(SESSION_KEY);
+          return;
+        }
+        try {
+          setUser(normalizeUser(JSON.parse(stored)));
+        } catch {
+          await AsyncStorage.removeItem(SESSION_KEY);
+          await clearAuthToken();
+        }
       })
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 

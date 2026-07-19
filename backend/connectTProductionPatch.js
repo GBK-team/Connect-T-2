@@ -8,6 +8,8 @@
 let pool = null;
 let routesInstalled = false;
 
+const crypto = require("crypto");
+
 const { signToken, verifyOtpProof, verifyRequestToken } = require("./authSecurity");
 const { sendOtp: createOtp, verifyOtp: checkOtp } = require("./otpService");
 
@@ -23,7 +25,8 @@ function normalizeWardCode(value) {
   if (!value) return null;
   const match = String(value).trim().toUpperCase().match(/(\d{1,2})/);
   if (!match) return null;
-  return `${Number(match[1])}`;
+  const wardNumber = Number(match[1]);
+  return wardNumber >= 1 && wardNumber <= 29 ? `${wardNumber}` : null;
 }
 
 function normalizeStatus(value) {
@@ -35,11 +38,11 @@ function makeNagarsevakId() {
 }
 
 function makeAccessId() {
-  return `SA${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  return `SA${Date.now()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
 function makeAccessCode() {
-  return `SA-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  return `SA-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 }
 
 function sendJson(res, status, payload) {

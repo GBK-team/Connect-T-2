@@ -9,7 +9,9 @@
 let pool = null;
 let installed = false;
 
+const crypto = require("crypto");
 const { saveDataUri } = require("./mediaStorage");
+const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
@@ -22,7 +24,7 @@ function getPool() {
 }
 
 function makeId() {
-  return `MSG${Date.now()}${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  return `MSG${Date.now()}${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
 }
 
 async function safeAlter(db, sql) {
@@ -70,10 +72,18 @@ async function createMessage(req, res) {
     const message = String(req.body?.message || req.body?.text || "").trim();
     const messageType = String(req.body?.messageType || req.body?.message_type || "text").trim() || "text";
     const rawMediaUrl = String(req.body?.mediaUrl || req.body?.media_url || "").trim() || null;
-    const mediaUrl = await saveDataUri(rawMediaUrl, "job_message", req);
+    const mediaUrl = await saveDataUri(rawMediaUrl, "job_message", req, {
+      allowedMimeTypes: IMAGE_MIME_TYPES,
+    });
 
     if (!senderId || !receiverId || (!message && !mediaUrl)) {
       return sendJson(res, 400, { success: false, error: "senderId, receiverId and message/media are required" });
+    }
+    if (message.length > 500 || !["text", "image"].includes(messageType)) {
+      return sendJson(res, 400, {
+        success: false,
+        error: "Message must be 500 characters or fewer and use a supported type.",
+      });
     }
 
     const [people] = await db.query(
@@ -121,7 +131,7 @@ async function createMessage(req, res) {
     const [rows] = await db.query("SELECT * FROM job_portal_messages WHERE id = ? LIMIT 1", [id]);
     return sendJson(res, 201, { success: true, message: rows[0] });
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message });
+    return sendJson(res, 500, { success: false, error: "Message could not be sent right now." });
   }
 }
 
@@ -138,9 +148,16 @@ async function listMessages(req, res) {
     const where = [];
     const params = [];
 
-    if (userId && peerId) {
+    if (!userId) {
+      return sendJson(res, 400, { success: false, error: "userId is required" });
+    }
+
+    if (peerId) {
       where.push("((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))");
       params.push(userId, peerId, peerId, userId);
+    } else {
+      where.push("(sender_id = ? OR receiver_id = ?)");
+      params.push(userId, userId);
     }
 
     if (jobId) {
@@ -153,11 +170,7 @@ async function listMessages(req, res) {
       params.push(applicationId);
     }
 
-    if (!where.length) {
-      return sendJson(res, 400, { success: false, error: "userId and peerId, jobId, or applicationId required" });
-    }
-
-    if (userId && peerId) {
+    if (peerId) {
       const updateWhere = ["receiver_id = ?", "sender_id = ?", "read_at IS NULL"];
       const updateParams = [userId, peerId];
       if (jobId) {
@@ -174,7 +187,7 @@ async function listMessages(req, res) {
     const [rows] = await db.query(`SELECT * FROM job_portal_messages WHERE ${where.join(" AND ")} ORDER BY created_at ASC`, params);
     return sendJson(res, 200, { success: true, messages: rows });
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message });
+    return sendJson(res, 500, { success: false, error: "Messages could not be loaded right now." });
   }
 }
 

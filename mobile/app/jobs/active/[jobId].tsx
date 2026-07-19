@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobs, JobApplication } from "@/context/JobsContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -37,7 +38,7 @@ function ApplicantCard({ app, status, jobId, onShortlist, onReject, onHire, onNo
   const theme = statusTheme(status);
   const [busy, setBusy] = useState(false);
   const name = displayName(app);
-  const run = async (fn: () => Promise<void>, label: string) => { if (busy) return; setBusy(true); try { await fn(); onNotice("Updated", `${name} marked as ${label}.`); } catch (err: any) { onNotice("Action failed", err?.message || "Please try again."); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<void>, label: string) => { if (busy) return; setBusy(true); try { await fn(); onNotice("Updated", `${name} marked as ${label}.`); } catch (err: any) { onNotice("Action failed", getUserErrorMessage(err, "Please try again.")); } finally { setBusy(false); } };
   const openChat = () => router.push({ pathname: "/jobs/chat/[employerId]", params: { employerId: app.seekerId, jobId, peerName: name } } as any);
 
   return (

@@ -9,8 +9,12 @@
 let pool = null;
 let installed = false;
 
+const crypto = require("crypto");
+
 const { signToken, verifyOtpProof, verifyRequestToken } = require("./authSecurity");
 const { saveDataUri } = require("./mediaStorage");
+const { isIsoDate, validateCoordinates } = require("./validation");
+const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function sendJson(res, status, payload) {
   if (res.headersSent) return;
@@ -23,7 +27,7 @@ function cleanPhone(value) {
 
 function makeId(role) {
   const prefix = role === "employer" ? "emp" : "seek";
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 }
 
 function randomColor() {
@@ -121,12 +125,18 @@ async function register(req, res) {
     }
     if (name.split(/\s+/).filter(Boolean).length < 2) return sendJson(res, 400, { success: false, error: "Enter your full name, including surname" });
     if (role === "employer" && !String(req.body?.company || "").trim()) return sendJson(res, 400, { success: false, error: "Company name is required" });
+    if (req.body?.dob && (!isIsoDate(req.body.dob) || new Date(`${req.body.dob}T00:00:00.000Z`).getTime() > Date.now())) {
+      return sendJson(res, 400, { success: false, error: "Enter a valid date of birth" });
+    }
+    const coordinates = validateCoordinates(req.body?.latitude, req.body?.longitude, undefined);
+    if (!coordinates.valid) return sendJson(res, 400, { success: false, error: coordinates.message });
 
     const id = req.body?.id || makeId(role);
     const profilePhoto = await saveDataUri(
       req.body?.profilePhoto || req.body?.profile_photo,
       "job_profile",
       req,
+      { allowedMimeTypes: IMAGE_MIME_TYPES },
     );
     await db.query(
       `INSERT INTO job_portal_users
@@ -159,8 +169,8 @@ async function register(req, res) {
         req.body?.address || req.body?.location || null,
         req.body?.pincode || null,
         req.body?.whatsapp || phone,
-        req.body?.latitude || null,
-        req.body?.longitude || null,
+        coordinates.latitude,
+        coordinates.longitude,
       ],
     );
 
@@ -172,7 +182,7 @@ async function register(req, res) {
       token: signToken({ sub: user.id, mobile: user.phone, role: user.role, scope: "job_portal" }),
     });
   } catch (err) {
-    return sendJson(res, 500, { success: false, error: err.message });
+    return sendJson(res, 500, { success: false, error: "Job Portal registration could not be completed right now." });
   }
 }
 

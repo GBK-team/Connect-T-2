@@ -10,6 +10,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobs, categoryConfig, typeConfig, JobCategory, JobType } from "@/context/JobsContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -104,7 +105,7 @@ export default function EmployerPostJobScreen() {
       await addJob({ employerId: jobsUser!.id, employerName: jobsUser!.name, employerPhone: jobsUser!.phone, employerWhatsApp: jobsUser!.whatsapp || jobsUser!.phone, company: companyName, title: title.trim(), category, type, shift, jobMode, salary: salaryText, salaryMin: salaryMin ? Number(salaryMin) : undefined, salaryMax: salaryMax ? Number(salaryMax) : undefined, location: location.trim(), address: address.trim(), workStartTime: workStartTime.trim() || undefined, workEndTime: workEndTime.trim() || undefined, workingDays: workingDays.trim(), weeklyOff: weeklyOff.trim(), openings: Number(openings), description: description.trim(), requirements: requirements.trim(), experienceRequired: experienceRequired.trim() || undefined, educationRequired: educationRequired.trim() || undefined, skillsRequired: skillsRequired.trim() || undefined, benefits: benefits.trim() || undefined, joiningPreference, lastDateToApply: lastDateToApply.trim() || undefined, urgentHiring });
       resetForm();
       showNotice("Job posted", "Your job has been saved and is now visible to job seekers.", "success", () => { setNotice((prev) => ({ ...prev, visible: false })); router.replace("/jobs/(tabs)" as any); });
-    } catch (err: any) { showNotice("Unable to post job", err?.message || "Please try again.", "danger"); }
+    } catch (err: any) { showNotice("Unable to post job", getUserErrorMessage(err, "Please try again."), "danger"); }
     finally { setSubmitting(false); }
   };
 

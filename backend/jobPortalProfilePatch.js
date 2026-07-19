@@ -4,7 +4,9 @@
  * This preloader extends the existing backend/server.js Job Portal user routes without
  * rewriting the large server file. It adds the extra seeker/employer profile fields
  * used by the mobile app and enriches API user responses with those fields.
- */
+*/
+
+const crypto = require("crypto");
 
 const EXTRA_FIELDS = {
   currentCompany: { column: "current_company", definition: "VARCHAR(190) NULL" },
@@ -265,7 +267,7 @@ function wrapUserJson(res, options = {}) {
 
 function createClientId(role) {
   const prefix = role === "employer" ? "emp" : "seek";
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 }
 
 try {

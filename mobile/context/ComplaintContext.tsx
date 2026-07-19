@@ -116,24 +116,8 @@ function buildTimeline(
   ];
 }
 
-function getApiError(result: any, fallback: string) {
-  return result?.message || result?.error || fallback;
-}
-
 function normalizeMobileValue(value?: string | null) {
   return String(value || "").replace(/\D/g, "");
-}
-
-async function readJsonResponse(response: Response) {
-  const text = await response.text();
-
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { success: false, error: text };
-  }
 }
 
 function normalizeStatus(status: any): ComplaintStatus {

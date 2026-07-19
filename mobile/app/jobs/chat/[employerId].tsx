@@ -137,7 +137,7 @@ export default function JobChatScreen() {
       if (mode === "unsend") setMessages((prev) => prev.filter((m) => m.id !== id));
       else setMessages((prev) => prev.map((m) => m.id === id ? { ...m, text: "[deleted]", localImageUri: undefined, mediaUrl: null } : m));
     } catch (err: any) {
-      show("Action failed", err?.message || "Please try again.");
+      show("Action failed", getUserErrorMessage(err, "Please try again."));
     }
   };
 

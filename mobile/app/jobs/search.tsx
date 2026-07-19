@@ -10,6 +10,7 @@ import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobs, categoryConfig, typeConfig, JobCategory, JobType, Job } from "@/context/JobsContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
+import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -103,7 +104,7 @@ export default function SearchScreen() {
     if (!jobsUser || jobsUser.role !== "seeker") { setNotice({ visible: true, title: "Login required", message: "Please login as a job seeker to apply." }); return; }
     if (hasApplied(job.id, jobsUser.id)) return;
     try { await applyJob(job.id, jobsUser.id); setNotice({ visible: true, title: "Applied", message: "Your application has been sent to the employer." }); }
-    catch (err: any) { setNotice({ visible: true, title: "Apply failed", message: err?.message || "Please try again." }); }
+    catch (err: any) { setNotice({ visible: true, title: "Apply failed", message: getUserErrorMessage(err, "Please try again.") }); }
   };
 
   return (

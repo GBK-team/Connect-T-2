@@ -269,7 +269,14 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     AsyncStorage.getItem(SESSION_KEY)
       .then(async (saved) => {
-        const role = saved ? normalizeUser(JSON.parse(saved)).role : undefined;
+        let role: JobsUserRole | undefined;
+        if (saved) {
+          try {
+            role = normalizeUser(JSON.parse(saved)).role;
+          } catch {
+            await AsyncStorage.removeItem(SESSION_KEY);
+          }
+        }
         try {
           const next = await openUnifiedSession(role);
           if (!active) return;
@@ -279,6 +286,11 @@ export function JobsAuthProvider({ children }: { children: ReactNode }) {
           await clearJobsAuthToken();
           await persist(null);
         }
+      })
+      .catch(async () => {
+        if (!active) return;
+        await clearJobsAuthToken();
+        await persist(null);
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

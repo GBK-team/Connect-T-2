@@ -71,3 +71,7 @@ mobile/server/.env
 # Generated local logs/cache
 mobile/.expo/
 .local/
+
+# Commit safe configuration templates, never real environment files.
+!.env.example
+!**/.env.example
