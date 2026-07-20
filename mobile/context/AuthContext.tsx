@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken, isApiError } from "@/lib/api";
+import { apiGet, apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken, isApiError } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type UserRole = "citizen" | "nagarsevak" | "super_admin";
@@ -14,6 +14,7 @@ export interface User {
   ward?: string;
   wardCode?: string | null;
   wardNumber?: string;
+  officialDesignation?: string;
   isSuperAdmin?: boolean;
   age?: number;
   dob?: string;
@@ -45,6 +46,7 @@ interface AuthContextType {
   register: (userData: Omit<User, "id" | "avatarColor" | "createdAt">) => Promise<User>;
   loginWithPhone: (mobile: string) => Promise<User | null>;
   loginWithNagarsevakId: (mobile: string, nagarsevakId: string) => Promise<User | null>;
+  unifiedLogin: (mobile: string, profile?: { name: string; dob: string; address: string; wardCode: string }) => Promise<User>;
   updateUser: (updates: Partial<User>) => Promise<void>;
 }
 
@@ -78,6 +80,7 @@ function normalizeUser(raw: any): User {
     ward: raw.ward || undefined,
     wardCode: raw.wardCode ?? raw.ward_code ?? null,
     wardNumber: raw.wardNumber || raw.ward_number || undefined,
+    officialDesignation: raw.officialDesignation || raw.official_designation || undefined,
     wardChanged: raw.wardChanged ?? raw.ward_changed ?? false,
     isSuperAdmin,
     age: raw.age === undefined || raw.age === null ? undefined : Number(raw.age),
@@ -175,7 +178,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         try {
-          setUser(normalizeUser(JSON.parse(stored)));
+          const session = await apiGet<any>("/api/auth/session");
+          if (!session?.user) throw new Error("SESSION_INVALID");
+          const verifiedUser = normalizeUser(session.user);
+          setUser(verifiedUser);
+          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(verifiedUser));
         } catch {
           await AsyncStorage.removeItem(SESSION_KEY);
           await clearAuthToken();
@@ -264,6 +271,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const unifiedLogin = async (
+    mobile: string,
+    profile?: { name: string; dob: string; address: string; wardCode: string },
+  ): Promise<User> => {
+    const response = await apiPost<any>("/api/auth/unified-login", {
+      mobile: normalizeMobile(mobile),
+      profile: profile || undefined,
+    });
+    if (!response?.user || !response?.token) {
+      throw new Error("Login could not be completed. Please try again.");
+    }
+    await storeAuthToken(response.token);
+    const nextUser = normalizeUser(response.user);
+    await persistSession(nextUser);
+    return nextUser;
+  };
+
   const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
 
@@ -283,7 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, logoutTarget, clearLogoutTarget, login, logout, checkPhone, register, loginWithPhone, loginWithNagarsevakId, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, loading, logoutTarget, clearLogoutTarget, login, logout, checkPhone, register, loginWithPhone, loginWithNagarsevakId, unifiedLogin, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useComplaints } from "@/context/ComplaintContext";
-import { useOfficers } from "@/hooks/useOfficers";
+import { useNagarsevakAssignments } from "@/hooks/useNagarsevakAssignments";
 import { useAuth } from "@/context/AuthContext";
 
 const categoryConfig: Record<string, { icon: string; color: string; label: string }> = {
@@ -32,8 +32,16 @@ export default function ReportsScreen() {
   const rejected = complaints.filter((c) => c.status === "rejected").length;
   const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
 
-  const { officers: officerList, refetch: refreshOfficers } = useOfficers("approved");
-  const officers = officerList.filter((o) => o.wardCode);
+  const { assignments: officerAssignments, refetch: refreshOfficers } = useNagarsevakAssignments();
+  const officers = officerAssignments
+    .filter((item) => item.status === "active" && item.wardCode)
+    .map((item) => ({
+      id: item.userId || item.id,
+      name: item.name,
+      mobile: item.mobile,
+      ward: `Ward ${item.wardCode}`,
+      wardCode: item.wardCode,
+    }));
 
   const wardPerformance = officers.map((officer) => {
     const wardComplaints = complaints.filter((c) => c.ward === officer.ward);
@@ -286,7 +294,7 @@ export default function ReportsScreen() {
                 <Feather name="shield" size={16} color="#16A34A" />
                 <View style={{ marginLeft: 10 }}>
                   <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }}>Main Super Admin</Text>
-                  <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#16A34A" }}>+91 9370796604 · Head Administrator</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#16A34A" }}>+91 {user?.mobile || "Verified mobile"} · {user?.name || "Super Admin"}</Text>
                 </View>
               </View>
               {sessionLog.map((log, idx) => (
