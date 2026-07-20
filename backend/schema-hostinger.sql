@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   ward VARCHAR(80) NULL,
   ward_code VARCHAR(20) NULL,
   ward_number VARCHAR(20) NULL,
+  official_designation VARCHAR(100) NULL,
   ward_changed TINYINT(1) NOT NULL DEFAULT 0,
   is_super_admin TINYINT(1) NOT NULL DEFAULT 0,
   approval_status VARCHAR(30) NOT NULL DEFAULT 'approved',
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
   contact_number VARCHAR(30) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_login_at DATETIME NULL,
   UNIQUE KEY uniq_users_mobile_role (mobile, role),
   KEY idx_users_role (role),
   KEY idx_users_mobile (mobile),
@@ -105,6 +107,7 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   KEY idx_otp_codes_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Legacy rollback/history table. Active authentication no longer reads access codes.
 CREATE TABLE IF NOT EXISTS super_admin_access_codes (
   id VARCHAR(100) PRIMARY KEY,
   access_code VARCHAR(40) NOT NULL,
@@ -117,6 +120,52 @@ CREATE TABLE IF NOT EXISTS super_admin_access_codes (
   UNIQUE KEY uniq_super_admin_access_code (access_code),
   KEY idx_super_admin_mobile (mobile),
   KEY idx_super_admin_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS role_assignments (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(80) NULL,
+  normalized_phone CHAR(10) NOT NULL,
+  role VARCHAR(30) NOT NULL,
+  display_name VARCHAR(160) NOT NULL,
+  ward_or_designation VARCHAR(100) NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  source VARCHAR(80) NOT NULL DEFAULT 'admin',
+  source_serial INT NULL,
+  is_primary TINYINT(1) NOT NULL DEFAULT 0,
+  added_by VARCHAR(80) NULL,
+  last_login_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_role_phone (normalized_phone, role),
+  KEY idx_role_active_lookup (normalized_phone, status, role),
+  KEY idx_role_status (role, status),
+  KEY idx_role_user (user_id),
+  KEY idx_role_source_serial (source, source_serial)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS role_audit_logs (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  actor_user_id VARCHAR(80) NULL,
+  actor_phone CHAR(10) NULL,
+  actor_role VARCHAR(30) NULL,
+  action VARCHAR(80) NOT NULL,
+  target_assignment_id BIGINT NULL,
+  target_phone CHAR(10) NULL,
+  previous_status VARCHAR(20) NULL,
+  new_status VARCHAR(20) NULL,
+  details_json LONGTEXT NULL,
+  request_id VARCHAR(80) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_role_audit_created (created_at),
+  KEY idx_role_audit_actor (actor_user_id),
+  KEY idx_role_audit_target (target_assignment_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS role_migration_runs (
+  migration_key VARCHAR(120) PRIMARY KEY,
+  summary_json LONGTEXT NULL,
+  applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS alerts (

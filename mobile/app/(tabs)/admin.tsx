@@ -220,7 +220,7 @@ export default function AdminScreen() {
         <Feather name="lock" size={48} color="#CBD5E1" />
         <Text style={{ fontSize: 18, fontWeight: "700", color: "#475569", marginTop: 16, fontFamily: "Inter_700Bold" }}>{t("nagarsevakOnly")}</Text>
         <Text style={{ fontSize: 13, color: "#94A3B8", marginTop: 8, textAlign: "center", fontFamily: "Inter_400Regular" }}>{t("nagarsevakOnlyDesc")}</Text>
-        <TouchableOpacity onPress={() => router.replace("/nagarsevak/login" as any)} style={{ backgroundColor: "#C2410C", paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 24 }} activeOpacity={0.85}>
+        <TouchableOpacity onPress={() => router.replace("/login" as any)} style={{ backgroundColor: "#C2410C", paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 24 }} activeOpacity={0.85}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: "white", fontFamily: "Inter_700Bold" }}>{t("loginBtn")}</Text>
         </TouchableOpacity>
       </View>
@@ -262,8 +262,8 @@ export default function AdminScreen() {
 
   const handleLogout = async () => {
     setShowLogoutModal(false);
-    await logout("/nagarsevak/login");
-    router.replace("/nagarsevak/login" as any);
+    await logout("/login");
+    router.replace("/login" as any);
   };
 
   const openEditProfile = () => {

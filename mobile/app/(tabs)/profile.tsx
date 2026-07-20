@@ -81,8 +81,8 @@ export default function ProfileScreen() {
     const activeCount = complaints.filter((c) => c.status === "assigned" || c.status === "in_progress").length;
     const resolvedCount = complaints.filter((c) => c.status === "resolved").length;
     const logoutNagarsevak = async () => {
-      await logout("/nagarsevak/login");
-      router.replace("/nagarsevak/login" as any);
+      await logout("/login");
+      router.replace("/login" as any);
     };
 
   

@@ -16,11 +16,23 @@ const { saveDataUri } = require("./mediaStorage");
 const { installHttpSafety, installSafeErrorHandler } = require("./httpSafety");
 const { isIsoDate, validateCoordinates } = require("./validation");
 const { redactApplicationContact, redactJobContact } = require("./jobPortalPrivacy");
+const {
+  VALID_STATUSES,
+  ensureRoleAuthorizationSchema,
+  getMigrationSummary,
+  isPrivilegedRoleActive,
+  mapRoleAssignment,
+  privilegedRestrictionReason,
+  recordRoleAudit,
+  resolveActiveAssignment,
+  safeAssignmentUserId,
+  wardNumberFromDesignation,
+} = require("./roleAuthorization");
 
 const app = express();
 installHttpSafety(app);
 
-const SERVER_VERSION = "backend-server-wardfix-v2";
+const SERVER_VERSION = "backend-server-unified-role-v1";
 console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
 
 const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
@@ -57,8 +69,6 @@ const db = mysql.createPool({
 
 const createId = (prefix) =>
   `${prefix}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
-
-const MAIN_SUPER_ADMIN_MOBILE = String(process.env.MAIN_SUPER_ADMIN_MOBILE || "9370796604").replace(/\D/g, "").slice(-10);
 
 function b64url(input) {
   return Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -98,7 +108,8 @@ async function requireSuperAdmin(req, res, next) {
     req.civicUser = user;
     return next();
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message || "Admin authorization failed" });
+    console.error("[Connect-T] Admin authorization failed:", err);
+    return res.status(500).json({ success: false, message: "Admin access could not be verified right now." });
   }
 }
 
@@ -116,12 +127,24 @@ function replaceRequestQuery(req, updates, remove = []) {
 async function currentCivicUser(auth) {
   if (!auth?.sub) return null;
   const [rows] = await db.query(
-    `SELECT id, name, mobile, role, ward, ward_code, is_super_admin, approval_status,
-            address, age, dob, email, avatar_color, profile_photo
+    `SELECT id, name, mobile, role, ward, ward_code, ward_number, official_designation,
+            is_super_admin, approval_status, address, age, dob, email, avatar_color,
+            profile_photo, nagarsevak_id, last_login_at, created_at
      FROM users WHERE id = ? LIMIT 1`,
     [auth.sub],
   );
-  return rows[0] || null;
+  const user = rows[0] || null;
+  if (!user) return null;
+  if (["super_admin", "nagarsevak"].includes(user.role)) {
+    await ensureRoleAuthorizationSchema(db);
+    const roleIsActive = await isPrivilegedRoleActive(db, {
+      mobile: user.mobile,
+      role: user.role,
+      userId: user.id,
+    });
+    if (!roleIsActive) return null;
+  }
+  return user;
 }
 
 async function requireCommunityUser(req, res) {
@@ -720,6 +743,9 @@ async function ensureProductionMySQLSchema() {
 }
 
 ensureProductionMySQLSchema();
+ensureRoleAuthorizationSchema(db)
+  .then((summary) => console.log("[Connect-T] Unified role authorization ready", summary))
+  .catch((error) => console.error("[Connect-T] Role authorization migration warning:", error.message));
 
 
 function normalizeWardCode(value) {
@@ -799,6 +825,239 @@ app.get("/api/users", async (req, res) => {
     res.json({ success: true, users: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+function mapUnifiedUser(row) {
+  return {
+    id: String(row.id),
+    name: row.name,
+    mobile: normalizeMobile(row.mobile),
+    role: row.role,
+    ward: row.ward || null,
+    wardCode: row.ward_code || null,
+    wardNumber: row.ward_number || null,
+    officialDesignation: row.official_designation || null,
+    isSuperAdmin: row.role === "super_admin" || !!row.is_super_admin,
+    approvalStatus: row.approval_status || "approved",
+    dob: row.dob || null,
+    email: row.email || null,
+    address: row.address || null,
+    nagarsevakId: row.nagarsevak_id || null,
+    avatarColor: row.avatar_color || "#16A34A",
+    profilePhoto: row.profile_photo || null,
+    lastLoginAt: row.last_login_at || null,
+    createdAt: row.created_at || null,
+  };
+}
+
+function validateCitizenProfile(profile) {
+  const name = String(profile?.name || "").trim().replace(/\s+/g, " ");
+  const dob = String(profile?.dob || "").trim();
+  const address = String(profile?.address || "").trim();
+  const wardCode = normalizeWardCode(profile?.wardCode || profile?.ward_code || profile?.ward);
+  const missing = [];
+  if (name.split(/\s+/).filter(Boolean).length < 2) missing.push("fullName");
+  if (!dob || !isIsoDate(dob) || new Date(`${dob}T00:00:00.000Z`).getTime() > Date.now()) missing.push("dob");
+  if (!address) missing.push("address");
+  if (!wardCode) missing.push("ward");
+  return { complete: missing.length === 0, missing, name, dob, address, wardCode };
+}
+
+function normalizedMobileLookupSql(column) {
+  return `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), 10)`;
+}
+
+async function ensureCitizenAssignment(mobile, profile) {
+  const [existingRows] = await db.query(
+    `SELECT * FROM users WHERE ${normalizedMobileLookupSql("mobile")} = ? AND role = 'citizen' ORDER BY created_at ASC LIMIT 1`,
+    [mobile],
+  );
+  const existing = existingRows[0] || null;
+  const effectiveProfile = profile || existing || {};
+  const validated = validateCitizenProfile({
+    ...effectiveProfile,
+    wardCode: effectiveProfile.wardCode || effectiveProfile.ward_code || effectiveProfile.ward,
+  });
+  if (!validated.complete) return { profileRequired: true, missing: validated.missing };
+
+  const userId = existing?.id || safeAssignmentUserId("citizen", Date.now(), mobile);
+  if (existing) {
+    await db.query(
+      `UPDATE users SET name = ?, dob = ?, address = ?, ward = ?, ward_code = ?, ward_number = ?
+       WHERE id = ?`,
+      [validated.name, validated.dob, validated.address, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, userId],
+    );
+  } else {
+    await db.query(
+      `INSERT INTO users
+       (id, name, mobile, role, ward, ward_code, ward_number, is_super_admin,
+        approval_status, dob, address, avatar_color, notify_email, notify_whatsapp)
+       VALUES (?, ?, ?, 'citizen', ?, ?, ?, 0, 'approved', ?, ?, '#EA580C', 0, 0)`,
+      [userId, validated.name, mobile, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, validated.dob, validated.address],
+    );
+  }
+  await db.query(
+    `INSERT INTO role_assignments
+     (user_id, normalized_phone, role, display_name, ward_or_designation, status, source)
+     VALUES (?, ?, 'citizen', ?, ?, 'active', 'unified_login')
+     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), display_name = VALUES(display_name),
+       ward_or_designation = VALUES(ward_or_designation), status = 'active'`,
+    [userId, mobile, validated.name, `Ward ${validated.wardCode}`],
+  );
+  return { profileRequired: false };
+}
+
+async function getOrCreateAssignmentUser(assignment, profile) {
+  const [existingRows] = await db.query(
+    `SELECT * FROM users
+     WHERE (id = ? AND ? IS NOT NULL) OR (${normalizedMobileLookupSql("mobile")} = ? AND role = ?)
+     ORDER BY (id = ?) DESC, created_at ASC LIMIT 1`,
+    [assignment.userId, assignment.userId, assignment.mobile, assignment.role, assignment.userId || ""],
+  );
+  let user = existingRows[0] || null;
+  const assignmentWardCode = wardNumberFromDesignation(assignment.wardOrDesignation);
+  const assignmentWard = assignment.role === "super_admin"
+    ? "All Wards"
+    : assignmentWardCode
+      ? `Ward ${assignmentWardCode}`
+      : "Not assigned";
+
+  if (assignment.role === "citizen") {
+    const validated = validateCitizenProfile({
+      ...(user || {}),
+      ...(profile || {}),
+      wardCode: profile?.wardCode || profile?.ward_code || profile?.ward || user?.ward_code || user?.ward,
+    });
+    if (!validated.complete) return { profileRequired: true, missing: validated.missing };
+    if (user && profile) {
+      await db.query(
+        `UPDATE users SET name = ?, dob = ?, address = ?, ward = ?, ward_code = ?, ward_number = ? WHERE id = ?`,
+        [validated.name, validated.dob, validated.address, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, user.id],
+      );
+    }
+  }
+
+  if (user && assignment.role !== "citizen") {
+    await db.query(
+      `UPDATE users SET name = ?, role = ?, ward = ?, ward_code = ?, ward_number = ?,
+       official_designation = ?, is_super_admin = ?, approval_status = 'approved',
+       nagarsevak_id = COALESCE(nagarsevak_id, ?), contact_name = COALESCE(contact_name, ?),
+       contact_number = COALESCE(contact_number, ?)
+       WHERE id = ?`,
+      [
+        assignment.name,
+        assignment.role,
+        assignmentWard,
+        assignmentWardCode,
+        assignmentWardCode,
+        assignment.wardOrDesignation,
+        assignment.role === "super_admin" ? 1 : 0,
+        assignment.role === "nagarsevak" ? `OFFICIAL_NS_${String(assignment.sourceSerial || assignment.id).padStart(3, "0")}` : user.id,
+        assignment.name,
+        assignment.mobile,
+        user.id,
+      ],
+    );
+  }
+
+  if (!user) {
+    const userId = safeAssignmentUserId(assignment.role, assignment.id, assignment.mobile);
+    await db.query(
+      `INSERT INTO users
+       (id, name, mobile, role, ward, ward_code, ward_number, official_designation,
+        is_super_admin, approval_status, nagarsevak_id, avatar_color, contact_name, contact_number,
+        notify_email, notify_whatsapp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, 0, 0)`,
+      [
+        userId,
+        assignment.name,
+        assignment.mobile,
+        assignment.role,
+        assignmentWard,
+        assignmentWardCode,
+        assignmentWardCode,
+        assignment.wardOrDesignation,
+        assignment.role === "super_admin" ? 1 : 0,
+        assignment.role === "nagarsevak" ? `OFFICIAL_NS_${String(assignment.sourceSerial || assignment.id).padStart(3, "0")}` : userId,
+        assignment.role === "super_admin" ? "#16A34A" : "#059669",
+        assignment.name,
+        assignment.mobile,
+      ],
+    );
+    user = { id: userId };
+  }
+
+  await db.query(
+    "UPDATE role_assignments SET user_id = ?, last_login_at = NOW() WHERE id = ?",
+    [user.id, assignment.id],
+  );
+  await db.query("UPDATE users SET last_login_at = NOW() WHERE id = ?", [user.id]);
+  const [freshRows] = await db.query("SELECT * FROM users WHERE id = ? LIMIT 1", [user.id]);
+  return { profileRequired: false, user: freshRows[0] };
+}
+
+app.post("/api/auth/unified-login", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const mobile = normalizeMobile(req.body?.mobile || req.body?.phone);
+    if (mobile.length !== 10) {
+      return res.status(400).json({ success: false, code: "INVALID_MOBILE", message: "Enter a valid 10 digit mobile number." });
+    }
+    if (!verifyOtpProof(req, mobile, ["login"])) {
+      return res.status(401).json({ success: false, code: "OTP_REQUIRED", message: "Verify the OTP to continue." });
+    }
+
+    let assignment = await resolveActiveAssignment(db, mobile);
+    if (!assignment) {
+      const citizenResult = await ensureCitizenAssignment(mobile, req.body?.profile);
+      if (citizenResult.profileRequired) {
+        return res.status(422).json({
+          success: false,
+          code: "PROFILE_REQUIRED",
+          message: "Complete your citizen profile to continue.",
+          missingFields: citizenResult.missing,
+        });
+      }
+      assignment = await resolveActiveAssignment(db, mobile);
+    }
+
+    const result = await getOrCreateAssignmentUser(assignment, req.body?.profile);
+    if (result.profileRequired) {
+      return res.status(422).json({
+        success: false,
+        code: "PROFILE_REQUIRED",
+        message: "Complete your citizen profile to continue.",
+        missingFields: result.missing,
+      });
+    }
+
+    const user = mapUnifiedUser(result.user);
+    return res.json({
+      success: true,
+      user,
+      resolvedRole: user.role,
+      dashboard: user.role === "super_admin" ? "/super-admin" : user.role === "nagarsevak" ? "/(tabs)/admin" : "/portal-select",
+      token: issueUserToken(user),
+    });
+  } catch (error) {
+    console.error("[Connect-T] Unified login failed:", error);
+    return res.status(500).json({ success: false, message: "Login is temporarily unavailable. Please try again after some time." });
+  }
+});
+
+app.get("/api/auth/session", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const auth = verifyToken(req);
+    const user = await currentCivicUser(auth);
+    if (!auth || !user) {
+      return res.status(401).json({ success: false, code: "SESSION_INVALID", message: "Your session is no longer valid. Please log in again." });
+    }
+    return res.json({ success: true, user: mapUnifiedUser(user) });
+  } catch (error) {
+    console.error("[Connect-T] Session validation failed:", error);
+    return res.status(500).json({ success: false, message: "Your session could not be checked right now." });
   }
 });
 
@@ -1021,7 +1280,7 @@ app.post("/api/auth/user-by-mobile", async (req, res) => {
       params.push(role);
     }
 
-    sql += " ORDER BY FIELD(role, 'citizen', 'nagarsevak', 'super_admin'), created_at DESC LIMIT 1";
+    sql += " ORDER BY FIELD(role, 'super_admin', 'nagarsevak', 'citizen'), created_at DESC LIMIT 1";
 
     const [rows] = await db.query(sql, params);
 
@@ -2413,290 +2672,361 @@ app.delete("/api/emergency/:id", requireSuperAdmin, async (req, res) => {
   }
 });
 
-/* SUPER ADMIN UNIQUE ACCESS */
-app.get("/api/super-admin/access-codes", requireSuperAdmin, async (req, res) => {
+/* ROLE ACCESS MANAGEMENT */
+function recentAdminSession(req, maxAgeSeconds = 30 * 60) {
+  const issuedAt = Number(req.auth?.iat || 0);
+  return issuedAt > 0 && Math.floor(Date.now() / 1000) - issuedAt <= maxAgeSeconds;
+}
+
+async function loadRoleAssignment(id, role, client = db, lock = false) {
+  const [rows] = await client.query(
+    `SELECT * FROM role_assignments WHERE id = ? AND role = ? LIMIT 1${lock ? " FOR UPDATE" : ""}`,
+    [id, role],
+  );
+  return rows[0] || null;
+}
+
+async function withTransaction(work) {
+  const connection = await db.getConnection();
   try {
+    await connection.beginTransaction();
+    const result = await work(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function assertAdminCanRestrictTarget(req, res, target, client = db) {
+  if (!recentAdminSession(req)) {
+    res.status(401).json({ success: false, code: "RECENT_LOGIN_REQUIRED", message: "Please log in again before changing admin access." });
+    return false;
+  }
+  const actor = req.civicUser;
+  let activeCount = 2;
+  if (target.status === "active") {
+    const [activeRows] = await client.query(
+      "SELECT id FROM role_assignments WHERE role = 'super_admin' AND status = 'active' FOR UPDATE",
+    );
+    activeCount = activeRows.length;
+  }
+  const restriction = privilegedRestrictionReason({
+    target,
+    actorUserId: actor?.id,
+    actorMobile: actor?.mobile,
+    activeCount,
+  });
+  if (restriction) {
+    const messages = {
+      PRIMARY_ADMIN_PROTECTED: "The primary Super Admin cannot be deactivated or removed.",
+      SELF_LOCKOUT_BLOCKED: "You cannot remove your own Super Admin access.",
+      LAST_ADMIN_PROTECTED: "The last active Super Admin cannot be removed.",
+    };
+    res.status(409).json({ success: false, code: restriction, message: messages[restriction] });
+    return false;
+  }
+  return true;
+}
+
+app.get("/api/super-admin/access-management", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const search = String(req.query?.search || "").trim();
+    const status = String(req.query?.status || "").trim().toLowerCase();
+    const params = [];
+    let where = "WHERE ra.role = 'super_admin'";
+    if (search) {
+      where += " AND (ra.display_name LIKE ? OR ra.normalized_phone LIKE ?)";
+      params.push(`%${search}%`, `%${normalizeMobile(search) || search}%`);
+    }
+    if (VALID_STATUSES.has(status)) {
+      where += " AND ra.status = ?";
+      params.push(status);
+    }
     const [rows] = await db.query(
-      `SELECT
-         id,
-         access_code AS accessCode,
-         name,
-         mobile,
-         status,
-         created_by AS createdBy,
-         created_at AS createdAt,
-         updated_at AS updatedAt
-       FROM super_admin_access_codes
-       ORDER BY created_at DESC`,
+      `SELECT ra.*, added.name AS added_by_name
+       FROM role_assignments ra
+       LEFT JOIN users added ON added.id = ra.added_by
+       ${where}
+       ORDER BY ra.is_primary DESC, FIELD(ra.status, 'active', 'inactive', 'revoked'), ra.created_at ASC`,
+      params,
     );
-
-    return res.json({
-      success: true,
-      accessCodes: rows,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    return res.json({ success: true, assignments: rows.map(mapRoleAssignment) });
+  } catch (error) {
+    console.error("[Connect-T] Access management list failed:", error);
+    return res.status(500).json({ success: false, message: "Admin access records could not be loaded right now." });
   }
 });
 
-app.post("/api/super-admin/access-codes", requireSuperAdmin, async (req, res) => {
+app.post("/api/super-admin/access-management", async (req, res) => {
   try {
-    const name = String(req.body.name || "").trim();
-    const mobile = normalizeMobile(req.body.mobile);
-    const createdBy = String(req.auth?.sub || "main_super_admin").trim();
-
-    if (!name || mobile.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        message: "Name and valid 10 digit mobile number are required",
-      });
+    await ensureRoleAuthorizationSchema(db);
+    if (!recentAdminSession(req)) {
+      return res.status(401).json({ success: false, code: "RECENT_LOGIN_REQUIRED", message: "Please log in again before adding an administrator." });
     }
-
-    const id = req.body.id || createId("sa_access");
-    const accessCode = normalizeAccessCode(req.body.accessCode) || generateSuperAdminAccessCode();
-
-    await db.query(
-      `INSERT INTO super_admin_access_codes
-       (id, access_code, name, mobile, status, created_by)
-       VALUES (?, ?, ?, ?, 'active', ?)
-       ON DUPLICATE KEY UPDATE
-         access_code = VALUES(access_code),
-         name = VALUES(name),
-         status = 'active',
-         created_by = VALUES(created_by)`,
-      [id, accessCode, name, mobile, createdBy],
-    );
-
-    return res.status(201).json({
-      success: true,
-      access: {
-        id,
-        accessCode,
-        name,
-        mobile,
-        status: "active",
-      },
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
-
-app.patch("/api/super-admin/access-codes/:id", requireSuperAdmin, async (req, res) => {
-  try {
-    const id = String(req.params.id || "").trim();
-    const status = String(req.body.status || "").trim();
-
-    if (!id || !["active", "revoked"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid id and status are required",
-      });
+    const name = String(req.body?.name || req.body?.displayName || "").trim().replace(/\s+/g, " ");
+    const mobile = normalizeMobile(req.body?.mobile || req.body?.phone);
+    if (name.split(/\s+/).filter(Boolean).length < 2) {
+      return res.status(400).json({ success: false, code: "FULL_NAME_REQUIRED", message: "Enter the administrator's full name." });
     }
-
-    const [accessRows] = await db.query(
-      "SELECT mobile FROM super_admin_access_codes WHERE id = ? LIMIT 1",
-      [id],
-    );
-    if (!accessRows.length) {
-      return res.status(404).json({ success: false, message: "Access ID not found" });
-    }
-
-    await db.query(
-      `UPDATE super_admin_access_codes
-       SET status = ?
-       WHERE id = ?`,
-      [status, id],
-    );
-
-    if (status === "revoked") {
-      await db.query(
-        "UPDATE users SET role = 'citizen', is_super_admin = 0 WHERE mobile = ? AND mobile <> ?",
-        [accessRows[0].mobile, MAIN_SUPER_ADMIN_MOBILE],
-      );
-    }
-
-    return res.json({
-      success: true,
-      id,
-      status,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
-
-
-app.delete("/api/super-admin/access-codes/:id", requireSuperAdmin, async (req, res) => {
-  try {
-    const id = String(req.params.id || "").trim();
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid id is required",
-      });
-    }
-
-    const [rows] = await db.query(
-      "SELECT mobile FROM super_admin_access_codes WHERE id = ? LIMIT 1",
-      [id],
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({
-        success: false,
-        message: "Access ID not found",
-      });
-    }
-
-    await db.query("DELETE FROM super_admin_access_codes WHERE id = ?", [id]);
-    await db.query(
-      "UPDATE users SET role = 'citizen', is_super_admin = 0 WHERE mobile = ? AND mobile <> ?",
-      [rows[0].mobile, MAIN_SUPER_ADMIN_MOBILE],
-    );
-
-    return res.json({
-      success: true,
-      id,
-      message: "Access ID deleted",
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
-
-app.post("/api/auth/super-admin-access-login", async (req, res) => {
-  try {
-    const mobile = normalizeMobile(req.body.mobile || req.body.phone);
-    const suppliedAccessCode = normalizeAccessCode(req.body.accessCode || req.body.access_code || req.body.accessId || req.body.uniqueAccessId);
-    const accessCode = mobile === MAIN_SUPER_ADMIN_MOBILE && suppliedAccessCode === "SUPER_ADMIN_MAIN" ? "" : suppliedAccessCode;
-
     if (mobile.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid mobile number is required",
-      });
+      return res.status(400).json({ success: false, code: "INVALID_MOBILE", message: "Enter a valid 10 digit mobile number." });
     }
-
-    if (!verifyOtpProof(req, mobile, ["login"])) {
-      return res.status(401).json({
-        success: false,
-        message: "Verified login OTP is required",
-      });
+    const [existing] = await db.query(
+      "SELECT id, status FROM role_assignments WHERE normalized_phone = ? AND role = 'super_admin' LIMIT 1",
+      [mobile],
+    );
+    if (existing.length) {
+      return res.status(409).json({ success: false, code: "ADMIN_ALREADY_EXISTS", message: "This mobile number already has a Super Admin record." });
     }
-
-    if (mobile === MAIN_SUPER_ADMIN_MOBILE) {
-      const user = {
-        id: "SUPER_ADMIN_MAIN",
-        name: "Super Admin",
-        mobile,
-        role: "super_admin",
-        ward: "All Wards",
-        isSuperAdmin: true,
-        approvalStatus: "approved",
-        nagarsevakId: "SUPER_ADMIN_MAIN",
-      };
-
-      await db.query(
-        `INSERT INTO users
-         (id, name, mobile, role, ward, is_super_admin, approval_status, nagarsevak_id)
-         VALUES (?, ?, ?, 'super_admin', 'All Wards', 1, 'approved', ?)
-         ON DUPLICATE KEY UPDATE
-           name = VALUES(name),
-           role = 'super_admin',
-           ward = 'All Wards',
-           is_super_admin = 1,
-           approval_status = 'approved',
-           nagarsevak_id = VALUES(nagarsevak_id)`,
-        [user.id, user.name, user.mobile, user.nagarsevakId],
+    const created = await withTransaction(async (connection) => {
+      const [result] = await connection.query(
+        `INSERT INTO role_assignments
+         (normalized_phone, role, display_name, status, source, added_by)
+         VALUES (?, 'super_admin', ?, 'active', 'admin', ?)`,
+        [mobile, name, req.civicUser.id],
       );
-
-      return res.json({
-        success: true,
-        user,
-        token: issueUserToken(user),
+      await recordRoleAudit(connection, {
+        actorUserId: req.civicUser.id,
+        actorPhone: req.civicUser.mobile,
+        actorRole: "super_admin",
+        action: "SUPER_ADMIN_ADDED",
+        targetAssignmentId: result.insertId,
+        targetPhone: mobile,
+        newStatus: "active",
+        details: { displayName: name },
+        requestId: req.requestId,
       });
-    }
-
-    if (!accessCode) {
-      return res.status(400).json({
-        success: false,
-        message: "Unique access ID is required",
-      });
-    }
-
-    const [rows] = await db.query(
-      `SELECT *
-       FROM super_admin_access_codes
-       WHERE mobile = ?
-         AND access_code = ?
-         AND status = 'active'
-       LIMIT 1`,
-      [mobile, accessCode],
-    );
-
-    if (!rows.length) {
-      return res.status(403).json({
-        success: false,
-        message: "Invalid or revoked super admin access ID",
-      });
-    }
-
-    const access = rows[0];
-    const userId = `SAUSER_${mobile}`;
-
-    await db.query(
-      `INSERT INTO users
-       (id, name, mobile, role, is_super_admin, approval_status)
-       VALUES (?, ?, ?, 'super_admin', 1, 'approved')
-       ON DUPLICATE KEY UPDATE
-         name = VALUES(name),
-         role = 'super_admin',
-         is_super_admin = 1,
-         approval_status = 'approved'`,
-      [userId, access.name, mobile],
-    );
-
-    return res.json({
-      success: true,
-      user: {
-        id: userId,
-        name: access.name,
-        mobile,
-        role: "super_admin",
-        isSuperAdmin: true,
-        approvalStatus: "approved",
-        accessCode,
-      },
-      token: issueUserToken({
-        id: userId,
-        name: access.name,
-        mobile,
-        role: "super_admin",
-        isSuperAdmin: true,
-      }),
+      return loadRoleAssignment(result.insertId, "super_admin", connection);
     });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    return res.status(201).json({ success: true, assignment: mapRoleAssignment(created) });
+  } catch (error) {
+    console.error("[Connect-T] Add Super Admin failed:", error);
+    return res.status(500).json({ success: false, message: "The Super Admin could not be added right now." });
   }
 });
 
+app.patch("/api/super-admin/access-management/:id", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const nextStatus = String(req.body?.status || "").toLowerCase();
+    if (!["active", "inactive"].includes(nextStatus)) {
+      return res.status(400).json({ success: false, message: "Status must be active or inactive." });
+    }
+    if (nextStatus === "active" && !recentAdminSession(req)) {
+      return res.status(401).json({ success: false, code: "RECENT_LOGIN_REQUIRED", message: "Please log in again before restoring administrator access." });
+    }
+    const result = await withTransaction(async (connection) => {
+      const target = await loadRoleAssignment(req.params.id, "super_admin", connection, true);
+      if (!target) return { notFound: true };
+      if (nextStatus !== "active" && !(await assertAdminCanRestrictTarget(req, res, target, connection))) return { blocked: true };
+      await connection.query("UPDATE role_assignments SET status = ? WHERE id = ?", [nextStatus, target.id]);
+      if (target.user_id) {
+        await connection.query(
+          "UPDATE users SET is_super_admin = ?, approval_status = ? WHERE id = ?",
+          [nextStatus === "active" ? 1 : 0, nextStatus === "active" ? "approved" : "rejected", target.user_id],
+        );
+      }
+      await recordRoleAudit(connection, {
+        actorUserId: req.civicUser.id,
+        actorPhone: req.civicUser.mobile,
+        actorRole: "super_admin",
+        action: nextStatus === "active" ? "SUPER_ADMIN_ACTIVATED" : "SUPER_ADMIN_DEACTIVATED",
+        targetAssignmentId: target.id,
+        targetPhone: target.normalized_phone,
+        previousStatus: target.status,
+        newStatus: nextStatus,
+        requestId: req.requestId,
+      });
+      return { updated: true };
+    });
+    if (result.notFound) return res.status(404).json({ success: false, message: "Super Admin record not found." });
+    if (result.blocked) return;
+    return res.json({ success: true, status: nextStatus });
+  } catch (error) {
+    console.error("[Connect-T] Update Super Admin failed:", error);
+    return res.status(500).json({ success: false, message: "Admin access could not be updated right now." });
+  }
+});
+
+app.delete("/api/super-admin/access-management/:id", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const result = await withTransaction(async (connection) => {
+      const target = await loadRoleAssignment(req.params.id, "super_admin", connection, true);
+      if (!target) return { notFound: true };
+      if (!(await assertAdminCanRestrictTarget(req, res, target, connection))) return { blocked: true };
+      await connection.query("UPDATE role_assignments SET status = 'revoked' WHERE id = ?", [target.id]);
+      if (target.user_id) {
+        await connection.query("UPDATE users SET is_super_admin = 0, approval_status = 'rejected' WHERE id = ?", [target.user_id]);
+      }
+      await recordRoleAudit(connection, {
+        actorUserId: req.civicUser.id,
+        actorPhone: req.civicUser.mobile,
+        actorRole: "super_admin",
+        action: "SUPER_ADMIN_REMOVED",
+        targetAssignmentId: target.id,
+        targetPhone: target.normalized_phone,
+        previousStatus: target.status,
+        newStatus: "revoked",
+        requestId: req.requestId,
+      });
+      return { updated: true };
+    });
+    if (result.notFound) return res.status(404).json({ success: false, message: "Super Admin record not found." });
+    if (result.blocked) return;
+    return res.json({ success: true, status: "revoked" });
+  } catch (error) {
+    console.error("[Connect-T] Remove Super Admin failed:", error);
+    return res.status(500).json({ success: false, message: "Admin access could not be removed right now." });
+  }
+});
+
+app.get("/api/super-admin/role-audit-logs", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const limit = Math.min(Math.max(Number(req.query?.limit || 100), 1), 250);
+    const [rows] = await db.query(
+      `SELECT ral.*, actor.name AS actor_name, target.display_name AS target_name
+       FROM role_audit_logs ral
+       LEFT JOIN users actor ON actor.id = ral.actor_user_id
+       LEFT JOIN role_assignments target ON target.id = ral.target_assignment_id
+       ORDER BY ral.created_at DESC LIMIT ?`,
+      [limit],
+    );
+    return res.json({ success: true, logs: rows });
+  } catch (error) {
+    console.error("[Connect-T] Role audit log failed:", error);
+    return res.status(500).json({ success: false, message: "Role audit logs could not be loaded right now." });
+  }
+});
+
+app.get("/api/super-admin/role-import-summary", async (req, res) => {
+  try {
+    return res.json({ success: true, summary: await getMigrationSummary(db) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Import summary could not be loaded right now." });
+  }
+});
+
+app.get("/api/super-admin/nagarsevaks", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const search = String(req.query?.search || "").trim();
+    const params = [];
+    let filter = "WHERE ra.role = 'nagarsevak'";
+    if (search) {
+      filter += " AND (ra.display_name LIKE ? OR ra.normalized_phone LIKE ? OR ra.ward_or_designation LIKE ?)";
+      params.push(`%${search}%`, `%${normalizeMobile(search) || search}%`, `%${search}%`);
+    }
+    const [rows] = await db.query(
+      `SELECT ra.*, added.name AS added_by_name FROM role_assignments ra
+       LEFT JOIN users added ON added.id = ra.added_by
+       ${filter}
+       ORDER BY COALESCE(ra.source_serial, 9999), ra.created_at ASC`,
+      params,
+    );
+    return res.json({ success: true, assignments: rows.map(mapRoleAssignment) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Nagarsevak records could not be loaded right now." });
+  }
+});
+
+app.post("/api/super-admin/nagarsevaks", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const name = String(req.body?.name || "").trim().replace(/\s+/g, " ");
+    const mobile = normalizeMobile(req.body?.mobile);
+    const designation = String(req.body?.wardOrDesignation || req.body?.designation || "").trim();
+    if (name.split(/\s+/).filter(Boolean).length < 2 || mobile.length !== 10 || !designation) {
+      return res.status(400).json({ success: false, message: "Full name, valid mobile number, and ward/designation are required." });
+    }
+    const created = await withTransaction(async (connection) => {
+      const [result] = await connection.query(
+        `INSERT INTO role_assignments
+         (normalized_phone, role, display_name, ward_or_designation, status, source, added_by)
+         VALUES (?, 'nagarsevak', ?, ?, 'active', 'super_admin', ?)`,
+        [mobile, name, designation, req.civicUser.id],
+      );
+      await recordRoleAudit(connection, {
+        actorUserId: req.civicUser.id,
+        actorPhone: req.civicUser.mobile,
+        actorRole: "super_admin",
+        action: "NAGARSEVAK_ADDED",
+        targetAssignmentId: result.insertId,
+        targetPhone: mobile,
+        newStatus: "active",
+        details: { displayName: name, designation },
+        requestId: req.requestId,
+      });
+      return loadRoleAssignment(result.insertId, "nagarsevak", connection);
+    });
+    return res.status(201).json({ success: true, assignment: mapRoleAssignment(created) });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ success: false, message: "This mobile number already has a Nagarsevak record." });
+    }
+    return res.status(500).json({ success: false, message: "The Nagarsevak could not be added right now." });
+  }
+});
+
+app.patch("/api/super-admin/nagarsevaks/:id", async (req, res) => {
+  try {
+    await ensureRoleAuthorizationSchema(db);
+    const nextStatus = String(req.body?.status || "").toLowerCase();
+    if (!["active", "inactive", "revoked"].includes(nextStatus)) {
+      return res.status(400).json({ success: false, message: "Select a valid status." });
+    }
+    const result = await withTransaction(async (connection) => {
+      const target = await loadRoleAssignment(req.params.id, "nagarsevak", connection, true);
+      if (!target) return { notFound: true };
+      await connection.query("UPDATE role_assignments SET status = ? WHERE id = ?", [nextStatus, target.id]);
+      if (target.user_id) {
+        await connection.query(
+          "UPDATE users SET approval_status = ? WHERE id = ?",
+          [nextStatus === "active" ? "approved" : "rejected", target.user_id],
+        );
+      }
+      await recordRoleAudit(connection, {
+        actorUserId: req.civicUser.id,
+        actorPhone: req.civicUser.mobile,
+        actorRole: "super_admin",
+        action: "NAGARSEVAK_STATUS_CHANGED",
+        targetAssignmentId: target.id,
+        targetPhone: target.normalized_phone,
+        previousStatus: target.status,
+        newStatus: nextStatus,
+        requestId: req.requestId,
+      });
+      return { updated: true };
+    });
+    if (result.notFound) return res.status(404).json({ success: false, message: "Nagarsevak record not found." });
+    return res.json({ success: true, status: nextStatus });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Nagarsevak access could not be updated right now." });
+  }
+});
+
+function legacyRoleFlowRetired(req, res) {
+  return res.status(410).json({
+    success: false,
+    code: "LEGACY_ROLE_FLOW_RETIRED",
+    message: "This access method has been retired. Use the main mobile OTP login.",
+  });
+}
+
+app.get("/api/super-admin/access-codes", legacyRoleFlowRetired);
+app.post("/api/super-admin/access-codes", legacyRoleFlowRetired);
+app.patch("/api/super-admin/access-codes/:id", legacyRoleFlowRetired);
+app.delete("/api/super-admin/access-codes/:id", legacyRoleFlowRetired);
+app.post("/api/auth/super-admin-access-login", legacyRoleFlowRetired);
+app.post("/api/auth/nagarsevak-login", legacyRoleFlowRetired);
+app.post("/api/auth/nagarsevak-register", legacyRoleFlowRetired);
+app.post("/api/auth/nagarsevak-status", legacyRoleFlowRetired);
 
 /* NAGARSEVAK AUTH + APPROVAL */
 app.get("/api/auth/ward-check", async (req, res) => {
@@ -3018,29 +3348,6 @@ app.patch("/api/auth/officers", async (req, res) => {
       });
     }
 
-    if (approvalStatus === "approved") {
-      const [officerRows] = await db.query(
-        "SELECT ward, ward_code FROM users WHERE id = ? AND role = 'nagarsevak' LIMIT 1",
-        [id],
-      );
-      if (!officerRows.length) {
-        return res.status(404).json({ success: false, message: "Officer not found" });
-      }
-      const [conflicts] = await db.query(
-        `SELECT id FROM users
-         WHERE role = 'nagarsevak' AND approval_status = 'approved' AND id <> ?
-           AND (ward_code = ? OR (ward_code IS NULL AND ward = ?))
-         LIMIT 1`,
-        [id, officerRows[0].ward_code, officerRows[0].ward],
-      );
-      if (conflicts.length) {
-        return res.status(409).json({
-          success: false,
-          message: "Another approved Nagarsevak is already assigned to this ward",
-        });
-      }
-    }
-
     const [result] = await db.query(
       `UPDATE users
        SET approval_status = ?
@@ -3051,6 +3358,12 @@ app.patch("/api/auth/officers", async (req, res) => {
     if (!result.affectedRows) {
       return res.status(404).json({ success: false, message: "Officer not found" });
     }
+    await ensureRoleAuthorizationSchema(db);
+    await db.query(
+      `UPDATE role_assignments SET status = ?
+       WHERE role = 'nagarsevak' AND user_id = ?`,
+      [approvalStatus === "approved" ? "active" : "inactive", id],
+    );
 
     return res.json({
       success: true,
@@ -3083,22 +3396,10 @@ app.delete("/api/auth/officers/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: "Super Admin accounts cannot be deleted here" });
     }
 
-    const connection = await db.getConnection();
-    try {
-      await connection.beginTransaction();
-      await connection.query(
-        "UPDATE complaints SET assigned_officer_id = NULL WHERE assigned_officer_id = ?",
-        [id],
-      );
-      await connection.query("DELETE FROM users WHERE id = ? AND role = 'nagarsevak'", [id]);
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-    return res.json({ success: true, id });
+    await ensureRoleAuthorizationSchema(db);
+    await db.query("UPDATE users SET approval_status = 'rejected' WHERE id = ? AND role = 'nagarsevak'", [id]);
+    await db.query("UPDATE role_assignments SET status = 'revoked' WHERE role = 'nagarsevak' AND user_id = ?", [id]);
+    return res.json({ success: true, id, status: "revoked" });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message || "Officer deletion failed" });
   }
@@ -3107,7 +3408,7 @@ app.delete("/api/auth/officers/:id", async (req, res) => {
 
 /* OTP AUTH */
 function normalizeMobile(mobile) {
-  return String(mobile || "").replace(/\D/g, "");
+  return String(mobile || "").replace(/\D/g, "").slice(-10);
 }
 
 function normalizeApprovalStatus(value) {
@@ -3120,14 +3421,6 @@ function normalizeApprovalStatus(value) {
 
 function makeNagarsevakId() {
   return `NS${Date.now()}`;
-}
-
-function generateSuperAdminAccessCode() {
-  return `SA-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-}
-
-function normalizeAccessCode(value) {
-  return String(value || "").trim().toUpperCase();
 }
 
 app.post("/api/auth/send-otp", async (req, res) => {

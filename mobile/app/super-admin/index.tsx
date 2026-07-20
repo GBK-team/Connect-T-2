@@ -5,7 +5,8 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useComplaints, Complaint } from "@/context/ComplaintContext";
-import { useOfficers, Officer } from "@/hooks/useOfficers";
+import { Officer } from "@/hooks/useOfficers";
+import { useNagarsevakAssignments } from "@/hooks/useNagarsevakAssignments";
 import { useRouter } from "expo-router";
 
 const { width } = Dimensions.get("window");
@@ -202,7 +203,20 @@ export default function SuperAdminDashboard() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { user, logout } = useAuth();
   const { complaints, refreshComplaints } = useComplaints();
-  const { officers: allOfficers, refetch: refreshOfficers } = useOfficers("approved");
+  const { assignments: officerAssignments, refetch: refreshOfficers } = useNagarsevakAssignments();
+  const allOfficers = useMemo<Officer[]>(() => officerAssignments
+    .filter((item) => item.status === "active")
+    .map((item) => ({
+      id: item.userId || item.id,
+      name: item.name,
+      mobile: item.mobile,
+      ward: item.wardCode ? `Ward ${item.wardCode}` : item.wardOrDesignation,
+      wardCode: item.wardCode,
+      role: "nagarsevak",
+      isSuperAdmin: false,
+      approvalStatus: "approved",
+      createdAt: item.createdAt || undefined,
+    })), [officerAssignments]);
   const router = useRouter();
   const [modal, setModal] = useState<{ type: CardType; title: string; sub: string } | null>(null);
   const [selectedC, setSelectedC] = useState<Complaint | null>(null);

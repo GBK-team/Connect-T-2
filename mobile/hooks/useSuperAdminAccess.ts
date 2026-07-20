@@ -1,87 +1,93 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, getUserErrorMessage } from "@/lib/api";
 
-export interface SuperAdminAccessCode {
+export type AccessStatus = "active" | "inactive" | "revoked";
+
+export interface SuperAdminAssignment {
   id: string;
-  accessCode: string;
+  userId?: string | null;
   name: string;
   mobile: string;
-  status: "active" | "revoked";
-  createdBy?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
+  status: AccessStatus;
+  source: string;
+  isPrimary: boolean;
+  addedBy?: string | null;
+  addedByName?: string | null;
+  lastLoginAt?: string | null;
+  hasLoggedIn: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
-function normalizeAccess(item: any): SuperAdminAccessCode {
+function normalizeAssignment(item: any): SuperAdminAssignment {
+  const status: AccessStatus = item.status === "inactive" || item.status === "revoked" ? item.status : "active";
   return {
     id: String(item.id || ""),
-    accessCode: String(item.accessCode || item.access_code || ""),
-    name: String(item.name || ""),
-    mobile: String(item.mobile || ""),
-    status: item.status === "revoked" ? "revoked" : "active",
-    createdBy: item.createdBy || item.created_by || null,
-    createdAt: item.createdAt || item.created_at,
-    updatedAt: item.updatedAt || item.updated_at,
+    userId: item.userId || item.user_id || null,
+    name: String(item.name || item.displayName || item.display_name || "Super Admin"),
+    mobile: String(item.mobile || item.normalizedPhone || item.normalized_phone || "").replace(/\D/g, "").slice(-10),
+    status,
+    source: String(item.source || "admin"),
+    isPrimary: !!(item.isPrimary ?? item.is_primary),
+    addedBy: item.addedBy || item.added_by || null,
+    addedByName: item.addedByName || item.added_by_name || null,
+    lastLoginAt: item.lastLoginAt || item.last_login_at || null,
+    hasLoggedIn: !!(item.hasLoggedIn ?? item.lastLoginAt ?? item.last_login_at),
+    createdAt: item.createdAt || item.created_at || null,
+    updatedAt: item.updatedAt || item.updated_at || null,
   };
 }
 
 export function useSuperAdminAccess() {
-  const [accessCodes, setAccessCodes] = useState<SuperAdminAccessCode[]>([]);
+  const [assignments, setAssignments] = useState<SuperAdminAssignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchAccessCodes = useCallback(async () => {
+  const fetchAssignments = useCallback(async (search = "") => {
     setLoading(true);
     setError("");
-
     try {
-      const data = await apiGet<any>("/api/super-admin/access-codes");
-      setAccessCodes((data.accessCodes || []).map(normalizeAccess));
-    } catch (e: any) {
-      setError(e?.message || "Failed to load access codes");
-      setAccessCodes([]);
+      const suffix = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+      const data = await apiGet<any>(`/api/super-admin/access-management${suffix}`);
+      setAssignments((data.assignments || []).map(normalizeAssignment));
+    } catch (requestError) {
+      setError(getUserErrorMessage(requestError, "Admin access records could not be loaded."));
+      setAssignments([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const createAccessCode = async (input: {
-    name: string;
-    mobile: string;
-    createdBy?: string;
-  }) => {
-    const data = await apiPost<any>("/api/super-admin/access-codes", input);
-    await fetchAccessCodes();
-    return normalizeAccess(data.access);
+  const addAssignment = async (input: { name: string; mobile: string }) => {
+    const data = await apiPost<any>("/api/super-admin/access-management", input);
+    await fetchAssignments();
+    return normalizeAssignment(data.assignment);
   };
 
-  const deleteAccessCode = async (id: string) => {
-    const data = await apiDelete<any>(`/api/super-admin/access-codes/${id}`);
-    await fetchAccessCodes();
+  const setAssignmentStatus = async (id: string, status: "active" | "inactive") => {
+    const data = await apiPatch<any>(`/api/super-admin/access-management/${id}`, { status });
+    await fetchAssignments();
     return data;
   };
 
-  const updateAccessStatus = async (
-    id: string,
-    status: "active" | "revoked",
-  ) => {
-    const data = await apiPatch<any>(`/api/super-admin/access-codes/${id}`, { status });
-    await fetchAccessCodes();
+  const removeAssignment = async (id: string) => {
+    const data = await apiDelete<any>(`/api/super-admin/access-management/${id}`);
+    await fetchAssignments();
     return data;
   };
 
   useEffect(() => {
-    void fetchAccessCodes();
-  }, [fetchAccessCodes]);
+    void fetchAssignments();
+  }, [fetchAssignments]);
 
   return {
-    accessCodes,
+    assignments,
     loading,
     error,
-    refetch: fetchAccessCodes,
-    createAccessCode,
-    updateAccessStatus,
-    deleteAccessCode,
+    refetch: fetchAssignments,
+    addAssignment,
+    setAssignmentStatus,
+    removeAssignment,
   };
 }

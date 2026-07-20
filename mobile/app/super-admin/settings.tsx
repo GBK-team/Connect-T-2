@@ -449,7 +449,7 @@ export default function SettingsScreen() {
               marginRight: 12,
             }}
           >
-            <Feather name="key" size={18} color="#16A34A" />
+            <Feather name="shield" size={18} color="#16A34A" />
           </View>
 
           <View style={{ flex: 1 }}>
@@ -470,7 +470,7 @@ export default function SettingsScreen() {
                 marginTop: 3,
               }}
             >
-              Generate and revoke unique IDs for trusted admins
+              Authorize trusted admins by verified mobile number
             </Text>
           </View>
 
@@ -722,8 +722,8 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 onPress={async () => {
                   setShowLogout(false);
-                  await logout("/super-admin-login");
-                  router.replace("/super-admin-login" as any);
+                  await logout("/login");
+                  router.replace("/login" as any);
                 }}
                 style={{
                   flex: 1,

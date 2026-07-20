@@ -1,339 +1,171 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, Platform, TextInput, RefreshControl } from "react-native";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useOfficers } from "@/hooks/useOfficers";
-import { useComplaints } from "@/context/ComplaintContext";
 
-function SectionHeader({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <View style={{ marginBottom: 10, marginTop: 6 }}>
-      <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: "#0F172A" }}>{title}</Text>
-      {sub && <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#64748B" }}>{sub}</Text>}
-    </View>
-  );
+import { AppScrollView } from "@/components/AppScrollView";
+import { useComplaints } from "@/context/ComplaintContext";
+import { NagarsevakAccessStatus, NagarsevakAssignment, useNagarsevakAssignments } from "@/hooks/useNagarsevakAssignments";
+import { getUserErrorMessage } from "@/lib/api";
+
+const GREEN = "#16A34A";
+type Filter = "all" | NagarsevakAccessStatus;
+
+function dateLabel(value?: string | null) {
+  if (!value) return "Not signed in";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not signed in" : date.toLocaleDateString();
 }
 
-export default function OfficersScreen() {
+function statusColors(status: NagarsevakAccessStatus) {
+  if (status === "active") return { bg: "#DCFCE7", text: "#15803D" };
+  if (status === "inactive") return { bg: "#FEF3C7", text: "#B45309" };
+  return { bg: "#FEE2E2", text: "#B91C1C" };
+}
+
+export default function NagarsevakManagementScreen() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
   const router = useRouter();
   const { complaints } = useComplaints();
+  const { assignments, loading, error, refetch, updateStatus } = useNagarsevakAssignments();
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"officers" | "wards">("officers");
-  const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<Filter>("active");
+  const [updating, setUpdating] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const { officers: allOfficers, loading: officersLoading, approveOfficer, refetch } = useOfficers();
-  const [activeStatus, setActiveStatus] = useState<"approved" | "pending" | "rejected">("approved");
+  const records = useMemo(() => assignments.filter((item) => filter === "all" || item.status === filter), [assignments, filter]);
+  const uniqueWards = useMemo(() => new Set(assignments.map((item) => item.wardCode).filter(Boolean)).size, [assignments]);
+  const signedInCount = assignments.filter((item) => item.hasLoggedIn).length;
 
-  const officers = allOfficers.filter((o) => o.approvalStatus === activeStatus);
-  const filteredOfficers = officers.filter(
-    (o) =>
-      o.name.toLowerCase().includes(search.toLowerCase()) ||
-      o.ward.toLowerCase().includes(search.toLowerCase()) ||
-      o.id.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const wardOfficers = officers.filter((o) => o.wardCode);
-  const nominatedOfficers = officers.filter((o) => !o.wardCode);
-  const pendingCount = allOfficers.filter((o) => o.approvalStatus === "pending").length;
-
-  const handleApprove = async (id: string, status: "approved" | "rejected") => {
-    await approveOfficer(id, status);
-    refetch();
-  };
-
-  const refreshScreen = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
-
-  function getOfficerStats(officer: any) {
-    const wardComplaints = officer.wardCode
-      ? complaints.filter((c) => c.ward === officer.ward)
-      : [];
+  const wardStats = (item: NagarsevakAssignment) => {
+    if (!item.wardCode) return { total: 0, pending: 0, resolved: 0 };
+    const wardName = `Ward ${item.wardCode}`;
+    const wardComplaints = complaints.filter((complaint) => complaint.ward === wardName || complaint.wardCode === item.wardCode);
     return {
       total: wardComplaints.length,
-      pending: wardComplaints.filter((c) => c.status === "submitted").length,
-      resolved: wardComplaints.filter((c) => c.status === "resolved").length,
-      active: wardComplaints.filter(
-        (c) => c.status === "in_progress" || c.status === "assigned"
-      ).length,
+      pending: wardComplaints.filter((complaint) => ["submitted", "assigned", "in_progress"].includes(complaint.status)).length,
+      resolved: wardComplaints.filter((complaint) => complaint.status === "resolved").length,
     };
-  }
+  };
 
-  const wardRows = wardOfficers.map((o) => ({
-    officer: o,
-    stats: getOfficerStats(o),
-  }));
-
-  const topPerformers = [...wardRows]
-    .sort((a, b) => b.stats.resolved - a.stats.resolved)
-    .slice(0, 5);
-
-  const busyWards = [...wardRows]
-    .sort((a, b) => b.stats.pending - a.stats.pending)
-    .slice(0, 5);
+  const changeStatus = (item: NagarsevakAssignment, status: NagarsevakAccessStatus) => {
+    Alert.alert(
+      status === "active" ? "Activate Nagarsevak access?" : status === "inactive" ? "Deactivate Nagarsevak access?" : "Revoke Nagarsevak access?",
+      `${item.name} will ${status === "active" ? "receive" : "no longer receive"} Nagarsevak access after this change.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: status === "active" ? "Activate" : status === "inactive" ? "Deactivate" : "Revoke",
+          style: status === "active" ? "default" : "destructive",
+          onPress: async () => {
+            setUpdating(item.id);
+            setNotice("");
+            try {
+              await updateStatus(item.id, status);
+              setNotice("Nagarsevak access updated successfully.");
+            } catch (requestError) {
+              setNotice(getUserErrorMessage(requestError, "Nagarsevak access could not be updated."));
+            } finally {
+              setUpdating("");
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
-      <LinearGradient
-        colors={["#052E16", "#166534", "#16A34A"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ paddingTop: topPad + 12, paddingBottom: 20, paddingHorizontal: 20 }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start", marginBottom: 6 }}>
-              <Feather name="users" size={10} color="#6EE7B7" />
-              <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#6EE7B7", marginLeft: 4, letterSpacing: 1.5 }}>OFFICER & WARD MANAGEMENT</Text>
-            </View>
-            <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: "white" }}>Nagar Sevaks</Text>
-            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>
-              {officers.length} officers · {wardOfficers.filter((o) => o.wardCode).length} wards covered
-            </Text>
+    <View style={styles.root}>
+      <LinearGradient colors={["#052E16", "#166534", GREEN]} style={[styles.header, { paddingTop: (Platform.OS === "web" ? 54 : insets.top) + 12 }]}>
+        <View style={styles.headerTop}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>AUTHORIZED ROLE DIRECTORY</Text>
+            <Text style={styles.title}>Nagarsevak Management</Text>
+            <Text style={styles.subtitle}>Official roster, access status and first-login linking</Text>
           </View>
-
-          <View style={{ flexDirection: "row", gap: 8, marginLeft: 12 }}><TouchableOpacity
-            onPress={() => router.push("/super-admin/officer/new" as any)}
-            activeOpacity={0.86}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 15,
-              backgroundColor: "rgba(255,255,255,0.96)",
-              alignItems: "center",
-              justifyContent: "center",
-              shadowColor: "#052E16",
-              shadowOpacity: 0.18,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 8,
-              borderWidth: 1,
-              borderColor: "rgba(22,163,74,0.22)",
-            }}
-          >
-            <Feather name="user-plus" size={19} color="#16A34A" />
-          </TouchableOpacity><TouchableOpacity onPress={() => router.push("/super-admin/settings" as any)} activeOpacity={0.86} style={{ width: 40, height: 40, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.96)", alignItems: "center", justifyContent: "center", shadowColor: "#052E16", shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8, borderWidth: 1, borderColor: "rgba(22,163,74,0.22)" }}><Feather name="settings" size={19} color="#16A34A" /></TouchableOpacity></View>
+          <TouchableOpacity style={styles.addButton} onPress={() => router.push("/super-admin/officer/new" as any)} activeOpacity={0.84}>
+            <Feather name="user-plus" size={19} color={GREEN} />
+          </TouchableOpacity>
         </View>
-
-        <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 16, padding: 14 }}>
+        <View style={styles.statsRow}>
           {[
-            { label: "Total Officers", value: officers.length, color: "#93C5FD" },
-            { label: "Ward Officers", value: wardOfficers.length, color: "#6EE7B7" },
-            { label: "Nominated", value: nominatedOfficers.length, color: "#FDE68A" },
-            { label: "Wards", value: wardOfficers.filter((o) => o.wardCode).length, color: "#C4B5FD" },
-          ].map((s, i) => (
-            <View key={s.label} style={{ flex: 1, alignItems: "center" }}>
-              <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: s.color }}>{s.value}</Text>
-              <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.55)", marginTop: 2, textAlign: "center" }}>{s.label}</Text>
-              {i < 3 && <View style={{ position: "absolute", right: 0, top: "10%", height: "80%", width: 1, backgroundColor: "rgba(255,255,255,0.1)" }} />}
+            { label: "Official records", value: assignments.length },
+            { label: "Active", value: assignments.filter((item) => item.status === "active").length },
+            { label: "Wards", value: uniqueWards },
+            { label: "Signed in", value: signedInCount },
+          ].map((item, index) => (
+            <View key={item.label} style={styles.statItem}>
+              <Text style={styles.statValue}>{item.value}</Text><Text style={styles.statLabel}>{item.label}</Text>
+              {index < 3 ? <View style={styles.statDivider} /> : null}
             </View>
           ))}
         </View>
       </LinearGradient>
 
-      <View style={{ flexDirection: "row", backgroundColor: "#1E293B", paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
-        {(["officers", "wards"] as const).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={{
-              flex: 1,
-              paddingVertical: 9,
-              borderRadius: 10,
-              backgroundColor: activeTab === tab ? "#16A34A" : "transparent",
-              alignItems: "center",
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: activeTab === tab ? "white" : "#64748B", textTransform: "capitalize" }}>
-              {tab === "officers" ? "Officers" : "Ward Overview"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <AppScrollView style={styles.flex} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]} onAppRefresh={() => refetch(search)} showsVerticalScrollIndicator={false}>
+        {notice ? <View style={styles.notice}><Feather name="info" size={15} color="#166534" /><Text style={styles.noticeText}>{notice}</Text><TouchableOpacity onPress={() => setNotice("")}><Feather name="x" size={15} color="#64748B" /></TouchableOpacity></View> : null}
 
-      {activeTab === "officers" && (
-        <View style={{ flexDirection: "row", backgroundColor: "#F0F4F8", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, gap: 8 }}>
-          {(["approved", "pending", "rejected"] as const).map((s) => (
-            <TouchableOpacity
-              key={s}
-              onPress={() => setActiveStatus(s)}
-              style={{
-                flex: 1, paddingVertical: 7, borderRadius: 10, alignItems: "center",
-                backgroundColor: activeStatus === s
-                  ? (s === "approved" ? "#16A34A" : s === "pending" ? "#D97706" : "#DC2626")
-                  : "white",
-                borderWidth: s === "pending" && pendingCount > 0 && activeStatus !== "pending" ? 1.5 : 0,
-                borderColor: "#D97706",
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: activeStatus === s ? "white" : "#64748B", textTransform: "capitalize" }}>
-                {s === "approved" ? "Approved" : s === "pending" ? `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}` : "Rejected"}
-              </Text>
+        <View style={styles.searchShell}>
+          <Feather name="search" size={17} color="#94A3B8" />
+          <TextInput value={search} onChangeText={(value) => { setSearch(value); if (!value) void refetch(); }} onSubmitEditing={() => void refetch(search)} placeholder="Search Marathi name, mobile or designation" placeholderTextColor="#94A3B8" style={styles.searchInput} returnKeyType="search" />
+          {search ? <TouchableOpacity onPress={() => { setSearch(""); void refetch(); }}><Feather name="x-circle" size={17} color="#94A3B8" /></TouchableOpacity> : null}
+        </View>
+
+        <View style={styles.filters}>
+          {(["all", "active", "inactive", "revoked"] as Filter[]).map((item) => (
+            <TouchableOpacity key={item} style={[styles.filterButton, filter === item && styles.filterActive]} onPress={() => setFilter(item)} activeOpacity={0.8}>
+              <Text style={[styles.filterText, filter === item && styles.filterTextActive]}>{item}</Text>
             </TouchableOpacity>
           ))}
         </View>
-      )}
 
-      <ScrollView style={{ flex: 1, backgroundColor: "#F0F4F8" }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshScreen} colors={["#16A34A"]} tintColor="#16A34A" />}>
-        {activeTab === "officers" ? (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 }}>
-              <Feather name="search" size={16} color="#94A3B8" />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search officers, wards..."
-                placeholderTextColor="#CBD5E1"
-                style={{ flex: 1, marginLeft: 10, fontSize: 14, fontFamily: "Inter_400Regular", color: "#0F172A", outlineWidth: 0 } as any}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity onPress={() => setSearch("")}>
-                  <Feather name="x" size={16} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
+        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{filter === "all" ? "All role records" : `${filter.charAt(0).toUpperCase()}${filter.slice(1)} records`} ({records.length})</Text><TouchableOpacity onPress={() => void refetch(search)}><Feather name="refresh-cw" size={16} color={GREEN} /></TouchableOpacity></View>
 
-            <SectionHeader title="Top Performers" sub="Officers with most resolved complaints" />
-            <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
-              {topPerformers.length === 0 ? (
-                <Text style={{ color: "#94A3B8", textAlign: "center", paddingVertical: 12, fontFamily: "Inter_400Regular", fontSize: 13 }}>No data yet</Text>
-              ) : (
-                topPerformers.map(({ officer, stats }, idx) => (
-                  <View key={officer.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: idx < topPerformers.length - 1 ? 1 : 0, borderBottomColor: "#F1F5F9" }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: idx === 0 ? "#FEF3C7" : "#F1F5F9", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                      <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: idx === 0 ? "#D97706" : "#64748B" }}>#{idx + 1}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }} numberOfLines={1}>{officer.name}</Text>
-                      <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#64748B" }}>{officer.ward}</Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: "#059669" }}>{stats.resolved}</Text>
-                      <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: "#94A3B8" }}>resolved</Text>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
-
-            <SectionHeader title={`All Officers (${filteredOfficers.length})`} sub="Tap to view officer details" />
-            {filteredOfficers.map((officer) => {
-              const stats = getOfficerStats(officer);
-              return (
-                <TouchableOpacity
-                  key={officer.id}
-                  onPress={() => router.push({ pathname: "/super-admin/officer/[id]" as any, params: { id: officer.id } })}
-                  style={{ backgroundColor: "white", borderRadius: 16, padding: 16, marginBottom: 8, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 }}
-                  activeOpacity={0.85}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                      <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: "#16A34A" }}>{officer.name.charAt(0)}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#0F172A" }} numberOfLines={1}>{officer.name}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-                        <Feather name="map-pin" size={10} color="#94A3B8" />
-                        <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#64748B", marginLeft: 4 }}>{officer.ward}</Text>
-                        <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#CBD5E1", marginHorizontal: 6 }}>·</Text>
-                        <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#94A3B8" }}>{officer.id}</Text>
-                      </View>
-                    </View>
-                    <Feather name="chevron-right" size={16} color="#CBD5E1" />
-                  </View>
-                  {officer.wardCode && activeStatus === "approved" && (
-                    <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                      {[
-                        { label: "Total", value: stats.total, color: "#3B82F6", bg: "#DBEAFE" },
-                        { label: "Pending", value: stats.pending, color: "#D97706", bg: "#FEF3C7" },
-                        { label: "Active", value: stats.active, color: "#7C3AED", bg: "#EDE9FE" },
-                        { label: "Resolved", value: stats.resolved, color: "#059669", bg: "#D1FAE5" },
-                      ].map((stat) => (
-                        <View key={stat.label} style={{ flex: 1, backgroundColor: stat.bg, borderRadius: 8, paddingVertical: 7, alignItems: "center" }}>
-                          <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: stat.color }}>{stat.value}</Text>
-                          <Text style={{ fontSize: 9, fontFamily: "Inter_400Regular", color: stat.color }}>{stat.label}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {activeStatus === "pending" && (
-                    <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-                      <TouchableOpacity onPress={() => handleApprove(officer.id, "approved")} style={{ flex: 1, backgroundColor: "#16A34A", borderRadius: 10, paddingVertical: 9, alignItems: "center" }} activeOpacity={0.8}>
-                        <Text style={{ color: "white", fontFamily: "Inter_700Bold", fontSize: 12 }}>Approve</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleApprove(officer.id, "rejected")} style={{ flex: 1, backgroundColor: "#DC2626", borderRadius: 10, paddingVertical: 9, alignItems: "center" }} activeOpacity={0.8}>
-                        <Text style={{ color: "white", fontFamily: "Inter_700Bold", fontSize: 12 }}>Reject</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-
-            {officersLoading && <Text style={{ color: "#64748B", textAlign: "center", marginTop: 20 }}>Loading officers...</Text>}
-            {!officersLoading && filteredOfficers.length === 0 && <Text style={{ color: "#64748B", textAlign: "center", marginTop: 20 }}>No officers found</Text>}
-          </>
-        ) : (
-          <>
-            <SectionHeader title="Ward Coverage" sub="All active ward officer assignments" />
-            {wardRows.map(({ officer, stats }) => (
-              <View key={officer.id} style={{ backgroundColor: "white", borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: "#0F172A" }}>{officer.ward}</Text>
-                    <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#64748B", marginTop: 2 }}>{officer.name} · {officer.mobile}</Text>
-                  </View>
-                  <View style={{ backgroundColor: "#DCFCE7", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#16A34A" }}>{officer.wardCode}</Text>
-                  </View>
+        {loading ? <View style={styles.empty}><ActivityIndicator color={GREEN} /><Text style={styles.emptyText}>Loading official roster…</Text></View> : error ? <View style={styles.empty}><Feather name="alert-triangle" size={28} color="#D97706" /><Text style={styles.emptyTitle}>Roster unavailable</Text><Text style={styles.emptyText}>{error}</Text></View> : records.length === 0 ? <View style={styles.empty}><Feather name="users" size={30} color="#CBD5E1" /><Text style={styles.emptyTitle}>No matching records</Text><Text style={styles.emptyText}>Change the status filter or search.</Text></View> : records.map((item) => {
+          const tone = statusColors(item.status);
+          const stats = wardStats(item);
+          const isUpdating = updating === item.id;
+          return (
+            <View key={item.id} style={styles.officerCard}>
+              <View style={styles.officerTop}>
+                <View style={styles.serialBadge}><Text style={styles.serialText}>{item.sourceSerial || item.name.charAt(0)}</Text></View>
+                <View style={styles.officerCopy}>
+                  <Text style={styles.officerName}>{item.name}</Text>
+                  <View style={styles.metaRow}><Feather name="phone" size={11} color="#64748B" /><Text style={styles.metaText}>+91 {item.mobile}</Text><Text style={styles.metaDot}>•</Text><Text style={styles.designation}>{item.wardOrDesignation}</Text></View>
                 </View>
-
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  {[
-                    { label: "Total", value: stats.total, color: "#3B82F6" },
-                    { label: "Pending", value: stats.pending, color: "#D97706" },
-                    { label: "Resolved", value: stats.resolved, color: "#059669" },
-                  ].map((stat) => (
-                    <View key={stat.label} style={{ flex: 1, backgroundColor: "#F8FAFC", borderRadius: 10, paddingVertical: 10, alignItems: "center" }}>
-                      <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: stat.color }}>{stat.value}</Text>
-                      <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: "#64748B" }}>{stat.label}</Text>
-                    </View>
-                  ))}
-                </View>
+                <View style={[styles.statusPill, { backgroundColor: tone.bg }]}><Text style={[styles.statusText, { color: tone.text }]}>{item.status}</Text></View>
               </View>
-            ))}
 
-            <SectionHeader title="Busy Wards" sub="Wards with highest pending complaint load" />
-            <View style={{ backgroundColor: "white", borderRadius: 16, padding: 16, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 }}>
-              {busyWards.length === 0 ? (
-                <Text style={{ color: "#94A3B8", textAlign: "center", paddingVertical: 12, fontFamily: "Inter_400Regular", fontSize: 13 }}>No complaint data available</Text>
-              ) : (
-                busyWards.map(({ officer, stats }, idx) => (
-                  <View key={officer.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: idx < busyWards.length - 1 ? 1 : 0, borderBottomColor: "#F1F5F9" }}>
-                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
-                      <Feather name="alert-circle" size={15} color="#D97706" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#0F172A" }}>{officer.ward}</Text>
-                      <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#64748B" }}>{officer.name}</Text>
-                    </View>
-                    <Text style={{ fontSize: 15, fontFamily: "Inter_700Bold", color: "#D97706" }}>{stats.pending}</Text>
-                  </View>
-                ))
-              )}
+              <View style={styles.infoStrip}>
+                <View style={styles.infoItem}><Text style={styles.infoValue}>{item.hasLoggedIn ? "Linked" : "Waiting"}</Text><Text style={styles.infoLabel}>Account</Text></View>
+                <View style={styles.infoItem}><Text style={styles.infoValue}>{dateLabel(item.lastLoginAt)}</Text><Text style={styles.infoLabel}>Last login</Text></View>
+                <View style={styles.infoItem}><Text style={styles.infoValue}>{item.source === "official_nagarsevak_pdf" ? "Official PDF" : "Admin"}</Text><Text style={styles.infoLabel}>Source</Text></View>
+              </View>
+
+              {item.wardCode ? <View style={styles.complaintStrip}>{[{ label: "Complaints", value: stats.total, color: "#2563EB" }, { label: "Open", value: stats.pending, color: "#D97706" }, { label: "Resolved", value: stats.resolved, color: "#059669" }].map((stat) => <View key={stat.label} style={styles.complaintItem}><Text style={[styles.complaintValue, { color: stat.color }]}>{stat.value}</Text><Text style={styles.complaintLabel}>{stat.label}</Text></View>)}</View> : null}
+
+              <View style={styles.actions}>
+                {isUpdating ? <ActivityIndicator color={GREEN} style={styles.loadingAction} /> : (
+                  <>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => changeStatus(item, item.status === "active" ? "inactive" : "active")}><Feather name={item.status === "active" ? "pause" : "play"} size={14} color={item.status === "active" ? "#D97706" : GREEN} /><Text style={[styles.actionText, { color: item.status === "active" ? "#D97706" : GREEN }]}>{item.status === "active" ? "Deactivate" : "Activate"}</Text></TouchableOpacity>
+                    {item.status !== "revoked" ? <TouchableOpacity style={styles.actionButton} onPress={() => changeStatus(item, "revoked")}><Feather name="user-x" size={14} color="#DC2626" /><Text style={[styles.actionText, { color: "#DC2626" }]}>Revoke</Text></TouchableOpacity> : null}
+                  </>
+                )}
+              </View>
             </View>
-          </>
-        )}
-      </ScrollView>
+          );
+        })}
+      </AppScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 }, root: { flex: 1, backgroundColor: "#F1F5F9" }, header: { paddingHorizontal: 18, paddingBottom: 18 }, headerTop: { flexDirection: "row", alignItems: "center" }, headerCopy: { flex: 1 }, eyebrow: { fontSize: 9, color: "#BBF7D0", fontFamily: "Inter_700Bold", letterSpacing: 1.1 }, title: { fontSize: 21, color: "white", fontFamily: "Inter_700Bold", marginTop: 3 }, subtitle: { fontSize: 10.5, color: "rgba(255,255,255,0.7)", fontFamily: "Inter_400Regular", marginTop: 3 }, addButton: { width: 44, height: 44, borderRadius: 16, backgroundColor: "white", alignItems: "center", justifyContent: "center" },
+  statsRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 17, paddingVertical: 12, marginTop: 16 }, statItem: { flex: 1, alignItems: "center" }, statValue: { fontSize: 17, color: "white", fontFamily: "Inter_700Bold" }, statLabel: { fontSize: 8.5, color: "rgba(255,255,255,0.62)", fontFamily: "Inter_400Regular", marginTop: 2, textAlign: "center" }, statDivider: { position: "absolute", right: 0, height: "80%", top: "10%", width: 1, backgroundColor: "rgba(255,255,255,0.13)" },
+  content: { padding: 15 }, notice: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", borderRadius: 14, padding: 11, marginBottom: 11 }, noticeText: { flex: 1, fontSize: 11, color: "#166534", lineHeight: 16, fontFamily: "Inter_500Medium" }, searchShell: { minHeight: 49, backgroundColor: "white", borderRadius: 16, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderColor: "#E2E8F0" }, searchInput: { flex: 1, fontSize: 12.5, color: "#0F172A", fontFamily: "Inter_500Medium", paddingVertical: 0 }, filters: { flexDirection: "row", gap: 7, marginVertical: 12 }, filterButton: { flex: 1, minHeight: 37, borderRadius: 12, backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0", alignItems: "center", justifyContent: "center" }, filterActive: { backgroundColor: GREEN, borderColor: GREEN }, filterText: { fontSize: 9.5, color: "#64748B", fontFamily: "Inter_700Bold", textTransform: "capitalize" }, filterTextActive: { color: "white" }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 9, paddingHorizontal: 2 }, sectionTitle: { fontSize: 13.5, color: "#334155", fontFamily: "Inter_700Bold" },
+  empty: { backgroundColor: "white", borderRadius: 20, padding: 27, alignItems: "center", gap: 7 }, emptyTitle: { fontSize: 14, color: "#334155", fontFamily: "Inter_700Bold" }, emptyText: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", textAlign: "center" }, officerCard: { backgroundColor: "white", borderRadius: 19, padding: 14, marginBottom: 10, shadowColor: "#0F172A", shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }, officerTop: { flexDirection: "row", alignItems: "center" }, serialBadge: { width: 42, height: 42, borderRadius: 15, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginRight: 10 }, serialText: { fontSize: 14, color: "#15803D", fontFamily: "Inter_700Bold" }, officerCopy: { flex: 1, minWidth: 0 }, officerName: { fontSize: 13, color: "#0F172A", fontFamily: "Inter_700Bold" }, metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4, marginTop: 4 }, metaText: { fontSize: 10.5, color: "#64748B", fontFamily: "Inter_500Medium" }, metaDot: { fontSize: 10, color: "#CBD5E1" }, designation: { fontSize: 10.5, color: GREEN, fontFamily: "Inter_700Bold" }, statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, statusText: { fontSize: 8.5, fontFamily: "Inter_700Bold", textTransform: "capitalize" },
+  infoStrip: { flexDirection: "row", marginTop: 12, paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#F1F5F9" }, infoItem: { flex: 1, alignItems: "center" }, infoValue: { fontSize: 9.5, color: "#334155", fontFamily: "Inter_700Bold", textAlign: "center" }, infoLabel: { fontSize: 8.5, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 2 }, complaintStrip: { flexDirection: "row", gap: 7, marginTop: 10 }, complaintItem: { flex: 1, backgroundColor: "#F8FAFC", borderRadius: 11, paddingVertical: 7, alignItems: "center" }, complaintValue: { fontSize: 13, fontFamily: "Inter_700Bold" }, complaintLabel: { fontSize: 8.5, color: "#64748B", fontFamily: "Inter_400Regular" }, actions: { flexDirection: "row", gap: 8, marginTop: 11 }, actionButton: { flex: 1, minHeight: 38, borderRadius: 12, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 }, actionText: { fontSize: 10, fontFamily: "Inter_700Bold" }, loadingAction: { flex: 1, height: 38 },
+});
