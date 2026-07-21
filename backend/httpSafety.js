@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 
 const GENERIC_SERVER_ERROR = "Something went wrong. Please try again after some time.";
+const GENERIC_NOT_FOUND_ERROR = "The requested service is unavailable. Please try again after some time.";
 
 function requestIdFrom(value) {
   const candidate = String(value || "").trim();
@@ -15,6 +16,16 @@ function safeServerErrorPayload(requestId) {
     success: false,
     error: GENERIC_SERVER_ERROR,
     message: GENERIC_SERVER_ERROR,
+    requestId,
+  };
+}
+
+function safeNotFoundPayload(requestId) {
+  return {
+    success: false,
+    error: GENERIC_NOT_FOUND_ERROR,
+    message: GENERIC_NOT_FOUND_ERROR,
+    code: "ROUTE_NOT_FOUND",
     requestId,
   };
 }
@@ -77,9 +88,11 @@ function installSafeErrorHandler(app) {
 }
 
 module.exports = {
+  GENERIC_NOT_FOUND_ERROR,
   GENERIC_SERVER_ERROR,
   installHttpSafety,
   installSafeErrorHandler,
   requestIdFrom,
+  safeNotFoundPayload,
   safeServerErrorPayload,
 };

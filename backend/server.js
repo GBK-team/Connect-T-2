@@ -13,7 +13,7 @@ const {
 } = require("./authSecurity");
 const { sendOtp: createOtpSession, verifyOtp: verifyOtpSession } = require("./otpService");
 const { saveDataUri } = require("./mediaStorage");
-const { installHttpSafety, installSafeErrorHandler } = require("./httpSafety");
+const { installHttpSafety, installSafeErrorHandler, safeNotFoundPayload } = require("./httpSafety");
 const { isIsoDate, validateCoordinates } = require("./validation");
 const { redactApplicationContact, redactJobContact } = require("./jobPortalPrivacy");
 const {
@@ -32,7 +32,7 @@ const {
 const app = express();
 installHttpSafety(app);
 
-const SERVER_VERSION = "backend-server-unified-role-v2";
+const SERVER_VERSION = "backend-server-unified-role-otp-v3";
 console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
 
 const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
@@ -4608,10 +4608,7 @@ app.post("/api/admin/sms-settings", async (req, res) => {
 
 /* 404 */
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "API route not found",
-  });
+  res.status(404).json(safeNotFoundPayload(res.locals.requestId));
 });
 
 installSafeErrorHandler(app);

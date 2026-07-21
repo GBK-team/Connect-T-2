@@ -1,5 +1,6 @@
-import { API_BASE_URL } from "../constants/api";
+import { apiUrl } from "../constants/api";
 import { storeOtpVerificationToken } from "./api";
+import { safeUserMessage } from "./errorSafety";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const otpSessions = new Map<string, string>();
@@ -18,19 +19,11 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
   }
 }
 
-function otpApiUrl(path: string) {
-  const base = String(API_BASE_URL || "https://newapp.e-bjp.in").replace(/\/+$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${cleanPath}`;
-}
-
 function safeOtpError(status: number, value: unknown, fallback: string) {
-  const message = String(value || "").trim();
   if (status >= 500) return "OTP service is temporarily unavailable. Please try again after some time.";
   if (status === 429) return "Too many attempts. Please wait a moment and try again.";
-  if (status === 401 || status === 403) return fallback;
-  if (!message || message.length > 300 || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message)) return fallback;
-  return message;
+  if (status === 401 || status === 403 || status === 404) return fallback;
+  return safeUserMessage(value, fallback);
 }
 
 
@@ -42,7 +35,7 @@ export async function sendRealOtp(mobile: string, purpose = "login") {
       return { success: false, error: "Enter valid 10-digit mobile number" };
     }
 
-    const res = await fetchWithTimeout(otpApiUrl("/api/auth/send-otp"), {
+    const res = await fetchWithTimeout(apiUrl("/api/auth/send-otp"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mobile: mobile10, purpose }),
@@ -88,7 +81,7 @@ export async function verifyRealOtp(mobile: string, otp: string, purpose = "logi
       return { success: false, error: "OTP session expired. Please request a new OTP." };
     }
 
-    const res = await fetchWithTimeout(otpApiUrl("/api/auth/verify-otp"), {
+    const res = await fetchWithTimeout(apiUrl("/api/auth/verify-otp"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

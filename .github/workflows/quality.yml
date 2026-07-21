@@ -46,6 +46,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
       - run: npm run doctor
+      - run: npm run test:api
       - run: npm run typecheck
       - run: npm run export:android
       - run: npm audit --omit=dev --audit-level=high
