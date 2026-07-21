@@ -32,7 +32,7 @@ const {
 const app = express();
 installHttpSafety(app);
 
-const SERVER_VERSION = "backend-server-unified-role-v1";
+const SERVER_VERSION = "backend-server-unified-role-v2";
 console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
 
 const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
@@ -851,64 +851,30 @@ function mapUnifiedUser(row) {
   };
 }
 
-function validateCitizenProfile(profile) {
-  const name = String(profile?.name || "").trim().replace(/\s+/g, " ");
-  const dob = String(profile?.dob || "").trim();
-  const address = String(profile?.address || "").trim();
-  const wardCode = normalizeWardCode(profile?.wardCode || profile?.ward_code || profile?.ward);
-  const missing = [];
-  if (name.split(/\s+/).filter(Boolean).length < 2) missing.push("fullName");
-  if (!dob || !isIsoDate(dob) || new Date(`${dob}T00:00:00.000Z`).getTime() > Date.now()) missing.push("dob");
-  if (!address) missing.push("address");
-  if (!wardCode) missing.push("ward");
-  return { complete: missing.length === 0, missing, name, dob, address, wardCode };
-}
-
 function normalizedMobileLookupSql(column) {
   return `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), 10)`;
 }
 
-async function ensureCitizenAssignment(mobile, profile) {
+async function ensureRegisteredCitizenAssignment(mobile) {
   const [existingRows] = await db.query(
     `SELECT * FROM users WHERE ${normalizedMobileLookupSql("mobile")} = ? AND role = 'citizen' ORDER BY created_at ASC LIMIT 1`,
     [mobile],
   );
   const existing = existingRows[0] || null;
-  const effectiveProfile = profile || existing || {};
-  const validated = validateCitizenProfile({
-    ...effectiveProfile,
-    wardCode: effectiveProfile.wardCode || effectiveProfile.ward_code || effectiveProfile.ward,
-  });
-  if (!validated.complete) return { profileRequired: true, missing: validated.missing };
+  if (!existing) return false;
 
-  const userId = existing?.id || safeAssignmentUserId("citizen", Date.now(), mobile);
-  if (existing) {
-    await db.query(
-      `UPDATE users SET name = ?, dob = ?, address = ?, ward = ?, ward_code = ?, ward_number = ?
-       WHERE id = ?`,
-      [validated.name, validated.dob, validated.address, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, userId],
-    );
-  } else {
-    await db.query(
-      `INSERT INTO users
-       (id, name, mobile, role, ward, ward_code, ward_number, is_super_admin,
-        approval_status, dob, address, avatar_color, notify_email, notify_whatsapp)
-       VALUES (?, ?, ?, 'citizen', ?, ?, ?, 0, 'approved', ?, ?, '#EA580C', 0, 0)`,
-      [userId, validated.name, mobile, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, validated.dob, validated.address],
-    );
-  }
   await db.query(
     `INSERT INTO role_assignments
      (user_id, normalized_phone, role, display_name, ward_or_designation, status, source)
      VALUES (?, ?, 'citizen', ?, ?, 'active', 'unified_login')
      ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), display_name = VALUES(display_name),
        ward_or_designation = VALUES(ward_or_designation), status = 'active'`,
-    [userId, mobile, validated.name, `Ward ${validated.wardCode}`],
+    [existing.id, mobile, existing.name, existing.ward || null],
   );
-  return { profileRequired: false };
+  return true;
 }
 
-async function getOrCreateAssignmentUser(assignment, profile) {
+async function getOrCreateAssignmentUser(assignment) {
   const [existingRows] = await db.query(
     `SELECT * FROM users
      WHERE (id = ? AND ? IS NOT NULL) OR (${normalizedMobileLookupSql("mobile")} = ? AND role = ?)
@@ -922,21 +888,6 @@ async function getOrCreateAssignmentUser(assignment, profile) {
     : assignmentWardCode
       ? `Ward ${assignmentWardCode}`
       : "Not assigned";
-
-  if (assignment.role === "citizen") {
-    const validated = validateCitizenProfile({
-      ...(user || {}),
-      ...(profile || {}),
-      wardCode: profile?.wardCode || profile?.ward_code || profile?.ward || user?.ward_code || user?.ward,
-    });
-    if (!validated.complete) return { profileRequired: true, missing: validated.missing };
-    if (user && profile) {
-      await db.query(
-        `UPDATE users SET name = ?, dob = ?, address = ?, ward = ?, ward_code = ?, ward_number = ? WHERE id = ?`,
-        [validated.name, validated.dob, validated.address, `Ward ${validated.wardCode}`, validated.wardCode, validated.wardCode, user.id],
-      );
-    }
-  }
 
   if (user && assignment.role !== "citizen") {
     await db.query(
@@ -1009,28 +960,19 @@ app.post("/api/auth/unified-login", async (req, res) => {
     }
 
     let assignment = await resolveActiveAssignment(db, mobile);
-    if (!assignment) {
-      const citizenResult = await ensureCitizenAssignment(mobile, req.body?.profile);
-      if (citizenResult.profileRequired) {
-        return res.status(422).json({
-          success: false,
-          code: "PROFILE_REQUIRED",
-          message: "Complete your citizen profile to continue.",
-          missingFields: citizenResult.missing,
-        });
-      }
+    if (!assignment && await ensureRegisteredCitizenAssignment(mobile)) {
       assignment = await resolveActiveAssignment(db, mobile);
     }
 
-    const result = await getOrCreateAssignmentUser(assignment, req.body?.profile);
-    if (result.profileRequired) {
-      return res.status(422).json({
+    if (!assignment) {
+      return res.status(404).json({
         success: false,
-        code: "PROFILE_REQUIRED",
-        message: "Complete your citizen profile to continue.",
-        missingFields: result.missing,
+        code: "ACCOUNT_NOT_FOUND",
+        message: "No account is registered with this mobile number. Please use Register first.",
       });
     }
+
+    const result = await getOrCreateAssignmentUser(assignment);
 
     const user = mapUnifiedUser(result.user);
     return res.json({
@@ -1063,6 +1005,7 @@ app.get("/api/auth/session", async (req, res) => {
 
 app.post("/api/users", async (req, res) => {
   try {
+    await ensureRoleAuthorizationSchema(db);
     const requestedId = req.body.id || createId("user");
 
     const {
@@ -1226,6 +1169,17 @@ app.post("/api/users", async (req, res) => {
         normalizedContactNumber,
       ],
     );
+
+    if (role === "citizen") {
+      await db.query(
+        `INSERT INTO role_assignments
+         (user_id, normalized_phone, role, display_name, ward_or_designation, status, source)
+         VALUES (?, ?, 'citizen', ?, ?, 'active', 'citizen_registration')
+         ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), display_name = VALUES(display_name),
+           ward_or_designation = VALUES(ward_or_designation), status = 'active'`,
+        [id, mobile, String(name).trim(), effectiveWard],
+      );
+    }
 
     res.status(201).json({
       success: true,

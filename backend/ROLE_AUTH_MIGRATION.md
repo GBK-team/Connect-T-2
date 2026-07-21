@@ -10,7 +10,8 @@ complaints, existing users, or the legacy `super_admin_access_codes` table.
 2. Set a strong persistent `JWT_SECRET`.
 3. Set `MAIN_SUPER_ADMIN_MOBILE` to the normalized 10 digit mobile number that
    must be protected as the primary Super Admin. A clean database does not use
-   a hardcoded fallback number.
+   a hardcoded fallback number. The backend reconciles this setting on every
+   startup, including databases where the role migration already ran.
 4. Confirm the SMS provider environment variables and send one staging OTP.
 
 ## Automatic migration
@@ -50,7 +51,8 @@ If staging verification fails:
 ## Required staging checks
 
 - OTP send, resend timer, invalid OTP, expired OTP, and throttling.
-- New citizen profile completion and repeat citizen login.
+- Citizen registration on the Register tab and repeat citizen login from the shared Login tab.
+- Unknown mobile numbers are rejected by Login and directed to Register; Login never creates an account.
 - First login for one imported Nagarsevak and correct official name/designation.
 - Super Admin login using only the authorized mobile number and OTP.
 - Role priority when a test mobile has multiple active assignments.

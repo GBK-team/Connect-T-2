@@ -268,12 +268,47 @@ async function runInitialMigration(db) {
   }
 }
 
+async function ensureConfiguredPrimarySuperAdmin(db) {
+  const configuredRootMobile = normalizeMobile(process.env.MAIN_SUPER_ADMIN_MOBILE || "");
+
+  if (configuredRootMobile.length === 10) {
+    await db.query(
+      `INSERT INTO role_assignments
+       (normalized_phone, role, display_name, status, source, is_primary)
+       VALUES (?, 'super_admin', 'Primary Super Admin', 'active', 'environment', 1)
+       ON DUPLICATE KEY UPDATE status = 'active', is_primary = 1`,
+      [configuredRootMobile],
+    );
+    await db.query(
+      `UPDATE role_assignments
+       SET is_primary = CASE WHEN normalized_phone = ? THEN 1 ELSE 0 END
+       WHERE role = 'super_admin'`,
+      [configuredRootMobile],
+    );
+    return configuredRootMobile;
+  }
+
+  const [primaryRows] = await db.query(
+    "SELECT id FROM role_assignments WHERE role = 'super_admin' AND status = 'active' AND is_primary = 1 LIMIT 1",
+  );
+  if (!primaryRows.length) {
+    await db.query(
+      `UPDATE role_assignments SET is_primary = 1
+       WHERE role = 'super_admin' AND status = 'active'
+       ORDER BY created_at ASC, id ASC LIMIT 1`,
+    );
+  }
+  return null;
+}
+
 async function ensureRoleAuthorizationSchema(db) {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       await createAuthorizationTables(db);
       await ensureUsersCompatibilityColumns(db);
-      return runInitialMigration(db);
+      const summary = await runInitialMigration(db);
+      const configuredPrimaryMobile = await ensureConfiguredPrimarySuperAdmin(db);
+      return { ...summary, configuredPrimaryMobile };
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -351,6 +386,7 @@ module.exports = {
   ROLE_PRIORITY,
   VALID_STATUSES,
   chooseHighestPriorityAssignment,
+  ensureConfiguredPrimarySuperAdmin,
   ensureRoleAuthorizationSchema,
   findAssignmentsByMobile,
   getMigrationSummary,
