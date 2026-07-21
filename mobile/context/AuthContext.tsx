@@ -46,7 +46,7 @@ interface AuthContextType {
   register: (userData: Omit<User, "id" | "avatarColor" | "createdAt">) => Promise<User>;
   loginWithPhone: (mobile: string) => Promise<User | null>;
   loginWithNagarsevakId: (mobile: string, nagarsevakId: string) => Promise<User | null>;
-  unifiedLogin: (mobile: string, profile?: { name: string; dob: string; address: string; wardCode: string }) => Promise<User>;
+  unifiedLogin: (mobile: string) => Promise<User>;
   updateUser: (updates: Partial<User>) => Promise<void>;
 }
 
@@ -271,13 +271,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  const unifiedLogin = async (
-    mobile: string,
-    profile?: { name: string; dob: string; address: string; wardCode: string },
-  ): Promise<User> => {
+  const unifiedLogin = async (mobile: string): Promise<User> => {
     const response = await apiPost<any>("/api/auth/unified-login", {
       mobile: normalizeMobile(mobile),
-      profile: profile || undefined,
     });
     if (!response?.user || !response?.token) {
       throw new Error("Login could not be completed. Please try again.");

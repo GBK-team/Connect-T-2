@@ -9,6 +9,7 @@ const {
   ROLE_PRIORITY,
   VALID_STATUSES,
   chooseHighestPriorityAssignment,
+  ensureConfiguredPrimarySuperAdmin,
   privilegedRestrictionReason,
   safeAssignmentUserId,
   validateOfficialNagarsevakRecords,
@@ -162,4 +163,50 @@ test("25 allows a different non-primary admin to be restricted when another rema
     privilegedRestrictionReason({ target: { user_id: "SA_1", mobile: "9000000001", status: "active" }, actorUserId: "SA_2", actorMobile: "9000000002", activeCount: 2 }),
     null,
   );
+});
+
+test("26 reconciles the configured primary Super Admin on every startup", async () => {
+  const previous = process.env.MAIN_SUPER_ADMIN_MOBILE;
+  process.env.MAIN_SUPER_ADMIN_MOBILE = "+91 90000 00001";
+  const calls = [];
+  const fakeDb = {
+    async query(sql, params = []) {
+      calls.push({ sql: String(sql), params });
+      return [[], []];
+    },
+  };
+
+  try {
+    const mobile = await ensureConfiguredPrimarySuperAdmin(fakeDb);
+    assert.equal(mobile, "9000000001");
+    assert.equal(calls.length, 2);
+    assert.match(calls[0].sql, /INSERT INTO role_assignments/);
+    assert.match(calls[1].sql, /SET is_primary = CASE/);
+    assert.deepEqual(calls[0].params, ["9000000001"]);
+    assert.deepEqual(calls[1].params, ["9000000001"]);
+  } finally {
+    if (previous === undefined) delete process.env.MAIN_SUPER_ADMIN_MOBILE;
+    else process.env.MAIN_SUPER_ADMIN_MOBILE = previous;
+  }
+});
+
+test("27 preserves an existing primary when no environment mobile is configured", async () => {
+  const previous = process.env.MAIN_SUPER_ADMIN_MOBILE;
+  delete process.env.MAIN_SUPER_ADMIN_MOBILE;
+  const calls = [];
+  const fakeDb = {
+    async query(sql, params = []) {
+      calls.push({ sql: String(sql), params });
+      return [[{ id: 7 }], []];
+    },
+  };
+
+  try {
+    assert.equal(await ensureConfiguredPrimarySuperAdmin(fakeDb), null);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].sql, /is_primary = 1 LIMIT 1/);
+  } finally {
+    if (previous === undefined) delete process.env.MAIN_SUPER_ADMIN_MOBILE;
+    else process.env.MAIN_SUPER_ADMIN_MOBILE = previous;
+  }
 });
