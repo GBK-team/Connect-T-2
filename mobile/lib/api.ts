@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { apiUrl } from "@/constants/api";
+import { safeUserMessage } from "@/lib/errorSafety";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const AUTH_TOKEN_KEY = "connect_t_auth_token_v1";
@@ -31,9 +32,7 @@ export function isApiError(error: unknown): error is ApiError {
 export function getUserErrorMessage(error: unknown, fallback = "Something went wrong. Please try again after some time.") {
   if (isApiError(error)) return error.message || fallback;
   if (error instanceof Error) {
-    const message = String(error.message || "").trim();
-    const unsafe = !message || message.length > 300 || /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message);
-    if (!unsafe) return message;
+    return safeUserMessage(error.message, fallback);
   }
   return fallback;
 }
@@ -153,10 +152,7 @@ export function invalidateApiCache() {
 }
 
 function safeServerMessage(serverMessage: string) {
-  const message = String(serverMessage || "").trim();
-  if (!message || message.length > 300) return "";
-  const unsafe = /(https?:\/\/|\/api\/|base url|request url|sql|stack|exception|failed with \d+|<!doctype|<html)/i.test(message);
-  return unsafe ? "" : message;
+  return safeUserMessage(serverMessage, "");
 }
 
 function friendlyStatusMessage(status: number, serverMessage: string) {

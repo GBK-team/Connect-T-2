@@ -4,8 +4,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  GENERIC_NOT_FOUND_ERROR,
   GENERIC_SERVER_ERROR,
   requestIdFrom,
+  safeNotFoundPayload,
   safeServerErrorPayload,
 } = require("../httpSafety");
 const { isIsoDate, validateCoordinates } = require("../validation");
@@ -19,6 +21,15 @@ test("server errors expose a safe message and traceable request id", () => {
   assert.equal(payload.message, GENERIC_SERVER_ERROR);
   assert.equal(payload.requestId, "request-123");
   assert.doesNotMatch(JSON.stringify(payload), /sql|stack|exception/i);
+});
+
+test("unknown API routes return a safe user message without raw routing details", () => {
+  const payload = safeNotFoundPayload("request-404");
+  assert.equal(payload.success, false);
+  assert.equal(payload.error, GENERIC_NOT_FOUND_ERROR);
+  assert.equal(payload.code, "ROUTE_NOT_FOUND");
+  assert.equal(payload.requestId, "request-404");
+  assert.doesNotMatch(JSON.stringify(payload), /api route not found|cannot (get|post)/i);
 });
 
 test("request ids accept safe values and reject header injection", () => {

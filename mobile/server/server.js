@@ -44,7 +44,8 @@ app.use("/api/auth", authRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: "Route not found",
+    message: "The requested service is unavailable. Please try again after some time.",
+    code: "ROUTE_NOT_FOUND",
   });
 });
 
