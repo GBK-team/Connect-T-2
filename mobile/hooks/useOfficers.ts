@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiGet, apiPatch } from "@/lib/api";
+import { apiGet, apiPatch, getUserErrorMessage } from "@/lib/api";
 
 export interface Officer {
   id: string;
@@ -67,8 +67,8 @@ export function useOfficers(statusFilter?: ApprovalStatus) {
       const data = await apiGet<any>(`/api/auth/officers${query}`);
 
       setOfficers((data.officers || []).map(normalizeOfficer));
-    } catch (e: any) {
-      setError(e?.message || "Failed to load officers");
+    } catch (e: unknown) {
+      setError(getUserErrorMessage(e, "Nagarsevak records could not be loaded. Please try again."));
       setOfficers([]);
     } finally {
       setLoading(false);
@@ -94,10 +94,10 @@ export function useOfficers(statusFilter?: ApprovalStatus) {
       );
 
       return data;
-    } catch (e: any) {
+    } catch (e: unknown) {
       return {
         success: false,
-        message: e?.message || "Failed to update officer",
+        message: getUserErrorMessage(e, "Nagarsevak status could not be updated. Please try again."),
       };
     }
   };

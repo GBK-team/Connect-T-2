@@ -90,7 +90,7 @@ function formatDate(dateStr: string): string {
 
 function goBack(router: any, user: any) {
   if (router.canGoBack?.()) router.back();
-  else if (user?.role === "nagarsevak") router.replace("/nagarsevak" as any);
+  else if (user?.role === "nagarsevak") router.replace("/(tabs)/admin" as any);
   else if (user?.role === "super_admin") router.replace("/super-admin" as any);
   else router.replace("/(tabs)/complaints" as any);
 }

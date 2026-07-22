@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./productionBootstrap");
 
 const express = require("express");
 const cors = require("cors");
@@ -32,7 +33,7 @@ const {
 const app = express();
 installHttpSafety(app);
 
-const SERVER_VERSION = "backend-server-unified-role-otp-v3";
+const SERVER_VERSION = "backend-server-production-ready-v4";
 console.log(`[Connect-T] Running ${SERVER_VERSION} from ${__filename}`);
 
 const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
@@ -793,11 +794,25 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// Liveness endpoint used by the checked-in OpenAPI client. Database readiness
+// remains available at /api/health.
+app.get("/api/healthz", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.get("/api/server-info", (req, res) => {
   res.json({
     success: true,
     serverVersion: SERVER_VERSION,
     serverFile: "backend/server.js",
+    runtimeFile: path.basename(__filename),
+    features: {
+      safeErrors: true,
+      unifiedRoleLogin: true,
+      jobPortalSession: true,
+      utilityStatus: true,
+      seekerMessageLimit: true,
+    },
   });
 });
 
