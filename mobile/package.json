@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "doctor": "npx --yes expo-doctor@1.20.1",
-    "test:api": "node --import tsx --test test/api-routing.test.mjs",
+    "test:api": "node --import tsx --test test/*.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "export:android": "expo export --platform android",
     "postinstall": "node scripts/ensure-hermesc.js"
