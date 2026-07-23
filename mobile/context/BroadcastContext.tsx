@@ -1,4 +1,5 @@
-import React, { AppState, createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
 import { apiGet, apiPatch, apiPost, getUserErrorMessage } from "@/lib/api";
@@ -124,7 +125,7 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    const subscription = AppState.addEventListener("change", (state) => {
+    const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") void refreshBroadcasts().catch(() => undefined);
     });
     return () => subscription.remove();
