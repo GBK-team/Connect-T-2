@@ -7,5 +7,5 @@ import { Redirect } from "expo-router";
  * role-specific profile onboarding flow instead of a separate login screen.
  */
 export default function LegacyJobPortalLoginRedirect() {
-  return <Redirect href="/jobs/onboarding" />;
+  return <Redirect href={"/jobs/onboarding" as any} />;
 }
