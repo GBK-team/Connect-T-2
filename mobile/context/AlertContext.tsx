@@ -1,4 +1,5 @@
-import React, { AppState, createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 import { apiDelete, apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
@@ -154,7 +155,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshAlerts().catch(() => undefined);
-    const subscription = AppState.addEventListener("change", (state) => {
+    const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") void refreshAlerts().catch(() => undefined);
     });
     return () => subscription.remove();
