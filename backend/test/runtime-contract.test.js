@@ -23,6 +23,7 @@ test("production bootstrap includes every route and workflow patch", () => {
     "otpProductionPatch.js",
     "utilityStatusPatch.js",
     "jobPortalAuthPatch.js",
+    "jobPortalOnboardingPatch.js",
     "jobPortalMessagePatch.js",
     "jobPortalProfilePatch.js",
   ]) {
@@ -30,8 +31,21 @@ test("production bootstrap includes every route and workflow patch", () => {
   }
 
   assert.match(read("jobPortalAuthPatch.js"), /\/api\/job-portal\/session/);
+  assert.match(read("jobPortalOnboardingPatch.js"), /\/api\/job-portal\/onboarding/);
   assert.match(read("utilityStatusPatch.js"), /\/api\/utility-status/);
   assert.match(read("jobPortalMessagePatch.js"), /sent_count[^]*>=\s*2/);
+});
+
+test("job portal onboarding uses the verified civic session without OTP registration", () => {
+  const onboarding = read("jobPortalOnboardingPatch.js");
+
+  assert.match(onboarding, /verifyRequestToken\(req\)/);
+  assert.match(onboarding, /civicUser\.role\s*!==\s*"citizen"/);
+  assert.match(onboarding, /qualification/);
+  assert.match(onboarding, /skills/);
+  assert.match(onboarding, /company_description/);
+  assert.doesNotMatch(onboarding, /verifyOtpProof/);
+  assert.doesNotMatch(onboarding, /err\.message\s*}/);
 });
 
 test("all supported startup files share the same bootstrap", () => {
