@@ -1,312 +1,297 @@
-import { AppScrollView } from "@/components/AppScrollView";
-import React, { useMemo, useState } from "react";
-import { Modal, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppScrollView } from "@/components/AppScrollView";
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
 import { useJobsAuth } from "@/context/JobsAuthContext";
-import { useJobs, categoryConfig, typeConfig, Job, JobApplication } from "@/context/JobsContext";
+import { categoryConfig, Job, JobApplication, useJobs } from "@/context/JobsContext";
 import { getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
-const BG = "#ebeffc";
+const BG = "#EBEFFC";
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor(diff / 3600000);
-  const mins = Math.floor(diff / 60000);
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (mins > 0) return `${mins}m ago`;
-  return "Just now";
+function timeAgo(value: string) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return "Recently";
+  const minutes = Math.max(0, Math.floor((Date.now() - time) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
-function isNearby(jobLocation: string, userLocation?: string): boolean {
-  if (!userLocation) return false;
-  const location = jobLocation.toLowerCase();
-  const parts = userLocation.toLowerCase().split(/[\s,]+/);
-  return parts.some((part) => part.length > 3 && location.includes(part));
+function nearby(jobLocation: string, userLocation?: string) {
+  if (!jobLocation || !userLocation) return false;
+  const job = jobLocation.toLowerCase();
+  return userLocation.toLowerCase().split(/[\s,/-]+/).some((part) => part.length > 3 && job.includes(part));
 }
 
-function getIcon(job: Job) {
-  const cfg: any = categoryConfig[job.category];
-  return cfg?.icon || "briefcase";
+function EmptyState({ icon, title, text, action, onAction }: {
+  icon: keyof typeof Feather.glyphMap;
+  title: string;
+  text: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={s.emptyCard}>
+      <View style={s.emptyIcon}><Feather name={icon} size={28} color={ORANGE} /></View>
+      <Text style={s.emptyTitle}>{title}</Text>
+      <Text style={s.emptyText}>{text}</Text>
+      {action && onAction ? <TouchableOpacity style={s.emptyAction} onPress={onAction}><Text style={s.emptyActionText}>{action}</Text></TouchableOpacity> : null}
+    </View>
+  );
 }
 
-function getTypeLabel(job: Job) {
-  const cfg: any = typeConfig[job.type];
-  return cfg?.label || job.type || "Job";
-}
-
-function AppNotice({ visible, title, message, onClose }: { visible: boolean; title: string; message: string; onClose: () => void }) {
+function Notice({ visible, title, message, onClose }: { visible: boolean; title: string; message: string; onClose: () => void }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={s.noticeOverlay}>
+      <View style={s.modalOverlay}>
         <View style={s.noticeCard}>
-          <View style={s.noticeIcon}><Feather name="check-circle" size={26} color={ORANGE} /></View>
+          <View style={s.noticeIcon}><Feather name="info" size={24} color={ORANGE} /></View>
           <Text style={s.noticeTitle}>{title}</Text>
-          <Text style={s.noticeMsg}>{message}</Text>
-          <TouchableOpacity style={s.noticeOk} onPress={onClose}><Text style={s.noticeOkText}>OK</Text></TouchableOpacity>
+          <Text style={s.noticeMessage}>{message}</Text>
+          <TouchableOpacity style={s.noticeButton} onPress={onClose}><Text style={s.noticeButtonText}>OK</Text></TouchableOpacity>
         </View>
       </View>
     </Modal>
   );
 }
 
-function JobCard({ job, applied, near, onApply, onOpen }: { job: Job; applied: boolean; near?: boolean; onApply: () => void; onOpen: () => void }) {
+function ApplicantRow({ application, jobId }: { application: JobApplication; jobId: string }) {
+  const router = useRouter();
   return (
-    <TouchableOpacity style={s.jobCard} activeOpacity={0.88} onPress={onOpen}>
-      <View style={s.jobTop}>
-        <View style={s.jobIcon}><Feather name={getIcon(job) as any} size={18} color={ORANGE} /></View>
+    <TouchableOpacity style={s.applicantRow} onPress={() => router.push(`/jobs/active/${jobId}?seekerId=${application.seekerId}` as any)} activeOpacity={0.84}>
+      <View style={s.applicantAvatar}><Text style={s.applicantInitial}>{String(application.seekerName || "A").charAt(0).toUpperCase()}</Text></View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={s.applicantName} numberOfLines={1}>{application.seekerName || "Applicant"}</Text>
+        <Text style={s.applicantMeta} numberOfLines={1}>{application.seekerQualification || application.seekerSkills || "Profile details"}</Text>
+      </View>
+      <View style={s.statusPill}><Text style={s.statusText}>{application.status}</Text></View>
+      <Feather name="chevron-right" size={15} color="#CBD5E1" />
+    </TouchableOpacity>
+  );
+}
+
+function EmployerJobCard({ job, onToggle, onDelete }: { job: Job; onToggle: () => void; onDelete: () => void }) {
+  const router = useRouter();
+  const applications = job.applications || [];
+  return (
+    <View style={s.employerJobCard}>
+      <TouchableOpacity style={s.jobTop} onPress={() => router.push(`/jobs/active/${job.id}` as any)} activeOpacity={0.84}>
+        <View style={s.jobIcon}><Feather name={(categoryConfig[job.category]?.icon || "briefcase") as any} size={18} color={ORANGE} /></View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.jobTitle} numberOfLines={1}>{job.title}</Text>
-          <Text style={s.jobCompany} numberOfLines={1}>{job.company}</Text>
+          <Text style={s.jobCompany} numberOfLines={1}>{job.location} · {job.salary}</Text>
         </View>
-        {near ? <View style={s.nearPill}><Feather name="map-pin" size={10} color={ORANGE} /><Text style={s.nearText}>Near</Text></View> : <Feather name="chevron-right" size={18} color="#CBD5E1" />}
+        <Switch value={job.active} onValueChange={onToggle} trackColor={{ false: "#E2E8F0", true: "#FED7AA" }} thumbColor={job.active ? ORANGE : "#94A3B8"} />
+      </TouchableOpacity>
+      <View style={s.performanceRow}>
+        <Metric label="Applied" value={job.applicantsCount ?? job.applicants.length} />
+        <Metric label="Shortlisted" value={job.shortlisted.length} accent />
+        <Metric label="Hired" value={job.hired.length} />
       </View>
-
-      <View style={s.metaWrap}>
-        <View style={s.meta}><Feather name="map-pin" size={12} color="#64748B" /><Text style={s.metaText} numberOfLines={1}>{job.location}</Text></View>
-        <View style={[s.meta, s.typeMeta]}><Text style={s.typeText}>{getTypeLabel(job)}</Text></View>
-        <View style={s.meta}><Feather name="users" size={12} color="#64748B" /><Text style={s.metaText}>{job.openings}</Text></View>
+      {applications.length ? (
+        <View style={{ gap: 7 }}>{applications.slice(0, 3).map((application) => <ApplicantRow key={application.id} application={application} jobId={job.id} />)}</View>
+      ) : <Text style={s.noApplicants}>No applicants yet</Text>}
+      <View style={s.jobActions}>
+        <TouchableOpacity style={s.viewButton} onPress={() => router.push(`/jobs/active/${job.id}` as any)}><Feather name="users" size={14} color={ORANGE} /><Text style={s.viewButtonText}>Manage Applicants</Text></TouchableOpacity>
+        <TouchableOpacity style={s.deleteButton} onPress={onDelete}><Feather name="trash-2" size={15} color="#DC2626" /></TouchableOpacity>
       </View>
-
-      <View style={s.jobBottom}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.salary}>{job.salary}</Text>
-          <Text style={s.applicants}>{job.applicants.length} applicants · {timeAgo(job.createdAt)}</Text>
-        </View>
-        {applied ? <View style={s.appliedBtn}><Feather name="check" size={13} color={ORANGE} /><Text style={s.appliedText}>Applied</Text></View> : (
-          <TouchableOpacity style={s.applyBtn} activeOpacity={0.9} onPress={(e) => { e.stopPropagation(); onApply(); }}>
-            <Text style={s.applyText}>Apply</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function Empty({ icon, title, sub }: { icon: any; title: string; sub: string }) {
-  return <View style={s.emptyBox}><Feather name={icon} size={38} color="#CBD5E1" /><Text style={s.emptyTitle}>{title}</Text><Text style={s.emptySub}>{sub}</Text></View>;
-}
-
-function NotificationsModal({ visible, onClose, jobs }: { visible: boolean; onClose: () => void; jobs: Job[] }) {
-  const insets = useSafeAreaInsets();
-  const recentJobs = [...jobs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8);
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.modalOverlay}>
-        <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}> 
-          <View style={s.sheetHandle} />
-          <View style={s.sheetHeader}><View><Text style={s.sheetTitle}>Job Updates</Text><Text style={s.sheetSub}>Latest openings near you</Text></View><TouchableOpacity style={s.sheetClose} onPress={onClose}><Feather name="x" size={18} color="#64748B" /></TouchableOpacity></View>
-          {recentJobs.length === 0 ? <Empty icon="bell-off" title="No updates yet" sub="New job notifications will appear here." /> : (
-            <AppScrollView showsVerticalScrollIndicator={false}>{recentJobs.map((job) => <View key={job.id} style={s.notificationItem}><View style={s.notificationIcon}><Feather name={getIcon(job) as any} size={15} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.notificationTitle} numberOfLines={1}>{job.title}</Text><Text style={s.notificationSub} numberOfLines={1}>{job.company} · {job.location}</Text></View><Text style={s.notificationTime}>{timeAgo(job.createdAt)}</Text></View>)}</AppScrollView>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function SectionHeader({ title, sub, count }: { title: string; sub?: string; count?: number }) {
-  return <View style={s.sectionRow}><View><Text style={s.sectionTitle}>{title}</Text>{!!sub && <Text style={s.sectionSub}>{sub}</Text>}</View>{count !== undefined && <View style={s.countPill}><Text style={s.countText}>{count}</Text></View>}</View>;
-}
-
-function ApplicantRow({ app, job, onOpen }: { app: JobApplication; job: Job; onOpen: () => void }) {
-  return (
-    <TouchableOpacity style={s.applicantRow} onPress={onOpen} activeOpacity={0.86}>
-      <View style={s.applicantAvatar}><Text style={s.applicantInitial}>{String(app.seekerName || "A").charAt(0).toUpperCase()}</Text></View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={s.applicantName} numberOfLines={1}>{app.seekerName || `Applicant ${app.seekerId.slice(-4)}`}</Text>
-        <Text style={s.applicantMeta} numberOfLines={1}>{job.title} · {app.seekerQualification || "Profile"}</Text>
-      </View>
-      <View style={s.statusPill}><Text style={s.statusPillText}>{app.status}</Text></View>
-      <Feather name="chevron-right" size={16} color="#CBD5E1" />
-    </TouchableOpacity>
-  );
-}
-
-function EmployerDashboard({ jobs, employerId, onPostJob, onToggle, onDelete }: { jobs: Job[]; employerId: string; onPostJob: () => void; onToggle: (id: string) => void; onDelete: (id: string) => void }) {
-  const router = useRouter();
-  const myJobs = jobs.filter((job) => job.employerId === employerId);
-  const totalApplicants = myJobs.reduce((sum, job) => sum + job.applicants.length, 0);
-
-  return (
-    <View style={s.employerWrap}>
-      <View style={s.employerHeroCompact}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={s.eyebrow}>EMPLOYER PORTAL</Text>
-          <Text style={s.bigTitle}>Posted Jobs</Text>
-          <Text style={s.muted}>{myJobs.length} jobs · {totalApplicants} applicants</Text>
-        </View>
-        <TouchableOpacity style={s.postMiniBtn} onPress={onPostJob} activeOpacity={0.9}><Feather name="plus" size={15} color="white" /><Text style={s.postMiniText}>Post</Text></TouchableOpacity>
-      </View>
-
-      {myJobs.length === 0 ? <Empty icon="inbox" title="No jobs posted yet" sub="Post your first job to start receiving applicants." /> : myJobs.map((job) => (
-        <View key={job.id} style={s.employerJobCard}>
-          <TouchableOpacity style={s.jobTop} onPress={() => router.push(`/jobs/active/${job.id}` as any)} activeOpacity={0.86}>
-            <View style={s.jobIcon}><Feather name={getIcon(job) as any} size={18} color={ORANGE} /></View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.jobTitle} numberOfLines={1}>{job.title}</Text>
-              <Text style={s.jobCompany} numberOfLines={1}>{job.location} · {job.salary}</Text>
-            </View>
-            <Switch value={job.active} onValueChange={() => onToggle(job.id)} trackColor={{ false: "#E2E8F0", true: "#FED7AA" }} thumbColor={job.active ? ORANGE : "#94A3B8"} style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }} />
-          </TouchableOpacity>
-          <View style={s.performanceRow}>
-            <View style={s.perfItem}><Text style={s.perfValue}>{job.applicants.length}</Text><Text style={s.perfLabel}>Applied</Text></View>
-            <View style={s.perfLine} />
-            <View style={s.perfItem}><Text style={[s.perfValue, { color: ORANGE }]}>{job.shortlisted.length}</Text><Text style={s.perfLabel}>Shortlisted</Text></View>
-            <View style={s.perfLine} />
-            <View style={s.perfItem}><Text style={s.perfValue}>{job.hired.length}</Text><Text style={s.perfLabel}>Hired</Text></View>
-          </View>
-          <View style={s.applicantList}>
-            {(job.applications || []).length === 0 ? <Text style={s.noApplicants}>No applicants yet</Text> : (job.applications || []).slice(0, 4).map((app) => <ApplicantRow key={app.id} app={app} job={job} onOpen={() => router.push(`/jobs/active/${job.id}?seekerId=${app.seekerId}` as any)} />)}
-          </View>
-          <View style={s.employerActions}>
-            <TouchableOpacity style={s.viewApplicantsBtn} onPress={() => router.push(`/jobs/active/${job.id}` as any)}><Feather name="users" size={14} color={ORANGE} /><Text style={s.viewApplicantsText}>View Applicants</Text><Feather name="chevron-right" size={14} color={ORANGE} /></TouchableOpacity>
-            <TouchableOpacity style={s.deleteBtn} onPress={() => onDelete(job.id)}><Feather name="trash-2" size={15} color="#DC2626" /></TouchableOpacity>
-          </View>
-        </View>
-      ))}
     </View>
+  );
+}
+
+function Metric({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return <View style={s.metric}><Text style={[s.metricValue, accent && { color: ORANGE }]}>{value}</Text><Text style={s.metricLabel}>{label}</Text></View>;
+}
+
+function SeekerJobCard({ job, applied, isNear, onApply }: { job: Job; applied: boolean; isNear: boolean; onApply: () => void }) {
+  const router = useRouter();
+  return (
+    <TouchableOpacity style={s.seekerCard} onPress={() => router.push(`/jobs/detail/${job.id}` as any)} activeOpacity={0.86}>
+      <View style={s.jobTop}>
+        <View style={s.jobIcon}><Feather name={(categoryConfig[job.category]?.icon || "briefcase") as any} size={18} color={ORANGE} /></View>
+        <View style={{ flex: 1, minWidth: 0 }}><Text style={s.jobTitle} numberOfLines={1}>{job.title}</Text><Text style={s.jobCompany} numberOfLines={1}>{job.company}</Text></View>
+        {isNear ? <View style={s.nearPill}><Feather name="map-pin" size={10} color={ORANGE} /><Text style={s.nearText}>Nearby</Text></View> : <Feather name="chevron-right" size={18} color="#CBD5E1" />}
+      </View>
+      <View style={s.chips}><View style={s.chip}><Feather name="map-pin" size={11} color="#64748B" /><Text style={s.chipText}>{job.location}</Text></View><View style={s.chip}><Feather name="clock" size={11} color="#64748B" /><Text style={s.chipText}>{timeAgo(job.createdAt)}</Text></View></View>
+      <View style={s.salaryRow}>
+        <View><Text style={s.salary}>{job.salary}</Text><Text style={s.salarySub}>{job.openings} opening{job.openings === 1 ? "" : "s"}</Text></View>
+        {applied ? <View style={s.appliedPill}><Feather name="check" size={13} color={ORANGE} /><Text style={s.appliedText}>Applied</Text></View> : <TouchableOpacity style={s.applyButton} onPress={(event) => { event.stopPropagation(); onApply(); }}><Text style={s.applyText}>Apply</Text></TouchableOpacity>}
+      </View>
+    </TouchableOpacity>
   );
 }
 
 export default function JobsHomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const topPad = Platform.OS === "web" ? 66 : insets.top;
-  const { jobsUser } = useJobsAuth();
-  const { jobs, applyJob, hasApplied, toggleJobActive, deleteJob, refreshJobs } = useJobs();
-  const [showNotifications, setShowNotifications] = useState(false);
+  const { jobsUser, loading: authLoading } = useJobsAuth();
+  const { jobs, loading, error, refreshJobs, applyJob, hasApplied, toggleJobActive, deleteJob } = useJobs();
   const [notice, setNotice] = useState({ visible: false, title: "", message: "" });
   const isEmployer = jobsUser?.role === "employer";
+  const isSeeker = jobsUser?.role === "seeker";
+
+  useFocusEffect(useCallback(() => {
+    if (jobsUser) void refreshJobs().catch(() => undefined);
+  }, [jobsUser?.id, jobsUser?.role, refreshJobs]));
+
+  const employerJobs = useMemo(() => isEmployer ? jobs.filter((job) => job.employerId === jobsUser?.id) : [], [isEmployer, jobs, jobsUser?.id]);
   const activeJobs = useMemo(() => jobs.filter((job) => job.active), [jobs]);
-  const visibleJobs = useMemo(() => !jobsUser || jobsUser.role !== "seeker" ? activeJobs : activeJobs.filter((job) => !job.applicants.includes(jobsUser.id)), [activeJobs, jobsUser]);
-  const nearbyJobs = useMemo(() => activeJobs.filter((job) => isNearby(job.location, jobsUser?.location)), [activeJobs, jobsUser?.location]);
+  const nearbyJobs = useMemo(() => isSeeker ? activeJobs.filter((job) => nearby(job.location, jobsUser?.location)) : [], [activeJobs, isSeeker, jobsUser?.location]);
+  const seekerJobs = nearbyJobs.length ? nearbyJobs : activeJobs;
+
+  const showError = (title: string, requestError: unknown, fallback: string) => setNotice({ visible: true, title, message: getUserErrorMessage(requestError, fallback) });
 
   const handleApply = async (job: Job) => {
-    if (!jobsUser || isEmployer || hasApplied(job.id, jobsUser.id)) return;
+    if (!jobsUser || jobsUser.role !== "seeker" || hasApplied(job.id, jobsUser.id)) return;
     try {
       await applyJob(job.id, jobsUser.id);
-      setNotice({ visible: true, title: "Application Sent", message: `You applied for ${job.title} at ${job.company}.` });
-    } catch (err: any) {
-      setNotice({ visible: true, title: "Apply Failed", message: getUserErrorMessage(err, "Please try again.") });
+      setNotice({ visible: true, title: "Application sent", message: `Your application for ${job.title} has been submitted.` });
+    } catch (requestError) {
+      showError("Application not sent", requestError, "Please try again after some time.");
     }
   };
 
-  const list = nearbyJobs.length ? nearbyJobs : visibleJobs;
+  const handleToggle = async (job: Job) => {
+    try { await toggleJobActive(job.id); }
+    catch (requestError) { showError("Status not updated", requestError, "The job status could not be changed."); }
+  };
+
+  const confirmDelete = (job: Job) => Alert.alert("Delete job?", `Delete ${job.title}? Existing application history will remain protected.`, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Delete", style: "destructive", onPress: () => void deleteJob(job.id).catch((requestError) => showError("Job not deleted", requestError, "Please try again.")) },
+  ]);
+
+  if (authLoading || (loading && !jobs.length)) {
+    return <View style={s.loadingRoot}><ActivityIndicator size="large" color={ORANGE} /><Text style={s.loadingText}>Loading your Job Portal dashboard...</Text></View>;
+  }
+
+  if (!jobsUser) {
+    return <View style={s.loadingRoot}><EmptyState icon="lock" title="Job profile required" text="Complete your Job Seeker or Employer profile to open the dashboard." action="Set Up Profile" onAction={() => router.replace("/jobs/profile-setup" as any)} /></View>;
+  }
 
   return (
     <View style={s.root}>
-      <LinearGradient colors={[DARK, ORANGE, "#F97316", "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad + 12 }]}> 
+      <LinearGradient colors={[DARK, ORANGE, "#FB923C"]} style={[s.header, { paddingTop: (Platform.OS === "web" ? 66 : insets.top) + 12 }]}>
         <TopShade height={110} /><DecorativeCircles />
-        <View style={s.headerRow}><View style={{ flex: 1 }}><View style={s.headerPill}><Feather name="briefcase" size={10} color="rgba(255,255,255,0.9)" /><Text style={s.headerPillText}>{isEmployer ? "EMPLOYER PORTAL" : "LOCAL JOBS"}</Text></View><Text style={s.headerTitle}>{isEmployer ? "Employer Dashboard" : "Connect T Jobs"}</Text><Text style={s.headerSub} numberOfLines={2}>{isEmployer ? `${jobsUser?.company || jobsUser?.name || "Company"} · Hiring workspace` : `Hello, ${jobsUser?.name?.split(" ")[0] || "there"} · Find trusted local work`}</Text></View>{!isEmployer && <TouchableOpacity style={s.headerIcon} onPress={() => setShowNotifications(true)}><Feather name="bell" size={18} color="white" />{activeJobs.length > 0 && <View style={s.headerDot} />}</TouchableOpacity>}</View>
-        {!isEmployer && <TouchableOpacity style={s.searchCard} activeOpacity={0.9} onPress={() => router.push("/jobs/search" as any)}><View style={s.searchIcon}><Feather name="search" size={18} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.searchTitle}>Nearby job openings</Text><Text style={s.searchSub}>Tap to view jobs list with filters</Text></View><Feather name="sliders" size={18} color="#94A3B8" /></TouchableOpacity>}
+        <View style={s.headerRow}>
+          <View style={{ flex: 1 }}><Text style={s.kicker}>{isEmployer ? "EMPLOYER WORKSPACE" : "JOB SEEKER DASHBOARD"}</Text><Text style={s.headerTitle}>{isEmployer ? "Manage Hiring" : "Find Local Jobs"}</Text><Text style={s.headerSub}>{isEmployer ? jobsUser.company || jobsUser.name : `Welcome, ${jobsUser.name.split(" ")[0]}`}</Text></View>
+          <TouchableOpacity style={s.headerButton} onPress={() => router.replace("/portal-select" as any)}><Feather name="repeat" size={18} color="white" /></TouchableOpacity>
+        </View>
+        {!isEmployer ? <TouchableOpacity style={s.searchBar} onPress={() => router.push("/jobs/search" as any)}><Feather name="search" size={18} color={ORANGE} /><View style={{ flex: 1 }}><Text style={s.searchTitle}>Search verified local jobs</Text><Text style={s.searchSub}>Category, location, salary and job type</Text></View><Feather name="chevron-right" size={18} color="#94A3B8" /></TouchableOpacity> : null}
       </LinearGradient>
-      <AppScrollView onAppRefresh={refreshJobs} showsVerticalScrollIndicator={false} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 92 }]}>
-        {isEmployer ? <EmployerDashboard jobs={jobs} employerId={jobsUser?.id || ""} onPostJob={() => router.push("/jobs/(tabs)/post" as any)} onToggle={toggleJobActive} onDelete={deleteJob} /> : <View style={s.sectionBlock}><SectionHeader title="Nearby Jobs" sub="Local openings with search and filters" count={list.length} /><TouchableOpacity onPress={() => router.push("/jobs/search" as any)} style={s.seeAllBtn}><Text style={s.seeAllText}>See all jobs</Text><Feather name="arrow-right" size={13} color={ORANGE} /></TouchableOpacity>{list.length === 0 ? <Empty icon="briefcase" title="No jobs right now" sub="New verified local jobs will appear here." /> : list.slice(0, 8).map((job) => <JobCard key={job.id} job={job} applied={!!jobsUser && hasApplied(job.id, jobsUser.id)} near={nearbyJobs.some((j) => j.id === job.id)} onOpen={() => router.push(`/jobs/detail/${job.id}` as any)} onApply={() => handleApply(job)} />)}</View>}
+
+      <AppScrollView onAppRefresh={refreshJobs} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 96 }]} showsVerticalScrollIndicator={false}>
+        {error ? <TouchableOpacity style={s.errorBanner} onPress={() => void refreshJobs().catch(() => undefined)}><Feather name="alert-circle" size={16} color="#B45309" /><Text style={s.errorText}>{error}</Text><Text style={s.retryText}>Retry</Text></TouchableOpacity> : null}
+
+        {isEmployer ? (
+          <>
+            <View style={s.dashboardCard}><View><Text style={s.sectionEyebrow}>HIRING OVERVIEW</Text><Text style={s.dashboardTitle}>{employerJobs.length} job post{employerJobs.length === 1 ? "" : "s"}</Text><Text style={s.dashboardSub}>{employerJobs.reduce((sum, job) => sum + (job.applicantsCount ?? job.applicants.length), 0)} total applications</Text></View><TouchableOpacity style={s.postButton} onPress={() => router.push("/jobs/(tabs)/post" as any)}><Feather name="plus" size={16} color="white" /><Text style={s.postText}>Post Job</Text></TouchableOpacity></View>
+            {employerJobs.length ? employerJobs.map((job) => <EmployerJobCard key={job.id} job={job} onToggle={() => void handleToggle(job)} onDelete={() => confirmDelete(job)} />) : <EmptyState icon="briefcase" title="No jobs posted yet" text="Post your first vacancy to start receiving local applications." action="Post First Job" onAction={() => router.push("/jobs/(tabs)/post" as any)} />}
+          </>
+        ) : (
+          <>
+            <View style={s.sectionHeader}><View><Text style={s.sectionTitle}>{nearbyJobs.length ? "Jobs Near You" : "Latest Job Openings"}</Text><Text style={s.sectionSub}>{activeJobs.length} active verified jobs</Text></View><TouchableOpacity onPress={() => router.push("/jobs/search" as any)}><Text style={s.seeAll}>See all</Text></TouchableOpacity></View>
+            {seekerJobs.length ? seekerJobs.slice(0, 10).map((job) => <SeekerJobCard key={job.id} job={job} applied={hasApplied(job.id, jobsUser.id)} isNear={nearbyJobs.some((nearJob) => nearJob.id === job.id)} onApply={() => void handleApply(job)} />) : <EmptyState icon="briefcase" title="No active jobs right now" text="Pull down to refresh. New verified jobs will appear here after employers publish them." action="Refresh" onAction={() => void refreshJobs().catch(() => undefined)} />}
+          </>
+        )}
       </AppScrollView>
-      <NotificationsModal visible={showNotifications} onClose={() => setShowNotifications(false)} jobs={activeJobs} />
-      <AppNotice visible={notice.visible} title={notice.title} message={notice.message} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} />
+      <Notice visible={notice.visible} title={notice.title} message={notice.message} onClose={() => setNotice((current) => ({ ...current, visible: false }))} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  header: { paddingHorizontal: 20, paddingBottom: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden", shadowColor: DARK, shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
-  headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 14 },
-  headerPill: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", marginBottom: 9 },
-  headerPillText: { fontSize: 9, letterSpacing: 0.9, color: "white", fontFamily: "Inter_700Bold" },
-  headerTitle: { fontSize: 22, lineHeight: 28, color: "white", fontWeight: "900", fontFamily: "Inter_700Bold", letterSpacing: -0.4 },
-  headerSub: { marginTop: 3, fontSize: 12, lineHeight: 17, color: "rgba(255,255,255,0.78)", fontFamily: "Inter_400Regular" },
-  headerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.18)", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" },
-  headerDot: { position: "absolute", top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: "#FDE68A" },
-  searchCard: { marginTop: 18, backgroundColor: "white", borderRadius: 18, padding: 13, flexDirection: "row", alignItems: "center", gap: 11, shadowColor: DARK, shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
-  searchIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  searchTitle: { fontSize: 13, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  searchSub: { marginTop: 2, fontSize: 10.5, color: "#94A3B8", fontFamily: "Inter_400Regular" },
-  content: { padding: 16, gap: 16 },
-  sectionBlock: { gap: 11 },
-  sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  sectionTitle: { fontSize: 14, color: "#0F172A", fontWeight: "900", fontFamily: "Inter_700Bold" },
-  sectionSub: { fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular", marginTop: 1 },
-  countPill: { minWidth: 32, height: 26, borderRadius: 999, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", paddingHorizontal: 9, borderWidth: 1, borderColor: "#FED7AA" },
-  countText: { fontSize: 11, color: ORANGE, fontFamily: "Inter_700Bold" },
-  seeAllBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  seeAllText: { fontSize: 11, color: ORANGE, fontFamily: "Inter_700Bold" },
-  jobCard: { backgroundColor: "white", borderRadius: 18, padding: 13, gap: 11, borderWidth: 1, borderColor: "rgba(226,232,240,0.92)", shadowColor: DARK, shadowOpacity: 0.055, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
-  jobTop: { flexDirection: "row", alignItems: "center", gap: 11 },
-  jobIcon: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  jobTitle: { fontSize: 13.5, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  jobCompany: { marginTop: 2, fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular" },
-  nearPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  nearText: { fontSize: 9.5, color: ORANGE, fontFamily: "Inter_700Bold" },
-  metaWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  meta: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: "#F8FAFC" },
-  metaText: { fontSize: 10.5, color: "#64748B", fontFamily: "Inter_500Medium" },
-  typeMeta: { backgroundColor: "#FFF7ED" },
-  typeText: { fontSize: 10.5, color: ORANGE, fontFamily: "Inter_700Bold" },
-  jobBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  salary: { fontSize: 14, color: ORANGE, fontFamily: "Inter_700Bold", fontWeight: "900" },
-  applicants: { marginTop: 1, fontSize: 10.5, color: "#94A3B8", fontFamily: "Inter_400Regular" },
-  applyBtn: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9, backgroundColor: ORANGE },
-  applyText: { fontSize: 11.5, color: "white", fontFamily: "Inter_700Bold" },
-  appliedBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  appliedText: { fontSize: 11.5, color: ORANGE, fontFamily: "Inter_700Bold" },
-  emptyBox: { backgroundColor: "white", borderRadius: 18, padding: 24, alignItems: "center", gap: 7, borderWidth: 1, borderColor: "rgba(226,232,240,0.92)", shadowColor: "#0F172A", shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  emptyTitle: { fontSize: 14, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900", textAlign: "center" },
-  emptySub: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 16 },
-  employerWrap: { gap: 14 },
-  employerHeroCompact: { backgroundColor: "white", borderRadius: 20, padding: 15, borderWidth: 1, borderColor: "#FED7AA", flexDirection: "row", alignItems: "center", gap: 12, shadowColor: DARK, shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
-  eyebrow: { fontSize: 9, color: ORANGE, fontFamily: "Inter_700Bold", letterSpacing: 0.8, marginBottom: 4 },
-  bigTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  muted: { marginTop: 3, fontSize: 11, color: "#64748B", lineHeight: 16, fontFamily: "Inter_400Regular" },
-  postMiniBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: ORANGE, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 14 },
-  postMiniText: { color: "white", fontSize: 12, fontFamily: "Inter_700Bold" },
-  employerJobCard: { backgroundColor: "white", borderRadius: 18, padding: 13, gap: 12, borderWidth: 1, borderColor: "rgba(226,232,240,0.95)", shadowColor: "#0F172A", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  performanceRow: { flexDirection: "row", backgroundColor: "#F8FAFC", borderRadius: 16, paddingVertical: 10, alignItems: "center" },
-  perfItem: { flex: 1, alignItems: "center" },
-  perfValue: { fontSize: 17, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  perfLabel: { marginTop: 1, fontSize: 9.5, color: "#64748B", fontFamily: "Inter_500Medium" },
-  perfLine: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
-  applicantList: { gap: 8 },
-  applicantRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#F8FAFC", borderRadius: 15, padding: 10, borderWidth: 1, borderColor: "#E2E8F0" },
-  applicantAvatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FED7AA" },
-  applicantInitial: { color: ORANGE, fontSize: 13, fontFamily: "Inter_700Bold" },
-  applicantName: { fontSize: 12.5, color: "#0F172A", fontFamily: "Inter_700Bold" },
-  applicantMeta: { marginTop: 1, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_400Regular" },
-  statusPill: { backgroundColor: "#FFF7ED", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: "#FED7AA" },
-  statusPillText: { color: ORANGE, fontSize: 9, fontFamily: "Inter_700Bold", textTransform: "capitalize" },
-  noApplicants: { textAlign: "center", color: "#94A3B8", fontSize: 11, fontFamily: "Inter_400Regular", paddingVertical: 8 },
-  employerActions: { flexDirection: "row", gap: 9 },
-  viewApplicantsBtn: { flex: 1, minHeight: 42, borderRadius: 15, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
-  viewApplicantsText: { fontSize: 11.5, color: ORANGE, fontFamily: "Inter_700Bold" },
-  deleteBtn: { width: 44, minHeight: 42, borderRadius: 15, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", alignItems: "center", justifyContent: "center" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", justifyContent: "flex-end" },
-  sheet: { maxHeight: "78%", backgroundColor: "#F8FAFC", borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 18 },
-  sheetHandle: { alignSelf: "center", width: 42, height: 5, borderRadius: 999, backgroundColor: "#CBD5E1", marginBottom: 16 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  sheetTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  sheetSub: { marginTop: 2, fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular" },
-  sheetClose: { width: 38, height: 38, borderRadius: 19, backgroundColor: "white", alignItems: "center", justifyContent: "center" },
-  notificationItem: { backgroundColor: "white", borderRadius: 16, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, borderWidth: 1, borderColor: "#E2E8F0" },
-  notificationIcon: { width: 36, height: 36, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  notificationTitle: { fontSize: 12.5, color: "#0F172A", fontFamily: "Inter_700Bold" },
-  notificationSub: { marginTop: 2, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_400Regular" },
-  notificationTime: { fontSize: 9.5, color: "#94A3B8", fontFamily: "Inter_600SemiBold" },
-  noticeOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 22 },
-  noticeCard: { width: "100%", maxWidth: 340, backgroundColor: "white", borderRadius: 24, padding: 22, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 12 },
-  noticeIcon: { width: 58, height: 58, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 12, backgroundColor: "#FFF7ED" },
-  noticeTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900", textAlign: "center" },
-  noticeMsg: { marginTop: 6, fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 19, textAlign: "center" },
-  noticeOk: { marginTop: 18, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 28, alignItems: "center", backgroundColor: ORANGE },
-  noticeOkText: { fontSize: 13, color: "white", fontFamily: "Inter_700Bold" },
+  loadingRoot: { flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center", padding: 20 },
+  loadingText: { marginTop: 12, fontSize: 12, color: "#64748B", fontFamily: "Inter_600SemiBold" },
+  header: { paddingHorizontal: 18, paddingBottom: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  kicker: { fontSize: 9.5, color: "rgba(255,255,255,0.72)", fontFamily: "Inter_700Bold", letterSpacing: 1.1 },
+  headerTitle: { marginTop: 4, fontSize: 23, color: "white", fontFamily: "Inter_700Bold" },
+  headerSub: { marginTop: 3, fontSize: 12, color: "rgba(255,255,255,0.78)", fontFamily: "Inter_400Regular" },
+  headerButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.17)", alignItems: "center", justifyContent: "center" },
+  searchBar: { marginTop: 16, backgroundColor: "white", borderRadius: 17, padding: 13, flexDirection: "row", alignItems: "center", gap: 11 },
+  searchTitle: { fontSize: 13, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  searchSub: { fontSize: 10.5, color: "#94A3B8", marginTop: 2, fontFamily: "Inter_400Regular" },
+  content: { padding: 15, gap: 12 },
+  errorBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A" },
+  errorText: { flex: 1, fontSize: 11, lineHeight: 16, color: "#92400E", fontFamily: "Inter_500Medium" },
+  retryText: { fontSize: 11, color: "#B45309", fontFamily: "Inter_700Bold" },
+  dashboardCard: { backgroundColor: "white", borderRadius: 19, padding: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderWidth: 1, borderColor: "#FED7AA" },
+  sectionEyebrow: { fontSize: 9, color: ORANGE, letterSpacing: 1, fontFamily: "Inter_700Bold" },
+  dashboardTitle: { marginTop: 4, fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  dashboardSub: { marginTop: 3, fontSize: 11, color: "#64748B", fontFamily: "Inter_400Regular" },
+  postButton: { flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: ORANGE, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10 },
+  postText: { color: "white", fontSize: 11.5, fontFamily: "Inter_700Bold" },
+  employerJobCard: { backgroundColor: "white", borderRadius: 18, padding: 13, gap: 11, borderWidth: 1, borderColor: "#E2E8F0" },
+  jobTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  jobIcon: { width: 43, height: 43, borderRadius: 14, backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA", alignItems: "center", justifyContent: "center" },
+  jobTitle: { fontSize: 13.5, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  jobCompany: { marginTop: 2, fontSize: 10.8, color: "#64748B", fontFamily: "Inter_400Regular" },
+  performanceRow: { flexDirection: "row", backgroundColor: "#F8FAFC", borderRadius: 14, paddingVertical: 9 },
+  metric: { flex: 1, alignItems: "center" },
+  metricValue: { fontSize: 17, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  metricLabel: { marginTop: 1, fontSize: 9, color: "#64748B", fontFamily: "Inter_500Medium" },
+  applicantRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 13, padding: 9, backgroundColor: "#F8FAFC" },
+  applicantAvatar: { width: 33, height: 33, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED" },
+  applicantInitial: { color: ORANGE, fontFamily: "Inter_700Bold" },
+  applicantName: { fontSize: 11.5, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  applicantMeta: { fontSize: 9.8, color: "#64748B", marginTop: 1, fontFamily: "Inter_400Regular" },
+  statusPill: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, backgroundColor: "#FFF7ED" },
+  statusText: { fontSize: 8.5, color: ORANGE, textTransform: "capitalize", fontFamily: "Inter_700Bold" },
+  noApplicants: { textAlign: "center", paddingVertical: 5, fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  jobActions: { flexDirection: "row", gap: 8 },
+  viewButton: { flex: 1, minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 12, backgroundColor: "#FFF7ED" },
+  viewButtonText: { fontSize: 11, color: ORANGE, fontFamily: "Inter_700Bold" },
+  deleteButton: { width: 42, height: 40, borderRadius: 12, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 15, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  sectionSub: { marginTop: 2, fontSize: 10.5, color: "#64748B", fontFamily: "Inter_400Regular" },
+  seeAll: { fontSize: 11.5, color: ORANGE, fontFamily: "Inter_700Bold" },
+  seekerCard: { backgroundColor: "white", borderRadius: 18, padding: 13, gap: 11, borderWidth: 1, borderColor: "#E2E8F0" },
+  nearPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "#FFF7ED" },
+  nearText: { fontSize: 9, color: ORANGE, fontFamily: "Inter_700Bold" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "#F8FAFC" },
+  chipText: { fontSize: 9.8, color: "#64748B", fontFamily: "Inter_500Medium" },
+  salaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  salary: { fontSize: 14, color: ORANGE, fontFamily: "Inter_700Bold" },
+  salarySub: { marginTop: 1, fontSize: 9.5, color: "#94A3B8", fontFamily: "Inter_400Regular" },
+  applyButton: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, backgroundColor: ORANGE },
+  applyText: { color: "white", fontSize: 11, fontFamily: "Inter_700Bold" },
+  appliedPill: { flexDirection: "row", gap: 5, alignItems: "center", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#FFF7ED" },
+  appliedText: { color: ORANGE, fontSize: 11, fontFamily: "Inter_700Bold" },
+  emptyCard: { width: "100%", backgroundColor: "white", borderRadius: 20, padding: 24, alignItems: "center", borderWidth: 1, borderColor: "#FED7AA" },
+  emptyIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center" },
+  emptyTitle: { marginTop: 10, fontSize: 15, color: "#0F172A", textAlign: "center", fontFamily: "Inter_700Bold" },
+  emptyText: { marginTop: 5, fontSize: 11, lineHeight: 17, color: "#64748B", textAlign: "center", fontFamily: "Inter_400Regular" },
+  emptyAction: { marginTop: 13, borderRadius: 13, paddingHorizontal: 15, paddingVertical: 10, backgroundColor: ORANGE },
+  emptyActionText: { color: "white", fontSize: 11.5, fontFamily: "Inter_700Bold" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.48)", alignItems: "center", justifyContent: "center", padding: 22 },
+  noticeCard: { width: "100%", maxWidth: 360, borderRadius: 22, padding: 22, backgroundColor: "white", alignItems: "center" },
+  noticeIcon: { width: 54, height: 54, borderRadius: 18, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center" },
+  noticeTitle: { marginTop: 12, fontSize: 17, color: "#0F172A", fontFamily: "Inter_700Bold" },
+  noticeMessage: { marginTop: 6, fontSize: 12, lineHeight: 18, color: "#64748B", textAlign: "center", fontFamily: "Inter_400Regular" },
+  noticeButton: { marginTop: 16, minWidth: 100, borderRadius: 13, paddingVertical: 10, alignItems: "center", backgroundColor: ORANGE },
+  noticeButtonText: { color: "white", fontFamily: "Inter_700Bold" },
 });
