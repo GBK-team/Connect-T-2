@@ -14,8 +14,8 @@ test("all profile portal actions bypass portal selection after initial choice", 
   assert.match(civic, /requestJobsPortal/);
   assert.match(jobs, /requestCivicPortal/);
   assert.doesNotMatch(jobs, /portal-select/);
-  assert.match(hook, /resetNavigation("\/jobs")/);
-  assert.match(hook, /resetNavigation("\/(tabs)")/);
+  assert.ok(hook.includes('resetNavigation("/jobs")'));
+  assert.ok(hook.includes('resetNavigation("/(tabs)")'));
 });
 
 test("shared logout confirmation is used by civic jobs nagarsevak and super admin", () => {
