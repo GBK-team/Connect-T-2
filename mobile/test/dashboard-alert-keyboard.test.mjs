@@ -25,13 +25,13 @@ test("job dashboards use authoritative refresh and strict database booleans", ()
 
 test("citizen alerts refresh on focus and publishing controls are role restricted", () => {
   const context = read("context/AlertContext.tsx");
-  const list = read("app/alert/list.tsx");
+  const list = read("screens/OfficialUpdatesScreen.tsx");
   const form = read("app/alert/new.tsx");
   assert.match(context, /AppState\.addEventListener/);
   assert.match(context, /alertVisibleForWard/);
   assert.match(list, /useFocusEffect/);
   assert.match(list, /canPublish/);
-  assert.match(list, /Official updates published by your Nagarsevak and Super Admin/);
+  assert.match(list, /citizenSub/);
   assert.match(form, /if \(!canPublish\) router\.replace\("\/alert\/list"/);
   assert.match(form, /All citizens/);
   assert.match(form, /Ward residents/);
