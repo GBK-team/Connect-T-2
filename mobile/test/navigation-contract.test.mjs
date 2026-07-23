@@ -6,6 +6,14 @@ const complaintDetail = await readFile(
   new URL("../app/complaint/[id].tsx", import.meta.url),
   "utf8",
 );
+const rootLayout = await readFile(
+  new URL("../app/_layout.tsx", import.meta.url),
+  "utf8",
+);
+const authContext = await readFile(
+  new URL("../context/AuthContext.tsx", import.meta.url),
+  "utf8",
+);
 
 test("complaint details fall back to existing role dashboards", () => {
   assert.doesNotMatch(complaintDetail, /router\.replace\("\/nagarsevak"/);
@@ -24,4 +32,16 @@ test("retired privileged login screens redirect to the unified login", async () 
     const source = await readFile(new URL(route, import.meta.url), "utf8");
     assert.match(source, /\/login/, `${route} must redirect to the unified login`);
   }
+});
+
+test("logout always clears civic and job sessions and returns to the unified login", () => {
+  assert.match(authContext, /setLogoutTarget\("\/login"\)/);
+  assert.match(authContext, /clearAuthToken\(\)/);
+  assert.match(authContext, /clearJobsAuthToken\(\)/);
+  assert.match(authContext, /AsyncStorage\.removeItem\(JOBS_SESSION_KEY\)/);
+  assert.doesNotMatch(authContext, /setLogoutTarget\(redirectTo \|\| null\)/);
+
+  assert.match(rootLayout, /if \(!user && logoutTarget\)/);
+  assert.match(rootLayout, /router\.replace\("\/login" as any\)/);
+  assert.doesNotMatch(rootLayout, /inJobs \|\| inPortalSelect/);
 });
