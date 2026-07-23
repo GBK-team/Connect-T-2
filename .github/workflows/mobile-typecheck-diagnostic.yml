@@ -1,0 +1,23 @@
+name: Mobile Typecheck Diagnostic
+
+on:
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mobile dependencies quietly
+        working-directory: mobile
+        run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund --silent
+      - name: Run focused TypeScript validation
+        working-directory: mobile
+        shell: bash
+        run: |
+          set +e
+          output=$(npx tsc --noEmit -p tsconfig.json --pretty false 2>&1)
+          status=$?
+          printf '%s\n' "$output"
+          exit $status
