@@ -51,20 +51,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const first = String(segments[0] || "");
     const inLogin = first === "login";
     const inTabs = first === "(tabs)";
-    const inJobs = first === "jobs";
-    const inPortalSelect = first === "portal-select";
     const inSuperAdminLogin = first === "super-admin-login";
     const inSuperAdmin = first === "super-admin";
     const inNagarsevak = first === "nagarsevak";
     const inAlert = first === "alert";
     const inComplaint = first === "complaint";
     const currentTab = inTabs ? String(segments[1] || "") : undefined;
-    const isPublicRoute = !first || inLogin || inJobs || inPortalSelect || inSuperAdminLogin || inNagarsevak;
+    const isPublicRoute = !first || inLogin || inSuperAdminLogin || inNagarsevak;
+
+    // Logout always wins over the current route. This also prevents a stale
+    // Job Portal, Civic, or portal-selection screen from remaining visible.
+    if (!user && logoutTarget) {
+      if (!inLogin) router.replace("/login" as any);
+      clearLogoutTarget();
+      return;
+    }
 
     if (!user && !isPublicRoute) {
-      const target = logoutTarget || "/login";
-      router.replace(target as any);
-      if (logoutTarget) clearLogoutTarget();
+      router.replace("/login" as any);
       return;
     }
 
