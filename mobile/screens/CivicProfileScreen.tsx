@@ -286,7 +286,7 @@ export default function CivicProfileScreen() {
         {officialRows.length ? <Section title={c("officialInfo")}>{officialRows.map((row) => <DetailRow key={row.label} {...row} />)}</Section> : null}
 
         <Section title={c("quickActions")}>
-          <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/(tabs)/complaints" as any)}>
+          <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/complaint/list" as any)}>
             <View style={styles.actionIcon}><Feather name="file-text" size={18} color={ORANGE} /></View><View style={styles.actionText}><Text style={styles.actionTitle}>{c("complaints")}</Text><Text style={styles.actionSub}>{c("complaintsSub")}</Text></View><Feather name="chevron-right" size={18} color="#94A3B8" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/alert/list" as any)}>
