@@ -45,9 +45,47 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
-      - run: npm run doctor
+      - name: Run Expo Doctor
+        shell: bash
+        run: |
+          set +e
+          npm run doctor > doctor.log 2>&1
+          status=$?
+          cat doctor.log
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 12 doctor.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=Expo Doctor failed::$summary"
+          fi
+          exit "$status"
+      - name: Upload Expo Doctor diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-doctor-diagnostics
+          path: mobile/doctor.log
+          if-no-files-found: ignore
+          retention-days: 3
       - run: npm run test:api
-      - run: npm run typecheck
+      - name: Run mobile TypeScript validation
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > typecheck.log 2>&1
+          status=$?
+          cat typecheck.log
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 20 typecheck.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=Mobile TypeScript failed::$summary"
+          fi
+          exit "$status"
+      - name: Upload mobile TypeScript diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-typecheck-diagnostics
+          path: mobile/typecheck.log
+          if-no-files-found: ignore
+          retention-days: 3
       - run: npm run export:android
       - run: npm audit --omit=dev --audit-level=high
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { RefreshControl, ScrollView as NativeScrollView, ScrollViewProps } from "react-native";
+import { Platform, RefreshControl, ScrollView as NativeScrollView, ScrollViewProps } from "react-native";
 
 type AppScrollViewProps = ScrollViewProps & {
   onAppRefresh?: () => void | Promise<void>;
@@ -24,6 +24,10 @@ export function AppScrollView({ onAppRefresh, refreshColor = "#EA580C", refreshC
     <NativeScrollView
       {...props}
       alwaysBounceVertical={props.alwaysBounceVertical ?? !props.horizontal}
+      automaticallyAdjustKeyboardInsets={props.automaticallyAdjustKeyboardInsets ?? !props.horizontal}
+      contentInsetAdjustmentBehavior={props.contentInsetAdjustmentBehavior ?? (props.horizontal ? "never" : "automatic")}
+      keyboardDismissMode={props.keyboardDismissMode ?? (props.horizontal ? "none" : Platform.OS === "ios" ? "interactive" : "on-drag")}
+      keyboardShouldPersistTaps={props.keyboardShouldPersistTaps ?? "handled"}
       refreshControl={props.horizontal ? refreshControl : refreshControl || <RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[refreshColor]} tintColor={refreshColor} />}
     />
   );

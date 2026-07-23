@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { useJobsAuth } from "@/context/JobsAuthContext";
+import { apiDelete, apiGet, apiPatch, apiPost, getUserErrorMessage } from "@/lib/api";
 
 export type JobCategory =
   | "manufacturing"
@@ -82,11 +83,15 @@ export interface Job {
   active: boolean;
 }
 
+type NewJob = Omit<Job, "id" | "createdAt" | "applicants" | "messages" | "hired" | "shortlisted" | "rejected" | "active">;
+
 interface JobsContextType {
   jobs: Job[];
+  applications: JobApplication[];
   loading: boolean;
+  error: string;
   refreshJobs: () => Promise<void>;
-  addJob: (data: Omit<Job, "id" | "createdAt" | "applicants" | "messages" | "hired" | "shortlisted" | "rejected" | "active">) => Promise<void>;
+  addJob: (data: NewJob) => Promise<void>;
   addJobMessage: (jobId: string, message: JobMessage) => Promise<void>;
   applyJob: (jobId: string, seekerId: string) => Promise<void>;
   hasApplied: (jobId: string, seekerId: string) => boolean;
@@ -104,232 +109,219 @@ function words(value?: string) {
   return String(value || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
-function unique(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean).map(String)));
+function unique(values: Array<string | number | null | undefined>) {
+  return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && String(value)).map(String)));
 }
 
-function asNumber(value: any): number | undefined {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
+function asNumber(value: unknown): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
 
-function asCategory(value: any): JobCategory {
-  const v = String(value || "other") as JobCategory;
-  return categoryConfig[v] ? v : "other";
+export function parseDbBoolean(value: unknown, fallback = false): boolean {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "active", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "inactive", "disabled"].includes(normalized)) return false;
+  return fallback;
 }
 
-function asType(value: any): JobType {
-  const v = String(value || "full-time") as JobType;
-  return typeConfig[v] ? v : "full-time";
+function asCategory(value: unknown): JobCategory {
+  const category = String(value || "other") as JobCategory;
+  return categoryConfig[category] ? category : "other";
+}
+
+function asType(value: unknown): JobType {
+  const type = String(value || "full-time") as JobType;
+  return typeConfig[type] ? type : "full-time";
 }
 
 function normalizeApplication(raw: any): JobApplication {
-  const jobId = String(raw.job_id || raw.jobId || "");
-  const seekerId = String(raw.seeker_id || raw.seekerId || "");
-
+  const jobId = String(raw?.job_id || raw?.jobId || "");
+  const seekerId = String(raw?.seeker_id || raw?.seekerId || "");
+  const rawStatus = String(raw?.status || "applied");
+  const status: JobApplication["status"] = ["shortlisted", "rejected", "hired"].includes(rawStatus)
+    ? rawStatus as JobApplication["status"]
+    : "applied";
   return {
-    id: String(raw.id || `${jobId}_${seekerId}`),
+    id: String(raw?.id || `${jobId}_${seekerId}`),
     jobId,
     seekerId,
-    status: (raw.status || "applied") as JobApplication["status"],
-    seekerName: raw.seeker_name || raw.seekerName || raw.name,
-    seekerPhone: raw.seeker_phone || raw.seekerPhone || raw.phone,
-    seekerEmail: raw.seeker_email || raw.seekerEmail || raw.email,
-    seekerSkills: raw.seeker_skills || raw.seekerSkills || raw.skills,
-    seekerQualification: raw.seeker_qualification || raw.seekerQualification || raw.qualification,
-    seekerProfilePhoto: raw.seeker_profile_photo || raw.seekerProfilePhoto || raw.profilePhoto,
+    status,
+    seekerName: raw?.seeker_name || raw?.seekerName || raw?.name,
+    seekerPhone: raw?.seeker_phone || raw?.seekerPhone || raw?.phone,
+    seekerEmail: raw?.seeker_email || raw?.seekerEmail || raw?.email,
+    seekerSkills: raw?.seeker_skills || raw?.seekerSkills || raw?.skills,
+    seekerQualification: raw?.seeker_qualification || raw?.seekerQualification || raw?.qualification,
+    seekerProfilePhoto: raw?.seeker_profile_photo || raw?.seekerProfilePhoto || raw?.profilePhoto,
   };
 }
 
-function normalizeJob(raw: any, apps: JobApplication[] = [], previous?: Job): Job {
-  const id = String(raw.id);
-  const jobApps = apps.filter((app) => app.jobId === id);
+function normalizeJob(raw: any, allApplications: JobApplication[], previous?: Job, viewerId?: string): Job {
+  const id = String(raw?.id || "");
+  let jobApplications = allApplications.filter((application) => application.jobId === id);
+  const serverStatus = String(raw?.applicationStatus || raw?.application_status || "").trim();
+  if (viewerId && serverStatus && !jobApplications.some((application) => application.seekerId === viewerId)) {
+    jobApplications = [...jobApplications, normalizeApplication({
+      id: `${id}_${viewerId}`,
+      jobId: id,
+      seekerId: viewerId,
+      status: serverStatus,
+    })];
+  }
+
   const applicants = unique([
-    ...(Array.isArray(raw.applicants) ? raw.applicants.map(String) : []),
-    ...jobApps.map((app) => app.seekerId),
+    ...(Array.isArray(raw?.applicants) ? raw.applicants : []),
+    ...jobApplications.map((application) => application.seekerId),
   ]);
-  const applicantsCount = Number(raw.applicantsCount ?? raw.applicants_count ?? applicants.length);
+  const applicantsCount = Number(raw?.applicantsCount ?? raw?.applicants_count ?? applicants.length);
 
   return {
     id,
-    employerId: String(raw.employerId || raw.employer_id),
-    employerName: raw.employerName || raw.employer_name || "Employer",
-    employerPhone: raw.employerPhone || raw.employer_phone,
-    employerWhatsApp: raw.employerWhatsApp || raw.employer_whatsapp,
-    company: raw.company || "Company",
-    title: raw.title || "Untitled Job",
-    category: asCategory(raw.category),
-    type: asType(raw.type),
-    shift: raw.shift || undefined,
-    jobMode: raw.jobMode || raw.job_mode || undefined,
-    workStartTime: raw.workStartTime || raw.work_start_time || undefined,
-    workEndTime: raw.workEndTime || raw.work_end_time || undefined,
-    workingDays: raw.workingDays || raw.working_days || undefined,
-    weeklyOff: raw.weeklyOff || raw.weekly_off || undefined,
-    salary: raw.salary || raw.salaryText || raw.salary_text || "Salary not specified",
-    salaryMin: asNumber(raw.salaryMin ?? raw.salary_min),
-    salaryMax: asNumber(raw.salaryMax ?? raw.salary_max),
-    location: raw.location || "Ambernath",
-    address: raw.address || undefined,
-    latitude: asNumber(raw.latitude),
-    longitude: asNumber(raw.longitude),
-    distanceKm: raw.distanceKm ?? raw.distance_km ?? null,
-    description: raw.description || "",
-    requirements: raw.requirements || "",
-    experienceRequired: raw.experienceRequired || raw.experience_required || undefined,
-    educationRequired: raw.educationRequired || raw.education_required || undefined,
-    skillsRequired: raw.skillsRequired || raw.skills_required || undefined,
-    benefits: raw.benefits || undefined,
-    joiningPreference: raw.joiningPreference || raw.joining_preference || undefined,
-    lastDateToApply: raw.lastDateToApply || raw.last_date_to_apply || undefined,
-    urgentHiring: !!(raw.urgentHiring || raw.urgent_hiring),
-    openings: Number(raw.openings || 1),
+    employerId: String(raw?.employerId || raw?.employer_id || ""),
+    employerName: raw?.employerName || raw?.employer_name || "Employer",
+    employerPhone: raw?.employerPhone || raw?.employer_phone,
+    employerWhatsApp: raw?.employerWhatsApp || raw?.employer_whatsapp,
+    company: raw?.company || "Company",
+    title: raw?.title || "Untitled Job",
+    category: asCategory(raw?.category),
+    type: asType(raw?.type),
+    shift: raw?.shift || undefined,
+    jobMode: raw?.jobMode || raw?.job_mode || undefined,
+    workStartTime: raw?.workStartTime || raw?.work_start_time || undefined,
+    workEndTime: raw?.workEndTime || raw?.work_end_time || undefined,
+    workingDays: raw?.workingDays || raw?.working_days || undefined,
+    weeklyOff: raw?.weeklyOff || raw?.weekly_off || undefined,
+    salary: raw?.salary || raw?.salaryText || raw?.salary_text || "Salary not specified",
+    salaryMin: asNumber(raw?.salaryMin ?? raw?.salary_min),
+    salaryMax: asNumber(raw?.salaryMax ?? raw?.salary_max),
+    location: raw?.location || "Location not specified",
+    address: raw?.address || undefined,
+    latitude: asNumber(raw?.latitude),
+    longitude: asNumber(raw?.longitude),
+    distanceKm: raw?.distanceKm ?? raw?.distance_km ?? null,
+    description: raw?.description || "",
+    requirements: raw?.requirements || "",
+    experienceRequired: raw?.experienceRequired || raw?.experience_required || undefined,
+    educationRequired: raw?.educationRequired || raw?.education_required || undefined,
+    skillsRequired: raw?.skillsRequired || raw?.skills_required || undefined,
+    benefits: raw?.benefits || undefined,
+    joiningPreference: raw?.joiningPreference || raw?.joining_preference || undefined,
+    lastDateToApply: raw?.lastDateToApply || raw?.last_date_to_apply || undefined,
+    urgentHiring: parseDbBoolean(raw?.urgentHiring ?? raw?.urgent_hiring),
+    openings: Math.max(1, Number(raw?.openings || 1)),
     applicants,
     applicantsCount: Number.isFinite(applicantsCount) ? applicantsCount : applicants.length,
     messages: previous?.messages || [],
-    hired: unique(jobApps.filter((app) => app.status === "hired").map((app) => app.seekerId)),
-    shortlisted: unique(jobApps.filter((app) => app.status === "shortlisted").map((app) => app.seekerId)),
-    rejected: unique(jobApps.filter((app) => app.status === "rejected").map((app) => app.seekerId)),
-    applications: jobApps,
-    createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
-    updatedAt: raw.updatedAt || raw.updated_at,
-    active: raw.active === undefined ? true : !!raw.active,
+    hired: unique(jobApplications.filter((application) => application.status === "hired").map((application) => application.seekerId)),
+    shortlisted: unique(jobApplications.filter((application) => application.status === "shortlisted").map((application) => application.seekerId)),
+    rejected: unique(jobApplications.filter((application) => application.status === "rejected").map((application) => application.seekerId)),
+    applications: jobApplications,
+    createdAt: raw?.createdAt || raw?.created_at || new Date().toISOString(),
+    updatedAt: raw?.updatedAt || raw?.updated_at,
+    active: parseDbBoolean(raw?.active, true),
   };
 }
 
-function mergeJob(prev: Job[], nextJob: Job) {
-  const exists = prev.some((job) => job.id === nextJob.id);
-  return exists
-    ? prev.map((job) => (job.id === nextJob.id ? { ...job, ...nextJob, messages: nextJob.messages || job.messages } : job))
-    : [nextJob, ...prev];
+function mergeJob(previous: Job[], next: Job) {
+  const found = previous.some((job) => job.id === next.id);
+  return found
+    ? previous.map((job) => job.id === next.id ? { ...job, ...next, messages: next.messages || job.messages } : job)
+    : [next, ...previous];
 }
 
 function withApplicationStatus(job: Job, seekerId: string, status: JobApplication["status"]): Job {
-  const hired = job.hired.filter((id) => id !== seekerId);
-  const shortlisted = job.shortlisted.filter((id) => id !== seekerId);
-  const rejected = job.rejected.filter((id) => id !== seekerId);
-
-  if (status === "hired") hired.push(seekerId);
-  if (status === "shortlisted") shortlisted.push(seekerId);
-  if (status === "rejected") rejected.push(seekerId);
-
   const applications = job.applications || [];
-  const hasApplication = applications.some((app) => app.seekerId === seekerId);
-  const nextApplications = hasApplication
-    ? applications.map((app) => (app.seekerId === seekerId ? { ...app, status } : app))
+  const nextApplications = applications.some((application) => application.seekerId === seekerId)
+    ? applications.map((application) => application.seekerId === seekerId ? { ...application, status } : application)
     : [...applications, { id: `${job.id}_${seekerId}`, jobId: job.id, seekerId, status }];
-
-  return {
-    ...job,
-    applicants: unique([...job.applicants, seekerId]),
-    applicantsCount: Math.max(job.applicantsCount || 0, job.applicants.length),
-    hired: unique(hired),
-    shortlisted: unique(shortlisted),
-    rejected: unique(rejected),
-    applications: nextApplications,
-  };
+  return normalizeJob(job, nextApplications, job);
 }
 
 export function JobsProvider({ children }: { children: ReactNode }) {
   const { jobsUser } = useJobsAuth();
+  const { user: civicUser } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const refreshJobs = async () => {
+  const isSuperAdmin = civicUser?.role === "super_admin" || civicUser?.isSuperAdmin;
+
+  const refreshJobs = useCallback(async () => {
+    if (!jobsUser && !isSuperAdmin) {
+      setJobs([]);
+      setApplications([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-
+    setError("");
     try {
-      const params = new URLSearchParams();
+      const jobParams = new URLSearchParams();
+      jobParams.set("active", "all");
+      if (jobsUser?.role === "employer") jobParams.set("employerId", jobsUser.id);
+      if (jobsUser?.role === "seeker") jobParams.set("viewerId", jobsUser.id);
 
-      if (jobsUser?.role === "employer") {
-        params.set("active", "all");
-        params.set("employerId", jobsUser.id);
-      } else {
-        params.set("active", "true");
-      }
-
+      const jobsResult = await apiGet<{ success: boolean; jobs: any[] }>(`/api/job-portal/jobs?${jobParams.toString()}`);
+      let nextApplications: JobApplication[] = [];
       if (jobsUser?.id) {
-        params.set("viewerId", jobsUser.id);
+        try {
+          const appParams = new URLSearchParams();
+          appParams.set(jobsUser.role === "employer" ? "employerId" : "seekerId", jobsUser.id);
+          const applicationResult = await apiGet<{ success: boolean; applications: any[] }>(`/api/job-portal/applications?${appParams.toString()}`);
+          nextApplications = (applicationResult.applications || []).map(normalizeApplication);
+        } catch (applicationError) {
+          setError(getUserErrorMessage(applicationError, "Jobs loaded, but application updates could not be refreshed."));
+        }
       }
 
-      const jobsRes = await apiGet<{ success: boolean; jobs: any[] }>(
-        `/api/job-portal/jobs?${params.toString()}`,
-      );
-
-      let apps: JobApplication[] = [];
-
-      try {
-        const appParams = new URLSearchParams();
-
-        if (jobsUser?.role === "seeker") {
-          appParams.set("seekerId", jobsUser.id);
-        }
-
-        if (jobsUser?.role === "employer") {
-          appParams.set("employerId", jobsUser.id);
-        }
-
-        if (appParams.toString()) {
-          const appRes = await apiGet<{ success: boolean; applications: any[] }>(
-            `/api/job-portal/applications?${appParams.toString()}`,
-          );
-          apps = (appRes.applications || []).map(normalizeApplication);
-        }
-      } catch {
-        apps = [];
-      }
-
-      setApplications(apps);
-
-      setJobs((prev) => {
-        const prevById = new Map(prev.map((job) => [job.id, job]));
-        return (jobsRes.jobs || []).map((raw) => normalizeJob(raw, apps, prevById.get(String(raw.id))));
+      setApplications(nextApplications);
+      setJobs((previous) => {
+        const previousById = new Map(previous.map((job) => [job.id, job]));
+        return (jobsResult.jobs || [])
+          .map((raw) => normalizeJob(raw, nextApplications, previousById.get(String(raw?.id)), jobsUser?.role === "seeker" ? jobsUser.id : undefined))
+          .filter((job) => !!job.id);
       });
+    } catch (refreshError) {
+      const message = getUserErrorMessage(refreshError, "Job Portal data could not be loaded. Pull down to try again.");
+      setError(message);
+      throw refreshError;
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSuperAdmin, jobsUser?.id, jobsUser?.role]);
 
   useEffect(() => {
-    refreshJobs().catch(() => setLoading(false));
-  }, [jobsUser?.id, jobsUser?.role]);
+    void refreshJobs().catch(() => undefined);
+  }, [refreshJobs]);
 
-  const addJob = async (
-    data: Omit<Job, "id" | "createdAt" | "applicants" | "messages" | "hired" | "shortlisted" | "rejected" | "active">,
-  ) => {
-    if (!jobsUser || jobsUser.role !== "employer") {
-      throw new Error("Only employers can post jobs.");
-    }
-
+  const addJob = async (data: NewJob) => {
+    if (!jobsUser || jobsUser.role !== "employer") throw new Error("Only employers can post jobs.");
     if (words(data.description) < 5 || words(data.description) > 100) {
       throw new Error("Description must be between 5 and 100 words.");
     }
 
-    const tempId = `temp_${Date.now()}`;
-    const tempJob: Job = {
+    const temporaryId = `temp_${Date.now()}`;
+    const temporaryJob = normalizeJob({
       ...data,
-      id: tempId,
-      employerId: jobsUser.id,
-      employerName: jobsUser.name,
-      employerPhone: jobsUser.phone,
-      employerWhatsApp: jobsUser.whatsapp || jobsUser.phone,
+      id: temporaryId,
+      employer_id: jobsUser.id,
+      employer_name: jobsUser.name,
+      employer_phone: jobsUser.phone,
+      employer_whatsapp: jobsUser.whatsapp || jobsUser.phone,
       company: data.company || jobsUser.company || "Company",
-      applicants: [],
-      applicantsCount: 0,
-      messages: [],
-      hired: [],
-      shortlisted: [],
-      rejected: [],
-      applications: [],
-      active: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    setJobs((prev) => [tempJob, ...prev]);
+      active: 1,
+      created_at: new Date().toISOString(),
+    }, []);
+    setJobs((previous) => [temporaryJob, ...previous]);
 
     try {
-      const res = await apiPost<{ success: boolean; job: any }>("/api/job-portal/jobs", {
+      const result = await apiPost<{ success: boolean; job: any }>("/api/job-portal/jobs", {
         employerId: jobsUser.id,
         title: data.title,
         category: data.category,
@@ -359,265 +351,152 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         allowMessaging: true,
         urgentHiring: !!data.urgentHiring,
       });
-
-      const created = normalizeJob(res.job, []);
-      setJobs((prev) => mergeJob(prev.filter((job) => job.id !== tempId), created));
+      const created = normalizeJob(result.job, []);
+      setJobs((previous) => mergeJob(previous.filter((job) => job.id !== temporaryId), created));
       await refreshJobs();
-    } catch (err) {
-      setJobs((prev) => prev.filter((job) => job.id !== tempId));
-      throw err;
+    } catch (requestError) {
+      setJobs((previous) => previous.filter((job) => job.id !== temporaryId));
+      throw requestError;
     }
   };
 
   const addJobMessage = async (jobId: string, message: JobMessage) => {
     const job = jobs.find((item) => item.id === jobId);
-    if (!job) return;
-
-    const senderId = message.from;
-    const receiverId =
-      message.to ||
-      (senderId === job.employerId
-        ? job.applicants.find((id) => id !== senderId)
-        : job.employerId);
-
-    if (!receiverId) return;
-
+    if (!job) throw new Error("Job not found.");
+    const receiverId = message.to || (message.from === job.employerId ? job.applicants[0] : job.employerId);
+    if (!receiverId) throw new Error("Select an applicant before sending a message.");
     const nextMessage = { ...message, to: receiverId };
-
-    setJobs((prev) =>
-      prev.map((item) =>
-        item.id === jobId
-          ? { ...item, messages: [...(item.messages || []), nextMessage] }
-          : item,
-      ),
-    );
-
+    setJobs((previous) => previous.map((item) => item.id === jobId ? { ...item, messages: [...item.messages, nextMessage] } : item));
     try {
-      await apiPost("/api/job-portal/messages", {
-        jobId,
-        senderId,
-        receiverId,
-        message: message.text,
-      });
-    } catch (err) {
-      setJobs((prev) =>
-        prev.map((item) =>
-          item.id === jobId
-            ? { ...item, messages: (item.messages || []).filter((m) => m !== nextMessage) }
-            : item,
-        ),
-      );
-      throw err;
+      await apiPost("/api/job-portal/messages", { jobId, senderId: message.from, receiverId, message: message.text });
+    } catch (requestError) {
+      setJobs((previous) => previous.map((item) => item.id === jobId ? { ...item, messages: item.messages.filter((itemMessage) => itemMessage !== nextMessage) } : item));
+      throw requestError;
     }
   };
 
   const applyJob = async (jobId: string, seekerId: string) => {
-    if (!seekerId) return;
-
+    if (!jobsUser || jobsUser.role !== "seeker" || jobsUser.id !== seekerId) {
+      throw new Error("Only the logged-in Job Seeker can apply.");
+    }
     const previous = jobs;
-
-    setJobs((prev) =>
-      prev.map((job) =>
-        job.id === jobId && !job.applicants.includes(seekerId)
-          ? {
-              ...job,
-              applicants: [...job.applicants, seekerId],
-              applicantsCount: Math.max(job.applicantsCount || 0, job.applicants.length + 1),
-              applications: [
-                ...(job.applications || []),
-                { id: `${jobId}_${seekerId}`, jobId, seekerId, status: "applied" },
-              ],
-            }
-          : job,
-      ),
-    );
-
+    setJobs((current) => current.map((job) => job.id === jobId ? withApplicationStatus(job, seekerId, "applied") : job));
     try {
       await apiPost(`/api/job-portal/jobs/${jobId}/apply`, { seekerId });
       await refreshJobs();
-    } catch (err) {
+    } catch (requestError) {
       setJobs(previous);
-      throw err;
+      throw requestError;
     }
   };
 
   const hasApplied = (jobId: string, seekerId: string) => {
     const job = jobs.find((item) => item.id === jobId);
-    return !!job && job.applicants.includes(seekerId);
+    return !!job?.applicants.includes(seekerId);
   };
 
-  const getJobsByEmployer = (employerId: string) => {
-    return jobs.filter((job) => job.employerId === employerId);
-  };
+  const getJobsByEmployer = (employerId: string) => jobs.filter((job) => job.employerId === employerId);
 
   const toggleJobActive = async (jobId: string) => {
     const current = jobs.find((job) => job.id === jobId);
-    if (!current) return;
-
-    const nextActive = !current.active;
+    if (!current) throw new Error("Job not found.");
     const previous = jobs;
-
-    setJobs((prev) =>
-      prev.map((job) => (job.id === jobId ? { ...job, active: nextActive } : job)),
-    );
-
+    const nextActive = !current.active;
+    setJobs((items) => items.map((job) => job.id === jobId ? { ...job, active: nextActive } : job));
     try {
       await apiPatch(`/api/job-portal/jobs/${jobId}`, { active: nextActive });
-    } catch (err) {
-      setJobs(previous);
-      throw err;
-    }
-  };
-
-  const ensureApplicationForStatus = async (jobId: string, seekerId: string) => {
-    const existing =
-      applications.find((item) => item.jobId === jobId && item.seekerId === seekerId) ||
-      jobs.flatMap((job) => job.applications || []).find((item) => item.jobId === jobId && item.seekerId === seekerId);
-
-    if (existing?.id && !existing.id.startsWith(`${jobId}_`)) {
-      return existing;
-    }
-
-    const res = await apiPost<{ success: boolean; application: any }>(
-      `/api/job-portal/jobs/${jobId}/apply`,
-      { seekerId },
-    );
-
-    const created = normalizeApplication(res.application || { id: `${jobId}_${seekerId}`, job_id: jobId, seeker_id: seekerId });
-
-    setApplications((prev) => {
-      const withoutDuplicate = prev.filter((item) => !(item.jobId === jobId && item.seekerId === seekerId));
-      return [...withoutDuplicate, created];
-    });
-
-    setJobs((prev) =>
-      prev.map((job) =>
-        job.id === jobId
-          ? {
-              ...job,
-              applicants: unique([...job.applicants, seekerId]),
-              applications: [
-                ...(job.applications || []).filter((item) => item.seekerId !== seekerId),
-                created,
-              ],
-            }
-          : job,
-      ),
-    );
-
-    return created;
-  };
-
-  const updateApplicationStatus = async (
-    jobId: string,
-    seekerId: string,
-    status: JobApplication["status"],
-  ) => {
-    let app =
-      applications.find((item) => item.jobId === jobId && item.seekerId === seekerId) ||
-      jobs.flatMap((job) => job.applications || []).find((item) => item.jobId === jobId && item.seekerId === seekerId);
-
-    if (!app?.id || app.id.startsWith(`${jobId}_`)) {
-      try {
-        app = await ensureApplicationForStatus(jobId, seekerId);
-      } catch {
-        throw new Error("Application not found. Ask the seeker to apply again, then try this action.");
-      }
-    }
-
-    const previousJobs = jobs;
-    const previousApps = applications;
-
-    setApplications((prev) => {
-      const exists = prev.some((item) => item.id === app!.id);
-      const next = exists
-        ? prev.map((item) => (item.id === app!.id ? { ...item, status } : item))
-        : [...prev, { ...app!, status }];
-      return next;
-    });
-    setJobs((prev) => prev.map((job) => (job.id === jobId ? withApplicationStatus(job, seekerId, status) : job)));
-
-    try {
-      await apiPatch(`/api/job-portal/applications/${app.id}/status`, { status });
       await refreshJobs();
-    } catch (err) {
-      setJobs(previousJobs);
-      setApplications(previousApps);
-      throw err;
+    } catch (requestError) {
+      setJobs(previous);
+      throw requestError;
     }
   };
 
-  const shortlistApplicant = async (jobId: string, seekerId: string) => {
-    await updateApplicationStatus(jobId, seekerId, "shortlisted");
+  const ensureApplication = async (jobId: string, seekerId: string) => {
+    const existing = applications.find((application) => application.jobId === jobId && application.seekerId === seekerId)
+      || jobs.flatMap((job) => job.applications || []).find((application) => application.jobId === jobId && application.seekerId === seekerId);
+    if (existing?.id && !existing.id.startsWith(`${jobId}_`)) return existing;
+    const result = await apiPost<{ success: boolean; application: any }>(`/api/job-portal/jobs/${jobId}/apply`, { seekerId });
+    return normalizeApplication(result.application || { id: `${jobId}_${seekerId}`, jobId, seekerId });
   };
 
-  const rejectApplicant = async (jobId: string, seekerId: string) => {
-    await updateApplicationStatus(jobId, seekerId, "rejected");
+  const updateApplicationStatus = async (jobId: string, seekerId: string, status: JobApplication["status"]) => {
+    const application = await ensureApplication(jobId, seekerId);
+    const previousJobs = jobs;
+    const previousApplications = applications;
+    setApplications((items) => {
+      const remaining = items.filter((item) => item.id !== application.id);
+      return [...remaining, { ...application, status }];
+    });
+    setJobs((items) => items.map((job) => job.id === jobId ? withApplicationStatus(job, seekerId, status) : job));
+    try {
+      await apiPatch(`/api/job-portal/applications/${application.id}/status`, { status });
+      await refreshJobs();
+    } catch (requestError) {
+      setJobs(previousJobs);
+      setApplications(previousApplications);
+      throw requestError;
+    }
   };
 
-  const hireApplicant = async (jobId: string, seekerId: string) => {
-    await updateApplicationStatus(jobId, seekerId, "hired");
-  };
+  const shortlistApplicant = (jobId: string, seekerId: string) => updateApplicationStatus(jobId, seekerId, "shortlisted");
+  const rejectApplicant = (jobId: string, seekerId: string) => updateApplicationStatus(jobId, seekerId, "rejected");
+  const hireApplicant = (jobId: string, seekerId: string) => updateApplicationStatus(jobId, seekerId, "hired");
 
   const deleteJob = async (jobId: string) => {
     const previous = jobs;
-    setJobs((prev) => prev.filter((job) => job.id !== jobId));
-
+    setJobs((items) => items.filter((job) => job.id !== jobId));
     try {
       await apiDelete(`/api/job-portal/jobs/${jobId}`);
-    } catch (err) {
+      await refreshJobs();
+    } catch (requestError) {
       setJobs(previous);
-      throw err;
+      throw requestError;
     }
   };
 
-  const value = useMemo(
-    () => ({
-      jobs,
-      loading,
-      refreshJobs,
-      addJob,
-      addJobMessage,
-      applyJob,
-      hasApplied,
-      getJobsByEmployer,
-      toggleJobActive,
-      shortlistApplicant,
-      rejectApplicant,
-      hireApplicant,
-      deleteJob,
-    }),
-    [jobs, loading, applications],
-  );
+  const value = useMemo<JobsContextType>(() => ({
+    jobs,
+    applications,
+    loading,
+    error,
+    refreshJobs,
+    addJob,
+    addJobMessage,
+    applyJob,
+    hasApplied,
+    getJobsByEmployer,
+    toggleJobActive,
+    shortlistApplicant,
+    rejectApplicant,
+    hireApplicant,
+    deleteJob,
+  }), [jobs, applications, loading, error, refreshJobs]);
 
-  return (
-    <JobsContext.Provider value={value}>
-      {children}
-    </JobsContext.Provider>
-  );
+  return <JobsContext.Provider value={value}>{children}</JobsContext.Provider>;
 }
 
 export function useJobs() {
-  const ctx = useContext(JobsContext);
-  if (!ctx) throw new Error("useJobs must be inside JobsProvider");
-  return ctx;
+  const context = useContext(JobsContext);
+  if (!context) throw new Error("useJobs must be inside JobsProvider");
+  return context;
 }
 
 export const categoryConfig: Record<JobCategory, { label: string; icon: string; color: string; bg: string }> = {
-  manufacturing: { label: "Manufacturing", icon: "settings",        color: "#92400E", bg: "#FEF3C7" },
-  it:            { label: "IT / Computer", icon: "monitor",         color: "#1D4ED8", bg: "#DBEAFE" },
-  retail:        { label: "Retail / Sales", icon: "shopping-bag",   color: "#7C3AED", bg: "#EDE9FE" },
-  healthcare:    { label: "Healthcare",    icon: "activity",        color: "#DC2626", bg: "#FEE2E2" },
-  construction:  { label: "Construction",  icon: "tool",            color: "#B45309", bg: "#FFEDD5" },
-  transport:     { label: "Transport",     icon: "truck",           color: "#0369A1", bg: "#BAE6FD" },
-  education:     { label: "Education",     icon: "book-open",       color: "#059669", bg: "#D1FAE5" },
-  security:      { label: "Security",      icon: "shield",          color: "#475569", bg: "#F1F5F9" },
-  other:         { label: "Other",         icon: "more-horizontal", color: "#64748B", bg: "#F1F5F9" },
+  manufacturing: { label: "Manufacturing", icon: "settings", color: "#92400E", bg: "#FEF3C7" },
+  it: { label: "IT / Computer", icon: "monitor", color: "#1D4ED8", bg: "#DBEAFE" },
+  retail: { label: "Retail / Sales", icon: "shopping-bag", color: "#7C3AED", bg: "#EDE9FE" },
+  healthcare: { label: "Healthcare", icon: "activity", color: "#DC2626", bg: "#FEE2E2" },
+  construction: { label: "Construction", icon: "tool", color: "#B45309", bg: "#FFEDD5" },
+  transport: { label: "Transport", icon: "truck", color: "#0369A1", bg: "#BAE6FD" },
+  education: { label: "Education", icon: "book-open", color: "#059669", bg: "#D1FAE5" },
+  security: { label: "Security", icon: "shield", color: "#475569", bg: "#F1F5F9" },
+  other: { label: "Other", icon: "more-horizontal", color: "#64748B", bg: "#F1F5F9" },
 };
 
 export const typeConfig: Record<JobType, { label: string; color: string; bg: string }> = {
-  "full-time":  { label: "Full Time",  color: "#059669", bg: "#D1FAE5" },
-  "part-time":  { label: "Part Time",  color: "#D97706", bg: "#FEF3C7" },
-  contract:     { label: "Contract",   color: "#7C3AED", bg: "#EDE9FE" },
-  apprentice:   { label: "Apprentice", color: "#EA580C", bg: "#FFEDD5" },
+  "full-time": { label: "Full Time", color: "#059669", bg: "#D1FAE5" },
+  "part-time": { label: "Part Time", color: "#D97706", bg: "#FEF3C7" },
+  contract: { label: "Contract", color: "#7C3AED", bg: "#EDE9FE" },
+  apprentice: { label: "Apprentice", color: "#EA580C", bg: "#FFEDD5" },
 };

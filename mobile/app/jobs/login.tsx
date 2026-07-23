@@ -3,9 +3,9 @@ import { Redirect } from "expo-router";
 
 /**
  * Backward-compatible redirect for old links and cached navigation state.
- * Job Portal access now uses the citizen's verified Connect T session and a
- * role-specific profile onboarding flow instead of a separate login screen.
+ * Job Portal access uses the verified Connect T citizen session and confirmed
+ * role-specific profile setup instead of a second login screen.
  */
 export default function LegacyJobPortalLoginRedirect() {
-  return <Redirect href={"/jobs/onboarding" as any} />;
+  return <Redirect href={"/jobs/profile-setup" as any} />;
 }

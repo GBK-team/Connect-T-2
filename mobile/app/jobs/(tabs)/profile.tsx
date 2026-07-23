@@ -1,126 +1,80 @@
-import { AppScrollView } from "@/components/AppScrollView";
-import React, { useState } from "react";
-import { Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
 
+import { AppScrollView } from "@/components/AppScrollView";
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
-import DobDatePicker from "@/components/DobDatePicker";
-import { calcProfileCompletion, CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
-import { useJobs } from "@/context/JobsContext";
-import { getUserErrorMessage } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
+import { apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
-const BG = "#ebeffc";
+const BG = "#EBEFFC";
 
-function cleanPhone(value?: string) {
-  return String(value || "").replace(/\D/g, "").slice(-10);
-}
+type RoleRequest = {
+  id: string;
+  currentRole: "seeker" | "employer";
+  targetRole: "seeker" | "employer";
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  adminNote?: string;
+};
 
 function initials(name?: string) {
-  return String(name || "CT")
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  return String(name || "CT").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function countWords(value?: string) {
-  return String(value || "").trim().split(/\s+/).filter(Boolean).length;
-}
-
-
-function validEmail(value?: string) {
-  const v = String(value || "").trim();
-  if (!v) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
-
-function Section({ title, icon, children }: { title: string; icon: keyof typeof Feather.glyphMap; children: React.ReactNode }) {
-  return (
-    <View style={s.section}>
-      <Text style={s.sectionLabel}>{title.toUpperCase()}</Text>
-      <View style={s.card}>
-        <View style={s.formHead}>
-          <View style={s.formIcon}><Feather name={icon} size={15} color={ORANGE} /></View>
-          <Text style={s.formTitle}>{title}</Text>
-        </View>
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function Input(props: React.ComponentProps<typeof TextInput> & { label: string }) {
-  const { label, multiline, style, ...rest } = props;
+function Input({ label, multiline, ...props }: React.ComponentProps<typeof TextInput> & { label: string }) {
   return (
     <View style={s.inputGroup}>
       <Text style={s.label}>{label}</Text>
       <TextInput
-        {...rest}
+        {...props}
         multiline={multiline}
-        style={[s.input, multiline && s.textArea, style]}
+        textAlignVertical={multiline ? "top" : "center"}
         placeholderTextColor="#94A3B8"
+        style={[s.input, multiline && s.textArea, props.style]}
+        returnKeyType={multiline ? "default" : "next"}
+        blurOnSubmit={!multiline}
       />
     </View>
   );
 }
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Detail({ icon, label, value }: { icon: keyof typeof Feather.glyphMap; label: string; value?: string }) {
   return (
-    <TouchableOpacity style={[s.chip, active && s.chipActive]} onPress={onPress} activeOpacity={0.82}>
-      <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function ActionRow({ icon, label, sub, color, bg, onPress, border }: { icon: keyof typeof Feather.glyphMap; label: string; sub: string; color: string; bg: string; onPress: () => void; border?: boolean }) {
-  return (
-    <TouchableOpacity style={[s.actionRow, border && s.rowBorder]} onPress={onPress} activeOpacity={0.82}>
-      <View style={[s.actionIcon, { backgroundColor: bg }]}><Feather name={icon} size={16} color={color} /></View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={s.actionLabel}>{label}</Text>
-        <Text style={s.actionSub}>{sub}</Text>
-      </View>
-      <Feather name="chevron-right" size={16} color="#CBD5E1" />
-    </TouchableOpacity>
-  );
-}
-
-function DetailRow({ icon, label, value, border = true }: { icon: keyof typeof Feather.glyphMap; label: string; value?: string; border?: boolean }) {
-  return (
-    <View style={[s.actionRow, border && s.rowBorder]}>
-      <View style={[s.actionIcon, { backgroundColor: "#FFF7ED" }]}><Feather name={icon} size={15} color={ORANGE} /></View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={s.actionSub}>{label}</Text>
-        <Text style={s.actionLabel} numberOfLines={2}>{value || "Not added"}</Text>
-      </View>
+    <View style={s.detail}>
+      <View style={s.detailIcon}><Feather name={icon} size={15} color={ORANGE} /></View>
+      <View style={{ flex: 1 }}><Text style={s.detailLabel}>{label}</Text><Text style={s.detailValue}>{value || "Not added"}</Text></View>
     </View>
   );
 }
 
-function AppNotice({ visible, title, message, tone = "success", onClose, onConfirm, confirmText }: { visible: boolean; title: string; message: string; tone?: "success" | "danger" | "info"; onClose: () => void; onConfirm?: () => void; confirmText?: string }) {
-  const color = tone === "danger" ? "#DC2626" : tone === "info" ? "#2563EB" : ORANGE;
-  const bg = tone === "danger" ? "#FEF2F2" : tone === "info" ? "#EFF6FF" : "#FFF7ED";
+function Notice({ visible, title, message, tone, onClose }: { visible: boolean; title: string; message: string; tone: "success" | "danger" | "info"; onClose: () => void }) {
+  const color = tone === "success" ? "#059669" : tone === "danger" ? "#DC2626" : ORANGE;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={s.noticeOverlay}>
-        <View style={s.noticeCard}>
-          <View style={[s.noticeIcon, { backgroundColor: bg }]}><Feather name={tone === "danger" ? "log-out" : "check-circle"} size={26} color={color} /></View>
-          <Text style={s.noticeTitle}>{title}</Text>
-          <Text style={s.noticeMsg}>{message}</Text>
-          <View style={s.noticeBtns}>
-            {onConfirm && <TouchableOpacity style={s.noticeCancel} onPress={onClose}><Text style={s.noticeCancelText}>Cancel</Text></TouchableOpacity>}
-            <TouchableOpacity style={[s.noticeOk, { backgroundColor: color }]} onPress={onConfirm || onClose}><Text style={s.noticeOkText}>{confirmText || "OK"}</Text></TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      <View style={s.modalOverlay}><View style={s.noticeCard}>
+        <View style={[s.noticeIcon, { backgroundColor: `${color}14` }]}><Feather name={tone === "success" ? "check-circle" : tone === "danger" ? "alert-circle" : "info"} size={27} color={color} /></View>
+        <Text style={s.noticeTitle}>{title}</Text><Text style={s.noticeText}>{message}</Text>
+        <TouchableOpacity style={[s.noticeButton, { backgroundColor: color }]} onPress={onClose}><Text style={s.noticeButtonText}>OK</Text></TouchableOpacity>
+      </View></View>
     </Modal>
   );
 }
@@ -128,260 +82,197 @@ function AppNotice({ visible, title, message, tone = "success", onClose, onConfi
 export default function JobPortalProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const { logout } = useAuth();
   const { jobsUser, updateJobsUser } = useJobsAuth();
-  const { jobs } = useJobs();
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<{ visible: boolean; title: string; message: string; tone?: "success" | "danger" | "info"; onConfirm?: () => void; confirmText?: string }>({ visible: false, title: "", message: "" });
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [reason, setReason] = useState("");
+  const [roleRequest, setRoleRequest] = useState<RoleRequest | null>(null);
+  const [notice, setNotice] = useState({ visible: false, title: "", message: "", tone: "info" as "success" | "danger" | "info" });
 
-  const [profileDob, setProfileDob] = useState(jobsUser?.dob || "");
-  const [name, setName] = useState(jobsUser?.name || "");
-  const [email, setEmail] = useState(jobsUser?.email || "");
-  const [profilePhoto, setProfilePhoto] = useState(jobsUser?.profilePhoto);
-  const [location, setLocation] = useState(jobsUser?.location || "");
-  const [qualification, setQualification] = useState(jobsUser?.qualification || "");
-  const [skills, setSkills] = useState(jobsUser?.skills || "");
-  const [currentStatus, setCurrentStatus] = useState<CurrentStatus>(jobsUser?.currentStatus || "unemployed");
-  const [experience, setExperience] = useState(jobsUser?.experience || "");
-  const [languages, setLanguages] = useState(jobsUser?.languages || "");
-  const [about, setAbout] = useState(jobsUser?.about || "");
-  const [currentCompany, setCurrentCompany] = useState(jobsUser?.currentCompany || "");
-  const [currentRole, setCurrentRole] = useState(jobsUser?.currentRole || "");
-  const [previousCompany, setPreviousCompany] = useState(jobsUser?.previousCompany || "");
-  const [previousRole, setPreviousRole] = useState(jobsUser?.previousRole || "");
-  const [collegeName, setCollegeName] = useState(jobsUser?.collegeName || "");
-  const [fieldOfStudy, setFieldOfStudy] = useState(jobsUser?.fieldOfStudy || "");
-  const [company, setCompany] = useState(jobsUser?.company || jobsUser?.companies?.[0]?.name || "");
-  const [contactPerson, setContactPerson] = useState(jobsUser?.contactPerson || "");
-  const [whatsapp, setWhatsapp] = useState(jobsUser?.whatsapp || jobsUser?.phone || "");
-  const [industry, setIndustry] = useState(jobsUser?.industry || "");
-  const [gstNo, setGstNo] = useState(jobsUser?.gstNo || "");
-  const [companyType, setCompanyType] = useState(jobsUser?.companyType || jobsUser?.companies?.[0]?.type || "");
-  const [companySize, setCompanySize] = useState(jobsUser?.companySize || jobsUser?.companies?.[0]?.size || "");
-  const [yearEstablished, setYearEstablished] = useState(jobsUser?.yearEstablished || jobsUser?.companies?.[0]?.yearEstablished || "");
-  const [website, setWebsite] = useState(jobsUser?.website || "");
-  const [address, setAddress] = useState(jobsUser?.address || "");
-  const [pincode, setPincode] = useState(jobsUser?.pincode || "");
-  const [companyDescription, setCompanyDescription] = useState(jobsUser?.companyDescription || jobsUser?.companies?.[0]?.description || "");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [location, setLocation] = useState("");
+  const [qualification, setQualification] = useState("");
+  const [skills, setSkills] = useState("");
+  const [experience, setExperience] = useState("");
+  const [languages, setLanguages] = useState("");
+  const [about, setAbout] = useState("");
+  const [currentStatus, setCurrentStatus] = useState<CurrentStatus>("unemployed");
+  const [company, setCompany] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [companyDescription, setCompanyDescription] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
 
-  if (!jobsUser) return null;
+  const isEmployer = jobsUser?.role === "employer";
+  const roleLabel = isEmployer ? "Employer" : "Job Seeker";
+  const targetRoleLabel = isEmployer ? "Job Seeker" : "Employer";
 
-  const isEmployer = jobsUser.role === "employer";
-  const completion = isEmployer ? 100 : calcProfileCompletion({ ...jobsUser, profilePhoto, currentStatus, qualification, skills, about, experience, location, languages } as JobsUser);
-  const appliedCount = jobs.filter((job) => job.applicants.includes(jobsUser.id)).length;
-  const hiredCount = jobs.filter((job) => job.hired.includes(jobsUser.id)).length;
-  const employerJobs = jobs.filter((job) => job.employerId === jobsUser.id);
-  const employerApplicants = employerJobs.reduce((sum, job) => sum + job.applicants.length, 0);
-  const roleText = isEmployer ? "Employer" : "Job Seeker";
-  const roleSub = isEmployer ? "नियोक्ता" : "रोजगार साधक";
+  useEffect(() => {
+    if (!jobsUser) return;
+    setName(jobsUser.name || "");
+    setEmail(jobsUser.email || "");
+    setLocation(jobsUser.address || jobsUser.location || "");
+    setQualification(jobsUser.qualification || "");
+    setSkills(jobsUser.skills || "");
+    setExperience(jobsUser.experience || "");
+    setLanguages(jobsUser.languages || "");
+    setAbout(jobsUser.about || "");
+    setCurrentStatus(jobsUser.currentStatus || "unemployed");
+    setCompany(jobsUser.company || "");
+    setIndustry(jobsUser.industry || "");
+    setCompanyDescription(jobsUser.companyDescription || "");
+    setWhatsapp(jobsUser.whatsapp || jobsUser.phone || "");
+    void apiGet<{ request: RoleRequest | null }>("/api/job-portal/role-change-requests/me")
+      .then((result) => setRoleRequest(result.request || null))
+      .catch(() => undefined);
+  }, [jobsUser?.id]);
+
+  const details = useMemo(() => {
+    if (!jobsUser) return [];
+    return isEmployer ? [
+      { icon: "briefcase" as const, label: "Company / Business", value: jobsUser.company },
+      { icon: "user" as const, label: "Owner / HR Name", value: jobsUser.name },
+      { icon: "map-pin" as const, label: "Business Location", value: jobsUser.address || jobsUser.location },
+      { icon: "phone" as const, label: "Verified Mobile", value: `+91 ${jobsUser.phone}` },
+    ] : [
+      { icon: "user" as const, label: "Full Name", value: jobsUser.name },
+      { icon: "award" as const, label: "Qualification", value: jobsUser.qualification },
+      { icon: "tool" as const, label: "Skills", value: jobsUser.skills },
+      { icon: "map-pin" as const, label: "Preferred Location", value: jobsUser.location },
+      { icon: "phone" as const, label: "Verified Mobile", value: `+91 ${jobsUser.phone}` },
+    ];
+  }, [isEmployer, jobsUser]);
+
+  if (!jobsUser) return <View style={s.center}><ActivityIndicator color={ORANGE} /><Text style={s.loadingText}>Loading profile...</Text></View>;
 
   const showNotice = (title: string, message: string, tone: "success" | "danger" | "info" = "info") => setNotice({ visible: true, title, message, tone });
 
-  const pickPhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showNotice("Permission needed", "Please allow gallery access to update your photo.", "info");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.55 });
-    if (!result.canceled && result.assets?.[0]?.uri) setProfilePhoto(result.assets[0].uri);
-  };
-
-  const saveProfile = async () => {
+  const save = async () => {
     if (saving) return;
-    if (name.trim().split(/\s+/).length < 2) return showNotice("Check profile", "Enter your full name, including surname.", "info");
-    if (!validEmail(email)) return showNotice("Check profile", "Enter a valid email address.", "info");
-    if (!isEmployer && about.trim() && countWords(about) > 80) return showNotice("Check profile", "About / Objective must be maximum 80 words.", "info");
-    if (isEmployer && companyDescription.trim() && countWords(companyDescription) > 100) return showNotice("Check profile", "Company description must be maximum 100 words.", "info");
+    if (name.trim().split(/\s+/).filter(Boolean).length < 2) return showNotice("Check full name", "Enter your full name, including surname.", "danger");
+    if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return showNotice("Check email", "Enter a valid email address.", "danger");
+    if (isEmployer && company.trim().length < 2) return showNotice("Company required", "Enter your company, shop or business name.", "danger");
+    if (!isEmployer && qualification.trim().length < 2) return showNotice("Qualification required", "Add your highest qualification.", "danger");
 
     setSaving(true);
     try {
-      if (isEmployer) {
-        await updateJobsUser({ name: name.trim(), email: email.trim() || undefined, profilePhoto, company: company.trim(), contactPerson: contactPerson.trim() || name.trim(), whatsapp: cleanPhone(whatsapp || jobsUser.phone), industry: industry.trim() || undefined, gstNo: gstNo.trim() || undefined, companyType: companyType.trim() || undefined, companySize: companySize.trim() || undefined, yearEstablished: yearEstablished.trim() || undefined, website: website.trim() || undefined, address: address.trim() || undefined, pincode: pincode.trim() || undefined, companyDescription: companyDescription.trim() || undefined });
-      } else {
-        await updateJobsUser({ name: name.trim(), email: email.trim() || undefined, profilePhoto, dob: profileDob || undefined, location: location.trim() || undefined, qualification: qualification.trim() || undefined, skills: skills.trim() || undefined, currentStatus, experience: currentStatus === "fresher" ? undefined : experience.trim() || undefined, languages: languages.trim() || undefined, about: about.trim() || undefined, currentCompany: currentStatus === "employed" ? currentCompany.trim() || undefined : undefined, currentRole: currentStatus === "employed" ? currentRole.trim() || undefined : undefined, previousCompany: previousCompany.trim() || undefined, previousRole: previousRole.trim() || undefined, collegeName: currentStatus === "student" ? collegeName.trim() || undefined : undefined, fieldOfStudy: currentStatus === "student" ? fieldOfStudy.trim() || undefined : undefined });
-      }
-      showNotice("Profile saved", "Your Job Portal profile has been updated.", "success");
-    } catch (err: any) {
-      showNotice("Save failed", getUserErrorMessage(err, "Please try again."), "danger");
+      const common: Partial<JobsUser> = { name: name.trim(), email: email.trim() || undefined };
+      await updateJobsUser(isEmployer ? {
+        ...common,
+        company: company.trim(),
+        contactPerson: name.trim(),
+        industry: industry.trim() || undefined,
+        companyDescription: companyDescription.trim() || undefined,
+        address: location.trim() || undefined,
+        location: location.trim() || undefined,
+        whatsapp: whatsapp.replace(/\D/g, "").slice(-10) || jobsUser.phone,
+      } : {
+        ...common,
+        qualification: qualification.trim(),
+        skills: skills.trim() || undefined,
+        experience: currentStatus === "fresher" ? undefined : experience.trim() || undefined,
+        languages: languages.trim() || undefined,
+        about: about.trim() || undefined,
+        currentStatus,
+        location: location.trim() || undefined,
+      });
+      setEditing(false);
+      showNotice("Profile saved", "Your Job Portal profile has been updated successfully.", "success");
+    } catch (error) {
+      showNotice("Profile not saved", getUserErrorMessage(error, "Please try again after some time."), "danger");
     } finally {
       setSaving(false);
     }
   };
 
-  const quickActions = isEmployer
-    ? [
-        { icon: "plus-circle" as const, label: "Post Job", sub: "Create a new job listing", color: ORANGE, bg: "#FFF7ED", onPress: () => router.push("/jobs/(tabs)/post" as any) },
-        { icon: "briefcase" as const, label: "My Jobs", sub: "View applicants for posted jobs", color: "#2563EB", bg: "#EFF6FF", onPress: () => router.push("/jobs/(tabs)" as any) },
-        { icon: "message-circle" as const, label: "Messages", sub: "Chat with applicants", color: "#7C3AED", bg: "#F5F3FF", onPress: () => router.push("/jobs/(tabs)/messages" as any) },
-      ]
-    : [
-        { icon: "search" as const, label: "Search Jobs", sub: "Find nearby verified jobs", color: ORANGE, bg: "#FFF7ED", onPress: () => router.push("/jobs/search" as any) },
-        { icon: "check-circle" as const, label: "Applied Jobs", sub: "Track applications", color: "#2563EB", bg: "#EFF6FF", onPress: () => router.push("/jobs/(tabs)/applied" as any) },
-      ];
+  const submitRoleRequest = async () => {
+    if (reason.trim().length < 10) return showNotice("More detail required", "Explain the genuine reason for this role correction in at least 10 characters.", "danger");
+    setRequestLoading(true);
+    try {
+      const result = await apiPost<{ request: RoleRequest; message?: string }>("/api/job-portal/role-change-requests", { targetRole: isEmployer ? "seeker" : "employer", reason: reason.trim() });
+      setRoleRequest(result.request);
+      setShowRequest(false);
+      setReason("");
+      showNotice("Request submitted", result.message || "Your request was sent to the Super Admin.", "success");
+    } catch (error) {
+      showNotice("Request not submitted", getUserErrorMessage(error, "Please try again after some time."), "danger");
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login" as any);
+  };
+
+  const requestColor = roleRequest?.status === "approved" ? "#059669" : roleRequest?.status === "rejected" ? "#DC2626" : "#D97706";
 
   return (
     <View style={s.root}>
-      <LinearGradient colors={[DARK, ORANGE, "#FB923C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad + 12 }]}> 
-        <TopShade height={116} />
-        <DecorativeCircles />
-        <View style={s.headerContent}>
-          <TouchableOpacity style={s.avatarWrap} onPress={pickPhoto} activeOpacity={0.84}>
-            {profilePhoto ? <Image source={{ uri: profilePhoto }} style={s.avatarImg} /> : <Text style={s.avatarText}>{initials(name)}</Text>}
-            <View style={s.cameraDot}><Feather name="camera" size={10} color={ORANGE} /></View>
-          </TouchableOpacity>
-          <View style={s.headerText}>
-            <Text style={s.userName} numberOfLines={1}>{name || jobsUser.name}</Text>
-            <View style={s.rolePillRow}>
-              <View style={s.rolePill}><Feather name={isEmployer ? "briefcase" : "user"} size={11} color="rgba(255,255,255,0.9)" /><Text style={s.rolePillText}>{roleText}</Text></View>
-              <Text style={s.roleSub}>{roleSub}</Text>
-            </View>
-            <View style={s.infoRow}>
-              <View style={s.infoChipRow}><Feather name="phone" size={10} color="rgba(255,255,255,0.58)" /><Text style={s.infoChipText}>+91 {jobsUser.phone}</Text></View>
-              <View style={s.infoChipRow}><Feather name="map-pin" size={10} color="rgba(255,255,255,0.58)" /><Text style={s.infoChipText} numberOfLines={1}>{location || address || "Ambernath"}</Text></View>
-            </View>
-          </View>
-        </View>
-        <View style={s.statsRow}>
-          {isEmployer ? (
-            <>
-              <View style={s.statItem}><Text style={s.statNum}>{employerJobs.length}</Text><Text style={s.statLabel}>Jobs</Text></View><View style={s.statDiv} />
-              <View style={s.statItem}><Text style={[s.statNum, { color: "#FDE68A" }]}>{employerApplicants}</Text><Text style={s.statLabel}>Applicants</Text></View><View style={s.statDiv} />
-              <View style={s.statItem}><Text style={[s.statNum, { color: "#6EE7B7" }]}>{employerJobs.filter((j) => j.active).length}</Text><Text style={s.statLabel}>Active</Text></View>
-            </>
-          ) : (
-            <>
-              <View style={s.statItem}><Text style={s.statNum}>{completion}%</Text><Text style={s.statLabel}>Profile</Text></View><View style={s.statDiv} />
-              <View style={s.statItem}><Text style={[s.statNum, { color: "#FDE68A" }]}>{appliedCount}</Text><Text style={s.statLabel}>Applied</Text></View><View style={s.statDiv} />
-              <View style={s.statItem}><Text style={[s.statNum, { color: "#6EE7B7" }]}>{hiredCount}</Text><Text style={s.statLabel}>Hired</Text></View>
-            </>
-          )}
-        </View>
+      <LinearGradient colors={[DARK, ORANGE, "#FB923C"]} style={[s.header, { paddingTop: (Platform.OS === "web" ? 67 : insets.top) + 12 }]}>
+        <TopShade height={110} /><DecorativeCircles />
+        <View style={s.profileRow}><View style={s.avatar}>{jobsUser.profilePhoto ? <Image source={{ uri: jobsUser.profilePhoto }} style={s.avatarImage} /> : <Text style={s.avatarText}>{initials(jobsUser.name)}</Text>}</View><View style={{ flex: 1, minWidth: 0 }}><Text style={s.name} numberOfLines={1}>{jobsUser.name}</Text><View style={s.rolePill}><Feather name={isEmployer ? "briefcase" : "user"} size={11} color="white" /><Text style={s.rolePillText}>{roleLabel}</Text><Feather name="lock" size={10} color="rgba(255,255,255,0.8)" /></View><Text style={s.phone}>+91 {jobsUser.phone}</Text></View><TouchableOpacity style={s.editButton} onPress={() => setEditing((value) => !value)}><Feather name={editing ? "x" : "edit-2"} size={17} color={ORANGE} /></TouchableOpacity></View>
       </LinearGradient>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <AppScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets showsVerticalScrollIndicator={false}>
-          <View style={s.section}><Text style={s.sectionLabel}>QUICK ACTIONS</Text><View style={s.card}>{quickActions.map((item, idx) => <ActionRow key={item.label} {...item} border={idx < quickActions.length - 1} />)}</View></View>
-
-          <View style={s.section}><Text style={s.sectionLabel}>ACCOUNT DETAILS</Text><View style={s.card}>{isEmployer ? <><DetailRow icon="user" label="Owner / HR Name" value={name} /><DetailRow icon="briefcase" label="Company" value={company} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="message-circle" label="WhatsApp" value={cleanPhone(whatsapp) ? `+91 ${cleanPhone(whatsapp)}` : "Not added"} /><DetailRow icon="map-pin" label="Address" value={address} border={false} /></> : <><DetailRow icon="user" label="Full Name" value={name} /><DetailRow icon="phone" label="Mobile" value={`+91 ${jobsUser.phone}`} /><DetailRow icon="map-pin" label="Location" value={location} /><DetailRow icon="award" label="Qualification" value={qualification} /><DetailRow icon="tool" label="Skills" value={skills} border={false} /></>}</View></View>
-
-          <View style={s.section}><Text style={s.sectionLabel}>JOB PORTAL ROLE</Text><View style={s.card}><ActionRow icon="repeat" label={`Switch to ${isEmployer ? "Job Seeker" : "Employer"}`} sub="Keep the same verified mobile and set up the other role" color="#2563EB" bg="#EFF6FF" onPress={() => router.push({ pathname: "/jobs/login" as any, params: { role: isEmployer ? "seeker" : "employer" } })} /></View></View>
-
-          <Section title="Basic Details" icon="user">
-            <Input label={isEmployer ? "Owner / HR Name" : "Full Name"} value={name} onChangeText={setName} placeholder="Full name" />
-            <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@email.com" keyboardType="email-address" autoCapitalize="none" />
-            {!isEmployer && <DobDatePicker label="Date of Birth" value={profileDob} onChange={setProfileDob} placeholder="Select date of birth" />}
-          </Section>
-
-          {isEmployer ? (
-            <>
-              <Section title="Company Details" icon="briefcase">
-                <Input label="Company / Business Name" value={company} onChangeText={setCompany} placeholder="Company name" />
-                <Input label="Contact Person" value={contactPerson} onChangeText={setContactPerson} placeholder="Owner / HR / Manager" />
-                <Input label="WhatsApp Number" value={whatsapp} onChangeText={(v) => setWhatsapp(cleanPhone(v))} placeholder="WhatsApp contact" keyboardType="phone-pad" maxLength={10} />
-                <Input label="Industry" value={industry} onChangeText={setIndustry} placeholder="Manufacturing, Retail, IT..." />
-                <Input label="GST / Business Registration" value={gstNo} onChangeText={setGstNo} placeholder="Optional" autoCapitalize="characters" />
-                <Input label="Company Type" value={companyType} onChangeText={setCompanyType} placeholder="Private, Proprietorship, Shop..." />
-                <Input label="Company Size" value={companySize} onChangeText={setCompanySize} placeholder="1-10, 11-50, 50+ employees" />
-                <Input label="Year Established" value={yearEstablished} onChangeText={(v) => setYearEstablished(v.replace(/\D/g, "").slice(0, 4))} placeholder="2020" keyboardType="number-pad" maxLength={4} />
-                <Input label="Website" value={website} onChangeText={setWebsite} placeholder="https://..." autoCapitalize="none" />
-              </Section>
-              <Section title="Address & Trust Info" icon="map-pin">
-                <Input label="Full Address" value={address} onChangeText={setAddress} placeholder="Complete business address" multiline />
-                <Input label="Pincode" value={pincode} onChangeText={(v) => setPincode(v.replace(/\D/g, "").slice(0, 6))} placeholder="421501" keyboardType="number-pad" maxLength={6} />
-                <Input label="Company Description" value={companyDescription} onChangeText={setCompanyDescription} placeholder="About your company" multiline />
-              </Section>
-            </>
-          ) : (
-            <>
-              <Section title="Candidate Profile" icon="briefcase">
-                <Input label="Location" value={location} onChangeText={setLocation} placeholder="Ambernath East, MIDC..." />
-                <Input label="Qualification" value={qualification} onChangeText={setQualification} placeholder="10th, ITI, Graduate..." />
-                <Input label="Skills" value={skills} onChangeText={setSkills} placeholder="Computer, Sales, Machine handling..." multiline />
-                <View style={s.inputGroup}><Text style={s.label}>Current Status</Text><View style={s.chipRow}>{(["unemployed", "employed", "student", "fresher"] as CurrentStatus[]).map((item) => <Chip key={item} label={item.charAt(0).toUpperCase() + item.slice(1)} active={currentStatus === item} onPress={() => setCurrentStatus(item)} />)}</View></View>
-                {currentStatus !== "fresher" && <Input label="Experience" value={experience} onChangeText={setExperience} placeholder="Fresher / 1 year / 3 years" />}
-                <Input label="Languages Known" value={languages} onChangeText={setLanguages} placeholder="Marathi, Hindi, English" />
-                <Input label="About / Objective" value={about} onChangeText={setAbout} placeholder="Short career summary" multiline />
-              </Section>
-              {currentStatus === "employed" && <Section title="Current Work" icon="briefcase"><Input label="Current Company" value={currentCompany} onChangeText={setCurrentCompany} placeholder="Company name" /><Input label="Current Role" value={currentRole} onChangeText={setCurrentRole} placeholder="Job role" /></Section>}
-              {currentStatus === "student" && <Section title="Student Details" icon="book-open"><Input label="College Name" value={collegeName} onChangeText={setCollegeName} placeholder="College name" /><Input label="Field of Study" value={fieldOfStudy} onChangeText={setFieldOfStudy} placeholder="Commerce, ITI, Engineering..." /></Section>}
-              <Section title="Previous Work" icon="clock"><Input label="Previous Company" value={previousCompany} onChangeText={setPreviousCompany} placeholder="Optional" /><Input label="Previous Role" value={previousRole} onChangeText={setPreviousRole} placeholder="Optional" /></Section>
-            </>
-          )}
-
-          <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.65 }]} onPress={saveProfile} disabled={saving} activeOpacity={0.88}>
-            <LinearGradient colors={[DARK, ORANGE, "#F97316"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveGrad}>
-              <Feather name="check" size={17} color="white" />
-              <Text style={s.saveText}>{saving ? "Saving..." : "Save Profile"}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.logoutBtn} onPress={() => router.replace("/portal-select" as any)} activeOpacity={0.85}><View style={s.logoutInner}><Feather name="repeat" size={18} color="#DC2626" /><Text style={s.logoutText}>Switch Civic / Job Portal</Text></View></TouchableOpacity>
+      <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}>
+        <AppScrollView contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 8) + 120 }]} automaticallyAdjustKeyboardInsets keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
+          {editing ? (
+            <View style={s.formCard}>
+              <Text style={s.sectionTitle}>EDIT {roleLabel.toUpperCase()} PROFILE</Text>
+              <Input label="Full Name *" value={name} onChangeText={setName} placeholder="Full name" autoCapitalize="words" />
+              <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@email.com" keyboardType="email-address" autoCapitalize="none" />
+              {isEmployer ? <>
+                <Input label="Company / Business Name *" value={company} onChangeText={setCompany} placeholder="Business name" />
+                <Input label="Industry" value={industry} onChangeText={setIndustry} placeholder="Retail, Restaurant, Construction..." />
+                <Input label="Business Description" value={companyDescription} onChangeText={setCompanyDescription} placeholder="About your business" multiline />
+                <Input label="Business Location" value={location} onChangeText={setLocation} placeholder="Complete business address" multiline />
+                <Input label="WhatsApp Number" value={whatsapp} onChangeText={setWhatsapp} placeholder="10 digit number" keyboardType="phone-pad" />
+              </> : <>
+                <Input label="Qualification *" value={qualification} onChangeText={setQualification} placeholder="Highest qualification" />
+                <Input label="Skills" value={skills} onChangeText={setSkills} placeholder="Your key skills" multiline />
+                <Text style={s.label}>Current Status</Text><View style={s.chips}>{(["fresher", "student", "unemployed", "employed"] as CurrentStatus[]).map((status) => <TouchableOpacity key={status} style={[s.chip, currentStatus === status && s.chipActive]} onPress={() => setCurrentStatus(status)}><Text style={[s.chipText, currentStatus === status && s.chipTextActive]}>{status.charAt(0).toUpperCase() + status.slice(1)}</Text></TouchableOpacity>)}</View>
+                {currentStatus !== "fresher" ? <Input label="Experience" value={experience} onChangeText={setExperience} placeholder="Work experience" multiline /> : null}
+                <Input label="Preferred Job / Objective" value={about} onChangeText={setAbout} placeholder="Preferred work" multiline />
+                <Input label="Languages" value={languages} onChangeText={setLanguages} placeholder="Marathi, Hindi, English" />
+                <Input label="Preferred Location" value={location} onChangeText={setLocation} placeholder="Badlapur East / West" />
+              </>}
+              <View style={s.actions}><TouchableOpacity style={s.secondary} onPress={() => setEditing(false)}><Text style={s.secondaryText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[s.primary, saving && { opacity: 0.65 }]} onPress={save} disabled={saving}>{saving ? <ActivityIndicator color="white" /> : <><Feather name="check" size={15} color="white" /><Text style={s.primaryText}>Save Profile</Text></>}</TouchableOpacity></View>
+            </View>
+          ) : <>
+            <Text style={s.sectionTitle}>PROFILE DETAILS</Text><View style={s.card}>{details.map((item) => <Detail key={item.label} {...item} />)}</View>
+            <Text style={s.sectionTitle}>JOB PORTAL ROLE</Text><View style={s.roleCard}><View style={s.roleTop}><View style={s.lockIcon}><Feather name="lock" size={18} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.roleSmall}>ACTIVE ROLE</Text><Text style={s.roleTitle}>{roleLabel}</Text></View><View style={s.lockBadge}><Text style={s.lockBadgeText}>LOCKED</Text></View></View><Text style={s.roleDescription}>Direct switching is disabled to protect jobs, applications and verified identity.</Text>{roleRequest ? <View style={[s.requestStatus, { borderColor: `${requestColor}40`, backgroundColor: `${requestColor}0D` }]}><Text style={[s.requestTitle, { color: requestColor }]}>Role request {roleRequest.status}</Text><Text style={s.requestText}>{roleLabel} → {targetRoleLabel}</Text>{roleRequest.adminNote ? <Text style={s.adminNote}>Admin note: {roleRequest.adminNote}</Text> : null}</View> : <TouchableOpacity style={s.requestButton} onPress={() => setShowRequest(true)}><Feather name="send" size={14} color="white" /><Text style={s.requestButtonText}>Request change to {targetRoleLabel}</Text></TouchableOpacity>}</View>
+            <Text style={s.sectionTitle}>ACCOUNT ACTIONS</Text><View style={s.card}><TouchableOpacity style={s.actionRow} onPress={() => router.replace("/portal-select" as any)}><Feather name="repeat" size={16} color={ORANGE} /><View style={{ flex: 1 }}><Text style={s.actionTitle}>Switch Civic / Job Portal</Text><Text style={s.actionSub}>Keep the same verified login</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity><TouchableOpacity style={s.actionRow} onPress={handleLogout}><Feather name="log-out" size={16} color="#DC2626" /><View style={{ flex: 1 }}><Text style={[s.actionTitle, { color: "#DC2626" }]}>Logout from Connect T</Text><Text style={s.actionSub}>Clear all sessions and return to login</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity></View>
+          </>}
         </AppScrollView>
       </KeyboardAvoidingView>
-      <AppNotice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} confirmText={notice.confirmText} onClose={() => setNotice((prev) => ({ ...prev, visible: false }))} onConfirm={notice.onConfirm} />
+
+      <Modal visible={showRequest} transparent animationType="slide" onRequestClose={() => setShowRequest(false)}>
+        <KeyboardAvoidingView style={s.modalFlex} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}>
+          <View style={s.sheetOverlay}><View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
+            <View style={s.handle} /><View style={s.sheetHeader}><View><Text style={s.sheetTitle}>Request Role Correction</Text><Text style={s.sheetSub}>{roleLabel} → {targetRoleLabel}</Text></View><TouchableOpacity style={s.close} onPress={() => setShowRequest(false)}><Feather name="x" size={18} color="#64748B" /></TouchableOpacity></View>
+            <AppScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 30 }} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+              <View style={s.warning}><Feather name="alert-triangle" size={15} color="#D97706" /><Text style={s.warningText}>Super Admin approval is required. Existing records remain protected.</Text></View>
+              <Input label="Reason for role change *" value={reason} onChangeText={setReason} placeholder="Explain why this correction is required" multiline autoFocus />
+              <View style={s.actions}><TouchableOpacity style={s.secondary} onPress={() => setShowRequest(false)}><Text style={s.secondaryText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[s.primary, requestLoading && { opacity: 0.65 }]} onPress={submitRoleRequest} disabled={requestLoading}>{requestLoading ? <ActivityIndicator color="white" /> : <><Feather name="send" size={14} color="white" /><Text style={s.primaryText}>Submit Request</Text></>}</TouchableOpacity></View>
+            </AppScrollView>
+          </View></View>
+        </KeyboardAvoidingView>
+      </Modal>
+      <Notice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((current) => ({ ...current, visible: false }))} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
-  header: { paddingHorizontal: 20, paddingBottom: 14, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
-  headerContent: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
-  avatarWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.15)", borderWidth: 2.2, borderColor: "rgba(255,255,255,0.45)", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  avatarImg: { width: 58, height: 58, borderRadius: 29 },
-  avatarText: { fontSize: 22, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
-  cameraDot: { position: "absolute", right: -1, bottom: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "white", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" },
-  headerText: { flex: 1, gap: 4, minWidth: 0 },
-  userName: { fontSize: 18, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
-  rolePillRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  rolePill: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.15)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  rolePillText: { fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.9)", fontFamily: "Inter_700Bold" },
-  roleSub: { fontSize: 11, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular" },
-  infoRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 },
-  infoChipRow: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%" },
-  infoChipText: { fontSize: 10.5, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular", maxWidth: 190 },
-  statsRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, padding: 10, alignItems: "center" },
-  statItem: { flex: 1, alignItems: "center" },
-  statNum: { fontSize: 23, fontWeight: "900", color: "white", fontFamily: "Inter_700Bold" },
-  statLabel: { fontSize: 10, color: "rgba(255,255,255,0.58)", fontFamily: "Inter_400Regular", marginTop: 2 },
-  statDiv: { width: 1, height: 32, backgroundColor: "rgba(255,255,255,0.2)" },
-  content: { padding: 16 },
-  section: { marginBottom: 18 },
-  sectionLabel: { fontSize: 10, fontWeight: "700", color: "#94A3B8", letterSpacing: 1.2, fontFamily: "Inter_600SemiBold", marginBottom: 8, paddingLeft: 2 },
-  card: { backgroundColor: "white", borderRadius: 18, overflow: "hidden", shadowColor: "#B45309", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  actionRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: "#F8FAFC" },
-  actionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  actionLabel: { fontSize: 13, fontWeight: "700", color: "#0F172A", fontFamily: "Inter_600SemiBold" },
-  actionSub: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_400Regular", marginTop: 1, lineHeight: 15 },
-  formHead: { flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 18, paddingTop: 15, paddingBottom: 10 },
-  formIcon: { width: 32, height: 32, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" },
-  formTitle: { fontSize: 14, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  inputGroup: { paddingHorizontal: 18, paddingBottom: 14 },
-  label: { fontSize: 9.5, fontWeight: "700", color: "#94A3B8", letterSpacing: 1, fontFamily: "Inter_600SemiBold", marginBottom: 6, paddingLeft: 2 },
-  input: { width: "100%", backgroundColor: "#F8FAFC", borderRadius: 14, borderWidth: 1.5, borderColor: "#E2E8F0", paddingHorizontal: 15, paddingVertical: 12, fontSize: 13.5, color: "#0F172A", fontFamily: "Inter_400Regular", outlineWidth: 0 } as any,
-  textArea: { minHeight: 88, textAlignVertical: "top" },
-  dobRow: { flexDirection: "row", gap: 8 },
-  dobInput: { flex: 1, backgroundColor: "#F8FAFC", borderRadius: 14, borderWidth: 1.5, borderColor: "#E2E8F0", paddingHorizontal: 12, paddingVertical: 12, fontSize: 13.5, color: "#0F172A", fontFamily: "Inter_600SemiBold", textAlign: "center", outlineWidth: 0 } as any,
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0" },
-  chipActive: { backgroundColor: "#FFF7ED", borderColor: "#FED7AA" },
-  chipText: { fontSize: 11, color: "#64748B", fontFamily: "Inter_600SemiBold" },
-  chipTextActive: { color: ORANGE, fontFamily: "Inter_700Bold" },
-  saveBtn: { borderRadius: 18, overflow: "hidden", marginTop: 2, marginBottom: 12, shadowColor: DARK, shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
-  saveGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 15 },
-  saveText: { fontSize: 14.5, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900" },
-  logoutBtn: { backgroundColor: "#FEE2E2", borderRadius: 16, borderWidth: 1.5, borderColor: "#FECACA", marginBottom: 8 },
-  logoutInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 15 },
-  logoutText: { fontSize: 14, fontWeight: "700", color: "#DC2626", fontFamily: "Inter_700Bold" },
-  noticeOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 22 },
-  noticeCard: { width: "100%", maxWidth: 360, backgroundColor: "white", borderRadius: 24, padding: 22, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 12 },
-  noticeIcon: { width: 58, height: 58, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  noticeTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold", fontWeight: "900", textAlign: "center" },
-  noticeMsg: { marginTop: 6, fontSize: 13, color: "#64748B", fontFamily: "Inter_400Regular", lineHeight: 19, textAlign: "center" },
-  noticeBtns: { flexDirection: "row", gap: 10, width: "100%", marginTop: 18 },
-  noticeCancel: { flex: 1, borderRadius: 14, paddingVertical: 13, alignItems: "center", backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: "#E2E8F0" },
-  noticeCancelText: { fontSize: 13, color: "#64748B", fontFamily: "Inter_700Bold" },
-  noticeOk: { flex: 1.4, borderRadius: 14, paddingVertical: 13, alignItems: "center" },
-  noticeOkText: { fontSize: 13, color: "white", fontFamily: "Inter_700Bold" },
+  root: { flex: 1, backgroundColor: BG }, flex: { flex: 1 }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: BG }, loadingText: { marginTop: 8, color: "#64748B", fontFamily: "Inter_500Medium" },
+  header: { paddingHorizontal: 18, paddingBottom: 17, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" }, profileRow: { flexDirection: "row", alignItems: "center", gap: 12 }, avatar: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "rgba(255,255,255,0.18)", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" }, avatarImage: { width: 58, height: 58, borderRadius: 29 }, avatarText: { color: "white", fontSize: 21, fontFamily: "Inter_700Bold" }, name: { color: "white", fontSize: 19, fontFamily: "Inter_700Bold" }, rolePill: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5, marginTop: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.16)" }, rolePillText: { color: "white", fontSize: 10, fontFamily: "Inter_700Bold" }, phone: { marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 10.5, fontFamily: "Inter_400Regular" }, editButton: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "white" },
+  content: { padding: 15, gap: 11 }, sectionTitle: { marginTop: 4, marginBottom: -2, color: "#94A3B8", fontSize: 9.8, letterSpacing: 1.1, fontFamily: "Inter_700Bold" }, card: { borderRadius: 18, overflow: "hidden", backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0" }, detail: { flexDirection: "row", alignItems: "center", gap: 10, padding: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E2E8F0" }, detailIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED" }, detailLabel: { color: "#94A3B8", fontSize: 9.8, fontFamily: "Inter_400Regular" }, detailValue: { marginTop: 2, color: "#0F172A", fontSize: 12.5, fontFamily: "Inter_700Bold" },
+  formCard: { padding: 15, borderRadius: 18, backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0" }, inputGroup: { marginBottom: 12 }, label: { marginBottom: 6, color: "#475569", fontSize: 10.5, fontFamily: "Inter_700Bold" }, input: { minHeight: 46, paddingHorizontal: 12, borderRadius: 13, borderWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", color: "#0F172A", fontSize: 12.5, fontFamily: "Inter_500Medium" }, textArea: { minHeight: 102, paddingTop: 12 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 12 }, chip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: "#F1F5F9" }, chipActive: { backgroundColor: "#FFF7ED", borderWidth: 1, borderColor: "#FED7AA" }, chipText: { color: "#64748B", fontSize: 9.8, fontFamily: "Inter_600SemiBold" }, chipTextActive: { color: ORANGE }, actions: { flexDirection: "row", gap: 8, marginTop: 2 }, secondary: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 13, backgroundColor: "#F1F5F9" }, secondaryText: { color: "#64748B", fontSize: 11.5, fontFamily: "Inter_700Bold" }, primary: { flex: 1.4, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 13, backgroundColor: ORANGE }, primaryText: { color: "white", fontSize: 11.5, fontFamily: "Inter_700Bold" },
+  roleCard: { padding: 15, borderRadius: 18, backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0" }, roleTop: { flexDirection: "row", alignItems: "center", gap: 10 }, lockIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF7ED" }, roleSmall: { color: "#94A3B8", fontSize: 8.8, letterSpacing: 1, fontFamily: "Inter_700Bold" }, roleTitle: { marginTop: 2, color: "#0F172A", fontSize: 15, fontFamily: "Inter_700Bold" }, lockBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "#F1F5F9" }, lockBadgeText: { color: "#64748B", fontSize: 8.5, fontFamily: "Inter_700Bold" }, roleDescription: { marginTop: 10, color: "#64748B", fontSize: 10.5, lineHeight: 16, fontFamily: "Inter_400Regular" }, requestButton: { marginTop: 12, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 13, backgroundColor: ORANGE }, requestButtonText: { color: "white", fontSize: 11, fontFamily: "Inter_700Bold" }, requestStatus: { marginTop: 12, padding: 11, borderRadius: 13, borderWidth: 1 }, requestTitle: { fontSize: 11, textTransform: "capitalize", fontFamily: "Inter_700Bold" }, requestText: { marginTop: 3, color: "#475569", fontSize: 10.5, fontFamily: "Inter_500Medium" }, adminNote: { marginTop: 5, color: "#64748B", fontSize: 10, fontFamily: "Inter_400Regular" }, actionRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, padding: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E2E8F0" }, actionTitle: { color: "#0F172A", fontSize: 12, fontFamily: "Inter_700Bold" }, actionSub: { marginTop: 2, color: "#94A3B8", fontSize: 9.8, fontFamily: "Inter_400Regular" },
+  modalFlex: { flex: 1 }, sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.48)" }, sheet: { maxHeight: "82%", padding: 17, borderTopLeftRadius: 25, borderTopRightRadius: 25, backgroundColor: "white" }, handle: { width: 42, height: 4, marginBottom: 14, alignSelf: "center", borderRadius: 2, backgroundColor: "#CBD5E1" }, sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }, sheetTitle: { color: "#0F172A", fontSize: 17, fontFamily: "Inter_700Bold" }, sheetSub: { marginTop: 2, color: ORANGE, fontSize: 10.5, fontFamily: "Inter_600SemiBold" }, close: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#F1F5F9" }, warning: { marginBottom: 12, flexDirection: "row", alignItems: "flex-start", gap: 7, padding: 10, borderRadius: 12, backgroundColor: "#FFFBEB" }, warningText: { flex: 1, color: "#92400E", fontSize: 10.5, lineHeight: 15, fontFamily: "Inter_400Regular" },
+  modalOverlay: { flex: 1, padding: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(15,23,42,0.48)" }, noticeCard: { width: "100%", maxWidth: 360, padding: 22, alignItems: "center", borderRadius: 22, backgroundColor: "white" }, noticeIcon: { width: 56, height: 56, borderRadius: 19, alignItems: "center", justifyContent: "center" }, noticeTitle: { marginTop: 11, color: "#0F172A", fontSize: 17, textAlign: "center", fontFamily: "Inter_700Bold" }, noticeText: { marginTop: 6, color: "#64748B", fontSize: 11.5, lineHeight: 17, textAlign: "center", fontFamily: "Inter_400Regular" }, noticeButton: { marginTop: 16, minWidth: 100, paddingVertical: 10, alignItems: "center", borderRadius: 13 }, noticeButtonText: { color: "white", fontFamily: "Inter_700Bold" },
 });

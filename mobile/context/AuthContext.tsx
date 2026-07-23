@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { apiGet, apiPost, storeAuthToken, clearAuthToken, getStoredAuthToken, isApiError } from "@/lib/api";
+import { apiGet, apiPost, storeAuthToken, clearAuthToken, clearJobsAuthToken, getStoredAuthToken, isApiError } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type UserRole = "citizen" | "nagarsevak" | "super_admin";
@@ -52,6 +52,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const SESSION_KEY = "janseva_user";
+const JOBS_SESSION_KEY = "connectt_jobs_session_v2";
 const AVATAR_COLORS = ["#1E40AF", "#059669", "#7C3AED", "#D97706", "#DC2626", "#0EA5E9"];
 
 function normalizeMobile(mobile: string): string {
@@ -213,9 +214,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await persistSession(saved);
   };
 
-  const logout = async (redirectTo?: string) => {
-    setLogoutTarget(redirectTo || null);
-    await persistSession(null);
+  const logout = async (_redirectTo?: string) => {
+    // Logout is intentionally global. Every role leaves both Civic and Job Portal
+    // sessions and is sent to the single Connect T login screen.
+    setLogoutTarget("/login");
+    setUser(null);
+    await Promise.all([
+      AsyncStorage.removeItem(SESSION_KEY),
+      AsyncStorage.removeItem(JOBS_SESSION_KEY),
+      clearAuthToken(),
+      clearJobsAuthToken(),
+    ]);
   };
 
   const checkPhone = async (mobile: string): Promise<User | null> => {
