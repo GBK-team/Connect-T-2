@@ -8,6 +8,7 @@ const PRODUCTION_PATCHES = [
   "./otpProductionPatch.js",
   "./utilityStatusPatch.js",
   "./jobPortalAuthPatch.js",
+  "./jobPortalOnboardingPatch.js",
   "./jobPortalMessagePatch.js",
   "./jobPortalProfilePatch.js",
 ];
