@@ -1088,8 +1088,12 @@ app.post("/api/users", async (req, res) => {
       return res.status(401).json({ success: false, error: "Verified OTP or an active user session is required" });
     }
 
-    if (existing && !authIsSuperAdmin && existingMobile !== mobile && (!ownsExisting || !hasOtpProof)) {
-      return res.status(403).json({ success: false, error: "Verified OTP is required to change this account's mobile number" });
+    if (existing && !authIsSuperAdmin && existingMobile !== mobile) {
+      return res.status(403).json({
+        success: false,
+        code: "MOBILE_CHANGE_REQUIRES_REVERIFICATION",
+        message: "Mobile number cannot be changed from the normal profile form. A separate re-verification workflow is required.",
+      });
     }
 
     if (!existing && !authIsSuperAdmin && requestedRole !== "citizen") {

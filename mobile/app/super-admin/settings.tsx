@@ -1,4 +1,5 @@
 import { AppScrollView } from "@/components/AppScrollView";
+import ConfirmActionModal from "@/components/ConfirmActionModal";
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Platform, Switch, Modal, TextInput } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -6,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
+import { useAccountActions } from "@/hooks/useAccountActions";
 
 const COMPLAINT_CATEGORIES = [
   {
@@ -51,14 +53,14 @@ const COMPLAINT_CATEGORIES = [
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { user, logout, updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const router = useRouter();
+  const accountActions = useAccountActions();
 
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [autoAssign, setAutoAssign] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(false);
-  const [showLogout, setShowLogout] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName] = useState(user?.name || "");
 
@@ -614,7 +616,7 @@ export default function SettingsScreen() {
         </View>
 
         <TouchableOpacity
-          onPress={() => setShowLogout(true)}
+          onPress={accountActions.requestLogout}
           style={{
             backgroundColor: "#FEE2E2",
             borderRadius: 16,
@@ -639,115 +641,17 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </AppScrollView>
 
-      <Modal
-        visible={showLogout}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowLogout(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: "white",
-              borderRadius: 24,
-              padding: 28,
-              margin: 32,
-              alignItems: "center",
-              width: "85%",
-            }}
-          >
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 28,
-                backgroundColor: "#FEE2E2",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 16,
-              }}
-            >
-              <Feather name="log-out" size={26} color="#DC2626" />
-            </View>
-            <Text
-              style={{
-                fontSize: 18,
-                fontFamily: "Inter_700Bold",
-                color: "#0F172A",
-                marginBottom: 8,
-              }}
-            >
-              Sign Out
-            </Text>
-            <Text
-              style={{
-                fontSize: 13,
-                fontFamily: "Inter_400Regular",
-                color: "#64748B",
-                textAlign: "center",
-                marginBottom: 24,
-              }}
-            >
-              Are you sure you want to sign out of the Super Admin panel?
-            </Text>
-            <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
-              <TouchableOpacity
-                onPress={() => setShowLogout(false)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 13,
-                  borderRadius: 14,
-                  backgroundColor: "#F1F5F9",
-                  alignItems: "center",
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontFamily: "Inter_600SemiBold",
-                    color: "#64748B",
-                  }}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  setShowLogout(false);
-                  await logout("/login");
-                  router.replace("/login" as any);
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 13,
-                  borderRadius: 14,
-                  backgroundColor: "#DC2626",
-                  alignItems: "center",
-                }}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontFamily: "Inter_600SemiBold",
-                    color: "white",
-                  }}
-                >
-                  Sign Out
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ConfirmActionModal
+        visible={accountActions.pendingAction === "logout"}
+        title="Logout from Connect-T?"
+        message="This will securely clear all authenticated sessions on this device. Administrative data and account access will not be deleted."
+        confirmLabel="Logout"
+        icon="log-out"
+        tone="danger"
+        busy={accountActions.busy}
+        onCancel={accountActions.cancelAction}
+        onConfirm={accountActions.runPendingAction}
+      />
 
       <Modal
         visible={showEditProfile}

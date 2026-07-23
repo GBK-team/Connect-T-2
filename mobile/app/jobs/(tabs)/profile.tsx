@@ -13,15 +13,15 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppScrollView } from "@/components/AppScrollView";
+import ConfirmActionModal from "@/components/ConfirmActionModal";
 import DecorativeCircles from "@/components/DecorativeCircles";
 import TopShade from "@/components/TopShade";
-import { useAuth } from "@/context/AuthContext";
 import { CurrentStatus, JobsUser, useJobsAuth } from "@/context/JobsAuthContext";
 import { apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
+import { useAccountActions } from "@/hooks/useAccountActions";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -80,10 +80,9 @@ function Notice({ visible, title, message, tone, onClose }: { visible: boolean; 
 }
 
 export default function JobPortalProfileScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { logout } = useAuth();
   const { jobsUser, updateJobsUser } = useJobsAuth();
+  const accountActions = useAccountActions();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
@@ -204,11 +203,6 @@ export default function JobPortalProfileScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/login" as any);
-  };
-
   const requestColor = roleRequest?.status === "approved" ? "#059669" : roleRequest?.status === "rejected" ? "#DC2626" : "#D97706";
 
   return (
@@ -245,7 +239,7 @@ export default function JobPortalProfileScreen() {
           ) : <>
             <Text style={s.sectionTitle}>PROFILE DETAILS</Text><View style={s.card}>{details.map((item) => <Detail key={item.label} {...item} />)}</View>
             <Text style={s.sectionTitle}>JOB PORTAL ROLE</Text><View style={s.roleCard}><View style={s.roleTop}><View style={s.lockIcon}><Feather name="lock" size={18} color={ORANGE} /></View><View style={{ flex: 1 }}><Text style={s.roleSmall}>ACTIVE ROLE</Text><Text style={s.roleTitle}>{roleLabel}</Text></View><View style={s.lockBadge}><Text style={s.lockBadgeText}>LOCKED</Text></View></View><Text style={s.roleDescription}>Direct switching is disabled to protect jobs, applications and verified identity.</Text>{roleRequest ? <View style={[s.requestStatus, { borderColor: `${requestColor}40`, backgroundColor: `${requestColor}0D` }]}><Text style={[s.requestTitle, { color: requestColor }]}>Role request {roleRequest.status}</Text><Text style={s.requestText}>{roleLabel} → {targetRoleLabel}</Text>{roleRequest.adminNote ? <Text style={s.adminNote}>Admin note: {roleRequest.adminNote}</Text> : null}</View> : <TouchableOpacity style={s.requestButton} onPress={() => setShowRequest(true)}><Feather name="send" size={14} color="white" /><Text style={s.requestButtonText}>Request change to {targetRoleLabel}</Text></TouchableOpacity>}</View>
-            <Text style={s.sectionTitle}>ACCOUNT ACTIONS</Text><View style={s.card}><TouchableOpacity style={s.actionRow} onPress={() => router.replace("/portal-select" as any)}><Feather name="repeat" size={16} color={ORANGE} /><View style={{ flex: 1 }}><Text style={s.actionTitle}>Switch Civic / Job Portal</Text><Text style={s.actionSub}>Keep the same verified login</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity><TouchableOpacity style={s.actionRow} onPress={handleLogout}><Feather name="log-out" size={16} color="#DC2626" /><View style={{ flex: 1 }}><Text style={[s.actionTitle, { color: "#DC2626" }]}>Logout from Connect T</Text><Text style={s.actionSub}>Clear all sessions and return to login</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity></View>
+            <Text style={s.sectionTitle}>ACCOUNT ACTIONS</Text><View style={s.card}><TouchableOpacity style={s.actionRow} onPress={accountActions.requestCivicPortal}><Feather name="repeat" size={16} color={ORANGE} /><View style={{ flex: 1 }}><Text style={s.actionTitle}>Switch to Civic Portal</Text><Text style={s.actionSub}>Open Civic Services directly with the same verified login</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity><TouchableOpacity style={s.actionRow} onPress={accountActions.requestLogout}><Feather name="log-out" size={16} color="#DC2626" /><View style={{ flex: 1 }}><Text style={[s.actionTitle, { color: "#DC2626" }]}>Logout from Connect T</Text><Text style={s.actionSub}>Securely clear Civic and Job Portal sessions</Text></View><Feather name="chevron-right" size={17} color="#CBD5E1" /></TouchableOpacity></View>
           </>}
         </AppScrollView>
       </KeyboardAvoidingView>
@@ -262,6 +256,17 @@ export default function JobPortalProfileScreen() {
           </View></View>
         </KeyboardAvoidingView>
       </Modal>
+      <ConfirmActionModal
+        visible={!!accountActions.pendingAction}
+        title={accountActions.pendingAction === "logout" ? "Logout from Connect-T?" : "Switch to Civic Portal?"}
+        message={accountActions.pendingAction === "logout" ? "This will securely clear Civic and Job Portal sessions on this device. Your account, jobs and applications will not be deleted." : "Your verified login will remain active and Civic Services will open directly."}
+        confirmLabel={accountActions.pendingAction === "logout" ? "Logout" : "Switch portal"}
+        icon={accountActions.pendingAction === "logout" ? "log-out" : "repeat"}
+        tone={accountActions.pendingAction === "logout" ? "danger" : "primary"}
+        busy={accountActions.busy}
+        onCancel={accountActions.cancelAction}
+        onConfirm={accountActions.runPendingAction}
+      />
       <Notice visible={notice.visible} title={notice.title} message={notice.message} tone={notice.tone} onClose={() => setNotice((current) => ({ ...current, visible: false }))} />
     </View>
   );
