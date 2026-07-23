@@ -56,7 +56,8 @@ export default function ConfirmActionModal({
               onPress={onConfirm}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityState={{ disabled: busy, busy }}
+              accessibilityLabel={busy ? `${confirmLabel}. Processing.` : confirmLabel}
+              accessibilityState={{ disabled: busy }}
             >
               {busy ? <ActivityIndicator size="small" color="white" /> : <Feather name={tone === "danger" ? "log-out" : "check"} size={16} color="white" />}
               <Text style={styles.confirmText}>{confirmLabel}</Text>
