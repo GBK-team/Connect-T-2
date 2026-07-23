@@ -215,6 +215,9 @@ async function authorizeComplaints(req, res, next) {
     }
 
     if (method === "POST" && req.path === "/") {
+      // Multipart complaints parse their body in the dedicated upload route,
+      // which performs the same server-side identity and role derivation.
+      if (req.is("multipart/form-data")) return next();
       if (user.role !== "citizen" && !isOfficer && !isSuperAdmin) {
         return res.status(403).json({ success: false, error: "Citizen or officer account required" });
       }

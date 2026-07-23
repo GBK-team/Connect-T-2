@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import { useComplaints, ComplaintCategory } from "@/context/ComplaintContext";
+import { useComplaints, ComplaintCategory, ComplaintPhotoAsset } from "@/context/ComplaintContext";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getUserErrorMessage } from "@/lib/api";
@@ -99,7 +99,7 @@ export default function NewComplaintScreen() {
   const { t } = useLanguage();
   const keyboardVisible = useKeyboardVisible();
 
-  const [photoUri, setPhotoUri] = useState<string | undefined>();
+  const [photoAsset, setPhotoAsset] = useState<ComplaintPhotoAsset | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<ComplaintCategory | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -117,6 +117,28 @@ export default function NewComplaintScreen() {
   };
 
   const closeNotice = () => setNotice((prev) => ({ ...prev, visible: false, onDone: undefined }));
+
+  const acceptPhoto = (asset: ImagePicker.ImagePickerAsset) => {
+    const mimeType = String(asset.mimeType || "").toLowerCase();
+    const fileName = asset.fileName || `complaint_${Date.now()}.jpg`;
+    const extension = fileName.split(".").pop()?.toLowerCase();
+    const inferredMime = mimeType || (extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : ["jpg", "jpeg"].includes(extension || "") ? "image/jpeg" : "");
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(inferredMime)) {
+      showNotice("Unsupported image", "Choose a JPEG, PNG or WebP image.", "danger");
+      return;
+    }
+    if (asset.fileSize && asset.fileSize > 8 * 1024 * 1024) {
+      showNotice("Image too large", "Choose an image smaller than 8MB. Camera photos are compressed automatically.", "danger");
+      return;
+    }
+    setPhotoAsset({
+      uri: asset.uri,
+      fileName,
+      mimeType: inferredMime,
+      fileSize: asset.fileSize,
+      file: asset.file,
+    });
+  };
 
   const detectLocation = async (showFailure = true) => {
     if (detectingLocation) return;
@@ -158,7 +180,7 @@ export default function NewComplaintScreen() {
   const handleCamera = async () => {
     if (Platform.OS === "web") {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75 });
-      if (!result.canceled && result.assets[0]) setPhotoUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) acceptPhoto(result.assets[0]);
       return;
     }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -167,12 +189,19 @@ export default function NewComplaintScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75 });
-    if (!result.canceled && result.assets[0]) setPhotoUri(result.assets[0].uri);
+    if (!result.canceled && result.assets[0]) acceptPhoto(result.assets[0]);
   };
 
   const handleGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.75 });
-    if (!result.canceled && result.assets[0]) setPhotoUri(result.assets[0].uri);
+    if (Platform.OS !== "web") {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showNotice("Photo permission needed", "Allow photo access to attach an image. You can still submit without one.");
+        return;
+      }
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+    if (!result.canceled && result.assets[0]) acceptPhoto(result.assets[0]);
   };
 
   const goBack = () => {
@@ -196,7 +225,7 @@ export default function NewComplaintScreen() {
         title: title.trim(),
         description: description.trim(),
         category: selectedCategory,
-        photoUri,
+        photoAsset,
         location: location.trim(),
         ward: user?.ward?.trim() || "Ward Pending",
         wardCode: user?.wardCode || null,
@@ -217,7 +246,6 @@ export default function NewComplaintScreen() {
         router.replace({ pathname: "/complaint/[id]", params: { id: complaint.id, fresh: "1" } });
       });
     } catch (error) {
-      console.error("Complaint submit failed", error);
       showNotice("Submission Failed", getUserErrorMessage(error, "Could not submit complaint. Please try again."), "danger");
     } finally {
       setSubmitting(false);
@@ -245,7 +273,7 @@ export default function NewComplaintScreen() {
         >
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>{t("photoOfProblem")}</Text>
-            {photoUri ? <View style={styles.photoContainer}><Image source={{ uri: photoUri }} style={styles.photo} /><TouchableOpacity style={styles.retakeBtn} onPress={handleCamera} activeOpacity={0.8}><Feather name="refresh-cw" size={14} color="white" /><Text style={styles.retakeBtnText}>{t("retake")}</Text></TouchableOpacity></View> : <View style={styles.photoButtons}><TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}><LinearGradient colors={[ORANGE, "#FB923C"]} style={styles.cameraBtnGrad}><Feather name="camera" size={24} color="white" /><Text style={styles.cameraBtnText}>{t("takePhoto")}</Text><Text style={styles.cameraBtnSub}>{t("clickPhotoOfProblem")}</Text></LinearGradient></TouchableOpacity><TouchableOpacity style={styles.galleryBtn} onPress={handleGallery} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /><Text style={styles.galleryBtnText}>{t("chooseFromGallery")}</Text></TouchableOpacity></View>}
+            {photoAsset ? <View style={styles.photoContainer}><Image source={{ uri: photoAsset.uri }} style={styles.photo} /><TouchableOpacity style={styles.removePhotoBtn} onPress={() => setPhotoAsset(undefined)} activeOpacity={0.8} accessibilityLabel="Remove complaint image"><Feather name="x" size={16} color="white" /></TouchableOpacity><TouchableOpacity style={styles.retakeBtn} onPress={handleCamera} activeOpacity={0.8}><Feather name="refresh-cw" size={14} color="white" /><Text style={styles.retakeBtnText}>{t("retake")}</Text></TouchableOpacity></View> : <View style={styles.photoButtons}><TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}><LinearGradient colors={[ORANGE, "#FB923C"]} style={styles.cameraBtnGrad}><Feather name="camera" size={24} color="white" /><Text style={styles.cameraBtnText}>{t("takePhoto")}</Text><Text style={styles.cameraBtnSub}>{t("clickPhotoOfProblem")}</Text></LinearGradient></TouchableOpacity><TouchableOpacity style={styles.galleryBtn} onPress={handleGallery} activeOpacity={0.85}><Feather name="image" size={18} color={ORANGE} /><Text style={styles.galleryBtnText}>{t("chooseFromGallery")}</Text></TouchableOpacity></View>}
           </View>
 
           <View style={styles.section}>
@@ -274,7 +302,7 @@ export default function NewComplaintScreen() {
         </AppScrollView>
       </KeyboardAvoidingView>
 
-      {!keyboardVisible && <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}><TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}><LinearGradient colors={[GREEN, "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBtnGrad}>{submitting ? <ActivityIndicator color="white" /> : <><Feather name="send" size={18} color="white" /><Text style={styles.submitBtnText}>{t("submitComplaint")}</Text></>}</LinearGradient></TouchableOpacity></View>}
+      {!keyboardVisible && <View style={[styles.submitBar, { paddingBottom: Math.max(insets.bottom, 8) + 16 }]}><TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleSubmit} disabled={submitting} activeOpacity={0.85}><LinearGradient colors={[GREEN, "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.submitBtnGrad}>{submitting ? <><ActivityIndicator color="white" /><Text style={styles.submitBtnText}>{photoAsset ? "Uploading image..." : "Submitting..."}</Text></> : <><Feather name="send" size={18} color="white" /><Text style={styles.submitBtnText}>{t("submitComplaint")}</Text></>}</LinearGradient></TouchableOpacity></View>}
       <NoticeModal notice={notice} onClose={closeNotice} />
     </View>
   );
@@ -303,7 +331,8 @@ const styles = StyleSheet.create({
   galleryBtnText: { fontSize: 13, fontWeight: "700", color: ORANGE, fontFamily: "Inter_600SemiBold" },
   photoContainer: { borderRadius: 16, overflow: "hidden", position: "relative" },
   photo: { width: "100%", height: 200, borderRadius: 16 },
-  retakeBtn: { position: "absolute", bottom: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  retakeBtn: { position: "absolute", bottom: 10, right: 10, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, minHeight: 40 },
+  removePhotoBtn: { position: "absolute", top: 10, right: 10, width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(220,38,38,0.9)", alignItems: "center", justifyContent: "center" },
   retakeBtnText: { fontSize: 12, color: "white", fontWeight: "700", fontFamily: "Inter_600SemiBold" },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   categoryItem: { width: "22%", alignItems: "center", gap: 6, paddingVertical: 12, paddingHorizontal: 6, borderRadius: 14, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "white", position: "relative" },

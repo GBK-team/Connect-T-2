@@ -94,3 +94,28 @@ test("OTP resend throttling is enforced", async () => {
     (error) => error?.status === 429 && error?.code === "OTP_RESEND_TOO_SOON",
   );
 });
+
+
+test("replacement OTP supersedes the previous session", async () => {
+  const originalNow = Date.now;
+  let now = 1_800_000_000_000;
+  Date.now = () => now;
+  const codes = [];
+  try {
+    const first = await sendOtp({
+      mobile: "9988776655",
+      purpose: "login",
+      sendSms: async (_mobile, code) => codes.push(code),
+    });
+    now += 46_000;
+    const second = await sendOtp({
+      mobile: "9988776655",
+      purpose: "login",
+      sendSms: async (_mobile, code) => codes.push(code),
+    });
+    assert.throws(() => verifyOtp({ mobile: "9988776655", purpose: "login", code: codes[0], sessionToken: first.sessionToken }), /Invalid or expired OTP/);
+    assert.equal(verifyOtp({ mobile: "9988776655", purpose: "login", code: codes[1], sessionToken: second.sessionToken }).mobile, "9988776655");
+  } finally {
+    Date.now = originalNow;
+  }
+});

@@ -8,8 +8,7 @@ import React, {
 } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { apiGet, apiPatch, apiPost } from "@/lib/api";
-import { toUploadableMediaUri } from "@/lib/mediaUpload";
+import { apiGet, apiPatch, apiPost, apiPostForm } from "@/lib/api";
 
 export type ComplaintStatus =
   | "submitted"
@@ -64,11 +63,20 @@ export interface Complaint {
   locationAccuracy?: number | null;
 }
 
+export type ComplaintPhotoAsset = {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  file?: any;
+};
+
 export type NewComplaintData = {
   title: string;
   description: string;
   category: ComplaintCategory;
   photoUri?: string;
+  photoAsset?: ComplaintPhotoAsset;
   location: string;
   ward: string;
   wardCode?: string | null;
@@ -305,13 +313,11 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
 
   const addComplaint = async (data: NewComplaintData): Promise<Complaint> => {
     const now = new Date().toISOString();
-    const photoUrl = await toUploadableMediaUri(data.photoUri);
-
+    const clientRequestId = `cmp_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
     const payload = {
       title: data.title.trim(),
       description: data.description.trim(),
       category: data.category || "other",
-      photo_url: photoUrl,
       location: data.location.trim(),
       ward: data.ward?.trim() || "Ward Pending",
       ward_code: data.wardCode || user?.wardCode || null,
@@ -329,24 +335,47 @@ export function ComplaintProvider({ children }: { children: ReactNode }) {
       location_accuracy: data.locationAccuracy ?? null,
     };
 
-    const result = await apiPost<any>("/api/complaints", payload);
+    let result: any;
+    let submittedPhoto = data.photoUri;
+    if (data.photoAsset) {
+      const form = new FormData();
+      form.append("client_request_id", clientRequestId);
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) form.append(key, String(value));
+      });
+      if (data.photoAsset.file) {
+        form.append("photo", data.photoAsset.file);
+      } else {
+        form.append("photo", {
+          uri: data.photoAsset.uri,
+          name: data.photoAsset.fileName || `complaint_${Date.now()}.jpg`,
+          type: data.photoAsset.mimeType || "image/jpeg",
+        } as any);
+      }
+      result = await apiPostForm<any>("/api/complaints", form);
+      submittedPhoto = result.photo_url || data.photoAsset.uri;
+    } else {
+      result = await apiPost<any>("/api/complaints", {
+        ...payload,
+        id: clientRequestId,
+        photo_url: null,
+      });
+    }
 
     const created = normalizeComplaint({
       ...payload,
-      id: result.complaintId || result.complaint?.id || Date.now().toString(),
+      photo_url: submittedPhoto || result.photo_url || null,
+      id: result.complaintId || result.complaint?.id || clientRequestId,
       status: "submitted",
       created_at: now,
       updated_at: now,
       timeline: buildTimeline("submitted", now),
       ward_code: result.ward_code ?? payload.ward_code,
-      assigned_officer_id:
-        result.assigned_officer_id ?? payload.assigned_officer_id,
+      assigned_officer_id: result.assigned_officer_id ?? payload.assigned_officer_id,
     });
 
-    setComplaints((prev) => [created, ...prev]);
-
+    setComplaints((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
     void refreshComplaints();
-
     return created;
   };
 
