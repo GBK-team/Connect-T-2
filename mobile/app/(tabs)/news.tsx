@@ -1,194 +1,98 @@
-import React, { useMemo, useState } from "react";
-import { FlatList, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo } from "react";
+import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
-import { AppAlert, AlertPriority, AlertType, useAlerts } from "@/context/AlertContext";
+
+import { AppAlert, useAlerts } from "@/context/AlertContext";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "expo-router";
+import { getUserErrorMessage } from "@/lib/api";
 
 const GREEN = "#16A34A";
-const ORANGE = "#EA580C";
-const BG = "#ebeffc";
+const BG = "#EBEFFC";
 
-type Mode = "create" | "edit";
+function timeAgo(value: string) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return "Recently";
+  const minutes = Math.floor((Date.now() - time) / 60000);
+  if (minutes < 1) return "Now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(mins / 60);
-  const days = Math.floor(hours / 24);
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (mins > 0) return `${mins}m ago`;
-  return "now";
+function PostCard({ item, onDelete }: { item: AppAlert; onDelete: () => void }) {
+  const router = useRouter();
+  const emergency = item.type === "emergency";
+  const alert = item.type === "alert" || emergency;
+  const color = alert ? "#DC2626" : "#166534";
+  const background = alert ? "#FEF2F2" : "#DCFCE7";
+  return (
+    <TouchableOpacity style={s.card} onPress={() => router.push(`/alert/${item.id}` as any)} activeOpacity={0.86}>
+      <View style={s.cardTop}><View style={[s.typePill, { backgroundColor: background }]}><Feather name={emergency ? "alert-octagon" : alert ? "alert-triangle" : "radio"} size={11} color={color} /><Text style={[s.typeText, { color }]}>{emergency ? "Emergency" : alert ? "Alert" : "News"}</Text></View><Text style={s.time}>{timeAgo(item.createdAt)}</Text></View>
+      <Text style={s.title}>{item.title}</Text><Text style={s.body} numberOfLines={4}>{item.body}</Text>
+      <View style={s.metaRow}><Feather name="map-pin" size={12} color="#64748B" /><Text style={s.metaText}>{item.ward || item.location || "All citizens"}</Text></View>
+      <View style={s.actions}><TouchableOpacity style={s.view} onPress={() => router.push(`/alert/${item.id}` as any)}><Feather name="eye" size={13} color="#166534" /><Text style={s.viewText}>View Post</Text></TouchableOpacity><TouchableOpacity style={s.delete} onPress={(event) => { event.stopPropagation(); onDelete(); }}><Feather name="trash-2" size={13} color="#DC2626" /><Text style={s.deleteText}>Remove</Text></TouchableOpacity></View>
+    </TouchableOpacity>
+  );
 }
 
 export default function NagarsevakNewsScreen() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 54 : insets.top;
-  const { user } = useAuth();
   const router = useRouter();
-  const { alerts, addAlert, removeAlert, refreshAlerts } = useAlerts();
-  const [refreshing, setRefreshing] = useState(false);
-  const [modal, setModal] = useState(false);
-  const [mode, setMode] = useState<Mode>("create");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [type, setType] = useState<AlertType>("news");
-  const [priority, setPriority] = useState<AlertPriority>("normal");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [location, setLocation] = useState(user?.ward || "");
-  const [error, setError] = useState("");
+  const { user } = useAuth();
+  const { alerts, loading, error, refreshAlerts, removeAlert } = useAlerts();
 
-  const myPosts = useMemo(() => {
-    return alerts
-      .filter((a) => (a.postedById && user?.id ? a.postedById === user.id : a.postedBy === user?.name))
-      .filter((a) => a.type === "news" || a.type === "alert")
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [alerts, user?.id, user?.name]);
+  useFocusEffect(useCallback(() => {
+    void refreshAlerts().catch(() => undefined);
+  }, [refreshAlerts]));
 
-  const openCreate = () => {
-    router.push("/alert/new" as any);
-  };
+  const myPosts = useMemo(() => alerts.filter((item) => String(item.postedById || "") === String(user?.id || "")), [alerts, user?.id]);
+  const stats = useMemo(() => ({ news: myPosts.filter((item) => item.type === "news").length, alerts: myPosts.filter((item) => item.type !== "news").length }), [myPosts]);
 
-  const openEdit = (item: AppAlert) => {
-    setMode("edit");
-    setEditingId(item.id);
-    setType(item.type === "alert" ? "alert" : "news");
-    setPriority(item.priority || "normal");
-    setTitle(item.title);
-    setBody(item.body);
-    setLocation(item.location || user?.ward || "");
-    setError("");
-    setModal(true);
-  };
-
-  const submit = () => {
-    if (title.trim().length < 3) return setError("Enter a clear title.");
-    if (body.trim().length < 8) return setError("Enter a detailed message.");
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (mode === "edit" && editingId) removeAlert(editingId);
-    addAlert({ title: title.trim(), body: body.trim(), type, priority, category: "Ward", location: location.trim() || user?.ward, targetAudience: "Ward residents" }, user?.name || "Nagarsevak", user?.id, user?.ward);
-    setModal(false);
-  };
+  const confirmDelete = (item: AppAlert) => Alert.alert("Remove broadcast?", `Remove “${item.title}” from citizens' Alerts & News page?`, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Remove", style: "destructive", onPress: () => void removeAlert(item.id).catch((requestError) => Alert.alert("Could not remove", getUserErrorMessage(requestError))) },
+  ]);
 
   return (
-    <View style={styles.root}>
-      <LinearGradient colors={["#166534", GREEN, "#22C55E"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: topPad + 12 }]}> 
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.kicker}>NEWS & ALERTS</Text>
-            <Text style={styles.title}>Ward Broadcasts</Text>
-            <Text style={styles.sub}>Post, edit and delete your own news/alerts</Text>
-          </View>
-          <TouchableOpacity style={styles.postBtn} onPress={openCreate} activeOpacity={0.86}>
-            <Feather name="plus" size={18} color="white" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.statRow}>
-          <Stat label="Posts" value={myPosts.length} />
-          <Stat label="News" value={myPosts.filter((p) => p.type === "news").length} />
-          <Stat label="Alerts" value={myPosts.filter((p) => p.type === "alert").length} />
-        </View>
+    <View style={s.root}>
+      <LinearGradient colors={["#052E16", "#166534", GREEN]} style={[s.header, { paddingTop: (Platform.OS === "web" ? 54 : insets.top) + 12 }]}>
+        <View style={s.headerRow}><View style={{ flex: 1 }}><Text style={s.kicker}>NEWS & ALERTS</Text><Text style={s.headerTitle}>Ward Broadcasts</Text><Text style={s.headerSub}>Posts published here appear on citizens' Alerts & News page.</Text></View><TouchableOpacity style={s.postButton} onPress={() => router.push("/alert/new" as any)}><Feather name="plus" size={19} color="white" /></TouchableOpacity></View>
+        <View style={s.stats}><Stat value={myPosts.length} label="Posts" /><Stat value={stats.news} label="News" /><Stat value={stats.alerts} label="Alerts" /></View>
       </LinearGradient>
 
-      <FlatList
-        refreshing={refreshing}
-        onRefresh={async () => { setRefreshing(true); await refreshAlerts(); setRefreshing(false); }}
-        data={myPosts}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 14, paddingBottom: Math.max(insets.bottom, 8) + 92 }}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <PostCard item={item} onEdit={() => openEdit(item)} onDelete={() => removeAlert(item.id)} />}
-        ListEmptyComponent={<View style={styles.empty}><Feather name="radio" size={40} color="#CBD5E1" /><Text style={styles.emptyTitle}>No news or alerts yet</Text><Text style={styles.emptySub}>Tap + to post your first ward broadcast.</Text><TouchableOpacity style={styles.emptyBtn} onPress={openCreate}><Text style={styles.emptyBtnText}>Post News / Alert</Text></TouchableOpacity></View>}
-      />
+      {error ? <TouchableOpacity style={s.errorBanner} onPress={() => void refreshAlerts().catch(() => undefined)}><Feather name="wifi-off" size={15} color="#B45309" /><Text style={s.errorText}>{error}</Text><Text style={s.retry}>Retry</Text></TouchableOpacity> : null}
 
-      <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}> 
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{mode === "edit" ? "Edit Post" : "Post News / Alert"}</Text>
-              <TouchableOpacity onPress={() => setModal(false)} style={styles.closeBtn}><Feather name="x" size={20} color="#64748B" /></TouchableOpacity>
-            </View>
-            <View style={styles.segmentRow}>{(["news", "alert"] as AlertType[]).map((item) => <TouchableOpacity key={item} onPress={() => setType(item)} style={[styles.segment, type === item && styles.segmentActive]}><Feather name={item === "alert" ? "alert-triangle" : "radio"} size={14} color={type === item ? "white" : GREEN} /><Text style={[styles.segmentText, type === item && styles.segmentTextActive]}>{item === "alert" ? "Alert" : "News"}</Text></TouchableOpacity>)}</View>
-            <Text style={styles.label}>Priority</Text>
-            <View style={styles.chipRow}>{(["normal", "important", "urgent"] as AlertPriority[]).map((item) => <TouchableOpacity key={item} onPress={() => setPriority(item)} style={[styles.chipBtn, priority === item && styles.chipActive]}><Text style={[styles.chipBtnText, priority === item && styles.chipActiveText]}>{item}</Text></TouchableOpacity>)}</View>
-            <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Water supply update" />
-            <Input label="Message" value={body} onChangeText={setBody} placeholder="Write full details for citizens" multiline />
-            <Input label="Area / Ward" value={location} onChangeText={setLocation} placeholder="Ward or location" />
-            {!!error && <Text style={styles.error}>{error}</Text>}
-            <TouchableOpacity style={styles.saveBtn} onPress={submit} activeOpacity={0.88}><LinearGradient colors={["#166534", GREEN]} style={styles.saveGrad}><Feather name="send" size={16} color="white" /><Text style={styles.saveText}>{mode === "edit" ? "Save Changes" : "Broadcast"}</Text></LinearGradient></TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {loading && !myPosts.length ? <View style={s.center}><ActivityIndicator size="large" color={GREEN} /><Text style={s.loadingText}>Loading your broadcasts...</Text></View> : (
+        <FlatList
+          data={myPosts}
+          keyExtractor={(item) => item.id}
+          refreshing={loading}
+          onRefresh={() => void refreshAlerts().catch(() => undefined)}
+          renderItem={({ item }) => <PostCard item={item} onDelete={() => confirmDelete(item)} />}
+          contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 8) + 92 }, !myPosts.length && { flexGrow: 1 }]}
+          ListEmptyComponent={<View style={s.empty}><View style={s.emptyIcon}><Feather name="radio" size={30} color={GREEN} /></View><Text style={s.emptyTitle}>No broadcasts yet</Text><Text style={s.emptyText}>Post ward news or an alert and citizens in your ward will see it immediately.</Text><TouchableOpacity style={s.emptyAction} onPress={() => router.push("/alert/new" as any)}><Text style={s.emptyActionText}>Post Alert / News</Text></TouchableOpacity></View>}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
 
-function PostCard({ item, onEdit, onDelete }: { item: AppAlert; onEdit: () => void; onDelete: () => void }) {
-  const color = item.type === "alert" ? "#DC2626" : ORANGE;
-  const bg = item.type === "alert" ? "#FEE2E2" : "#FFF7ED";
-  return <View style={styles.card}><View style={styles.cardTop}><View style={[styles.typePill, { backgroundColor: bg }]}><Feather name={item.type === "alert" ? "alert-triangle" : "radio"} size={11} color={color} /><Text style={[styles.typePillText, { color }]}>{item.type}</Text></View><Text style={styles.time}>{timeAgo(item.createdAt)}</Text></View><Text style={styles.postTitle}>{item.title}</Text><Text style={styles.postBody}>{item.body}</Text><View style={styles.infoRow}><Feather name="map-pin" size={12} color="#64748B" /><Text style={styles.infoText}>{item.location || item.ward || "Ward"}</Text></View><View style={styles.actionRow}><TouchableOpacity style={styles.editBtn} onPress={onEdit}><Feather name="edit-2" size={13} color="#166534" /><Text style={styles.editText}>Edit</Text></TouchableOpacity><TouchableOpacity style={styles.deleteBtn} onPress={onDelete}><Feather name="trash-2" size={13} color="#DC2626" /><Text style={styles.deleteText}>Delete</Text></TouchableOpacity></View></View>;
+function Stat({ value, label }: { value: number; label: string }) {
+  return <View style={s.stat}><Text style={s.statValue}>{value}</Text><Text style={s.statLabel}>{label}</Text></View>;
 }
-function Stat({ label, value }: { label: string; value: number }) { return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
-function Input(props: React.ComponentProps<typeof TextInput> & { label: string }) { const { label, multiline, style, ...rest } = props; return <View style={styles.inputBlock}><Text style={styles.label}>{label}</Text><TextInput {...rest} multiline={multiline} textAlignVertical={multiline ? "top" : "center"} style={[styles.input, multiline && styles.textArea, style]} placeholderTextColor="#94A3B8" /></View>; }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  header: { paddingHorizontal: 18, paddingBottom: 16, borderBottomLeftRadius: 26, borderBottomRightRadius: 26 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  kicker: { fontSize: 10, color: "#BBF7D0", fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
-  title: { fontSize: 22, color: "white", fontFamily: "Inter_700Bold", fontWeight: "900", marginTop: 3 },
-  sub: { fontSize: 12, color: "rgba(255,255,255,0.72)", fontFamily: "Inter_400Regular", marginTop: 3 },
-  postBtn: { width: 44, height: 44, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
-  statRow: { flexDirection: "row", gap: 9 },
-  stat: { flex: 1, backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 14, padding: 10, alignItems: "center" },
-  statValue: { color: "white", fontSize: 18, fontFamily: "Inter_700Bold" },
-  statLabel: { color: "rgba(255,255,255,0.72)", fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  card: { backgroundColor: "white", borderRadius: 18, padding: 14, marginBottom: 11, elevation: 2, shadowColor: "#166534", shadowOpacity: 0.06, shadowRadius: 8 },
-  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  typePill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
-  typePillText: { fontSize: 10, fontFamily: "Inter_700Bold", textTransform: "uppercase" },
-  time: { fontSize: 11, color: "#94A3B8", fontFamily: "Inter_600SemiBold" },
-  postTitle: { fontSize: 16, color: "#0F172A", fontFamily: "Inter_700Bold" },
-  postBody: { marginTop: 6, fontSize: 13, lineHeight: 19, color: "#475569", fontFamily: "Inter_400Regular" },
-  infoRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10 },
-  infoText: { fontSize: 11, color: "#64748B", fontFamily: "Inter_600SemiBold" },
-  actionRow: { flexDirection: "row", gap: 8, marginTop: 12 },
-  editBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#F0FDF4", borderRadius: 12, paddingVertical: 10 },
-  editText: { color: "#166534", fontSize: 12, fontFamily: "Inter_700Bold" },
-  deleteBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 12, paddingVertical: 10 },
-  deleteText: { color: "#DC2626", fontSize: 12, fontFamily: "Inter_700Bold" },
-  empty: { alignItems: "center", paddingTop: 70, paddingHorizontal: 24 },
-  emptyTitle: { marginTop: 10, fontSize: 16, color: "#475569", fontFamily: "Inter_700Bold" },
-  emptySub: { marginTop: 4, fontSize: 12, color: "#94A3B8", fontFamily: "Inter_400Regular", textAlign: "center" },
-  emptyBtn: { marginTop: 14, backgroundColor: GREEN, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 11 },
-  emptyBtnText: { color: "white", fontSize: 13, fontFamily: "Inter_700Bold" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "white", borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 18 },
-  sheetHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: "#CBD5E1", alignSelf: "center", marginBottom: 14 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  sheetTitle: { fontSize: 18, color: "#0F172A", fontFamily: "Inter_700Bold" },
-  closeBtn: { width: 38, height: 38, borderRadius: 14, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center" },
-  segmentRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  segment: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 11, borderRadius: 14, borderWidth: 1, borderColor: "#BBF7D0", backgroundColor: "#F0FDF4" },
-  segmentActive: { backgroundColor: GREEN, borderColor: GREEN },
-  segmentText: { color: GREEN, fontSize: 13, fontFamily: "Inter_700Bold" },
-  segmentTextActive: { color: "white" },
-  chipRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  chipBtn: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0" },
-  chipActive: { backgroundColor: "#DCFCE7", borderColor: "#BBF7D0" },
-  chipBtnText: { color: "#64748B", fontSize: 11, fontFamily: "Inter_700Bold" },
-  chipActiveText: { color: "#166534" },
-  inputBlock: { marginBottom: 11 },
-  label: { fontSize: 11, color: "#334155", fontFamily: "Inter_700Bold", marginBottom: 6 },
-  input: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC", color: "#0F172A", paddingHorizontal: 13, fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  textArea: { minHeight: 92, paddingTop: 12 },
-  error: { color: "#DC2626", fontSize: 12, fontFamily: "Inter_700Bold", marginBottom: 8, textAlign: "center" },
-  saveBtn: { borderRadius: 16, overflow: "hidden" },
-  saveGrad: { minHeight: 52, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
-  saveText: { color: "white", fontSize: 14, fontFamily: "Inter_700Bold" },
+  header: { paddingHorizontal: 18, paddingBottom: 18, borderBottomLeftRadius: 27, borderBottomRightRadius: 27 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 }, kicker: { fontSize: 9.5, color: "#BBF7D0", letterSpacing: 1.1, fontFamily: "Inter_700Bold" }, headerTitle: { marginTop: 3, fontSize: 22, color: "white", fontFamily: "Inter_700Bold" }, headerSub: { marginTop: 3, fontSize: 11.5, lineHeight: 16, color: "rgba(255,255,255,0.74)", fontFamily: "Inter_400Regular" }, postButton: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.17)" },
+  stats: { marginTop: 14, flexDirection: "row", gap: 8 }, stat: { flex: 1, alignItems: "center", paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.14)" }, statValue: { color: "white", fontSize: 18, fontFamily: "Inter_700Bold" }, statLabel: { marginTop: 1, color: "rgba(255,255,255,0.7)", fontSize: 9.5, fontFamily: "Inter_500Medium" },
+  errorBanner: { margin: 14, marginBottom: 0, flexDirection: "row", alignItems: "center", gap: 7, padding: 11, borderRadius: 13, backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A" }, errorText: { flex: 1, color: "#92400E", fontSize: 10.5, fontFamily: "Inter_500Medium" }, retry: { color: "#B45309", fontSize: 10.5, fontFamily: "Inter_700Bold" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" }, loadingText: { marginTop: 10, color: "#64748B", fontSize: 11.5, fontFamily: "Inter_500Medium" },
+  list: { padding: 14, gap: 10 }, card: { padding: 14, borderRadius: 18, backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0" }, cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, typePill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 }, typeText: { fontSize: 9.5, fontFamily: "Inter_700Bold" }, time: { fontSize: 10, color: "#94A3B8", fontFamily: "Inter_500Medium" }, title: { marginTop: 9, fontSize: 15, color: "#0F172A", fontFamily: "Inter_700Bold" }, body: { marginTop: 5, fontSize: 11.5, lineHeight: 17, color: "#64748B", fontFamily: "Inter_400Regular" }, metaRow: { marginTop: 9, flexDirection: "row", alignItems: "center", gap: 5 }, metaText: { fontSize: 10, color: "#64748B", fontFamily: "Inter_600SemiBold" }, actions: { marginTop: 12, flexDirection: "row", gap: 8 }, view: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 12, backgroundColor: "#F0FDF4" }, viewText: { color: "#166534", fontSize: 10.5, fontFamily: "Inter_700Bold" }, delete: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 12, backgroundColor: "#FEF2F2" }, deleteText: { color: "#DC2626", fontSize: 10.5, fontFamily: "Inter_700Bold" },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }, emptyIcon: { width: 64, height: 64, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#DCFCE7" }, emptyTitle: { marginTop: 10, fontSize: 16, color: "#0F172A", fontFamily: "Inter_700Bold" }, emptyText: { marginTop: 5, fontSize: 11.5, lineHeight: 17, color: "#64748B", textAlign: "center", fontFamily: "Inter_400Regular" }, emptyAction: { marginTop: 14, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 13, backgroundColor: GREEN }, emptyActionText: { color: "white", fontSize: 11.5, fontFamily: "Inter_700Bold" },
 });
