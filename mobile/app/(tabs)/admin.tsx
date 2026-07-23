@@ -121,17 +121,6 @@ function ActionModal({ complaint, onClose, onUpdate }: { complaint: Complaint; o
           </TouchableOpacity>
         </View>
       </View>
-      <ConfirmActionModal
-        visible={accountActions.pendingAction === "logout"}
-        title="Logout from Connect-T?"
-        message="This will securely clear Civic and Job Portal sessions on this device. Complaints, alerts and account data will remain saved."
-        confirmLabel="Logout"
-        icon="log-out"
-        tone="danger"
-        busy={accountActions.busy}
-        onCancel={accountActions.cancelAction}
-        onConfirm={accountActions.runPendingAction}
-      />
     </View>
   );
 }
@@ -779,6 +768,17 @@ export default function AdminScreen() {
         </View>
       </Modal>
 
+      <ConfirmActionModal
+        visible={accountActions.pendingAction === "logout"}
+        title="Logout from Connect-T?"
+        message="This will securely clear Civic and Job Portal sessions on this device. Complaints, alerts and account data will remain saved."
+        confirmLabel="Logout"
+        icon="log-out"
+        tone="danger"
+        busy={accountActions.busy}
+        onCancel={accountActions.cancelAction}
+        onConfirm={accountActions.runPendingAction}
+      />
     </View>
   );
 }
