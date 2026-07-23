@@ -14,6 +14,7 @@ const TABS = [
   { name: "index", icon: "grid", label: "Dashboard" },
   { name: "officers", icon: "users", label: "Officers" },
   { name: "jobs", icon: "briefcase", label: "Jobs" },
+  { name: "role-requests", icon: "repeat", label: "Roles" },
   { name: "broadcast", icon: "radio", label: "Broadcast" },
   { name: "reports", icon: "bar-chart-2", label: "Reports" },
 ];
@@ -36,10 +37,10 @@ function SuperAdminTabBar({ state, navigation }: any) {
 
         return (
           <TouchableOpacity key={tab.name} onPress={onPress} style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 3, minWidth: 0 }} activeOpacity={0.72} accessibilityRole="button" accessibilityState={isFocused ? { selected: true } : {}}>
-            <View style={{ width: 38, height: 32, alignItems: "center", justifyContent: "center", backgroundColor: isFocused ? "rgba(22,163,74,0.12)" : "transparent", borderRadius: 16, borderWidth: isFocused ? 1 : 0, borderColor: "rgba(22,163,74,0.18)" }}>
-              <Feather name={tab.icon as any} size={18} color={isFocused ? GREEN : MUTED} />
+            <View style={{ width: 34, height: 30, alignItems: "center", justifyContent: "center", backgroundColor: isFocused ? "rgba(22,163,74,0.12)" : "transparent", borderRadius: 15, borderWidth: isFocused ? 1 : 0, borderColor: "rgba(22,163,74,0.18)" }}>
+              <Feather name={tab.icon as any} size={17} color={isFocused ? GREEN : MUTED} />
             </View>
-            <Text numberOfLines={1} style={{ fontSize: 9.2, fontFamily: isFocused ? "Inter_700Bold" : "Inter_600SemiBold", color: isFocused ? GREEN : MUTED, marginTop: 2, maxWidth: 72 }}>{tab.label}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 8.2, fontFamily: isFocused ? "Inter_700Bold" : "Inter_600SemiBold", color: isFocused ? GREEN : MUTED, marginTop: 2, maxWidth: 58 }}>{tab.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -96,6 +97,7 @@ export default function SuperAdminLayout() {
             <Tabs.Screen name="index" />
             <Tabs.Screen name="officers" />
             <Tabs.Screen name="jobs" />
+            <Tabs.Screen name="role-requests" />
             <Tabs.Screen name="broadcast" />
             <Tabs.Screen name="reports" />
             <Tabs.Screen name="settings" options={{ href: null }} />
