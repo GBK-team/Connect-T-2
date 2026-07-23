@@ -1,66 +1,13 @@
 name: Apply Production Audit Phase One
 
 on:
-  push:
-    branches:
-      - fix/connect-t-complete-production-audit
-    paths:
-      - scripts/apply-audit-phase1.mjs
-      - .github/workflows/apply-audit-phase1.yml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - scripts/apply-audit-phase1.mjs
-      - .github/workflows/apply-audit-phase1.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+  archived:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/connect-t-complete-production-audit
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Apply deterministic source changes
-        run: node scripts/apply-audit-phase1.mjs
-      - name: Install Expo SecureStore aligned to SDK 56
-        working-directory: mobile
-        run: npm install expo-secure-store@~56.0.4 --save-exact --legacy-peer-deps --ignore-scripts --no-audit --no-fund
-      - name: Install patched multipart parser
-        working-directory: backend
-        run: npm install multer@2.2.0 --save-exact --ignore-scripts --no-audit --no-fund
-      - name: Commit phase-one implementation
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend mobile
-          if git diff --cached --quiet; then
-            echo "No generated changes to commit."
-          else
-            git commit -m "fix(auth,complaints): secure OTP resend and multipart image upload"
-            git push origin HEAD:fix/connect-t-complete-production-audit
-          fi
-      - name: Validate backend
-        working-directory: backend
-        run: |
-          npm run check
-          npm test
-          npm audit --omit=dev --audit-level=high
-      - name: Run Expo Doctor
-        working-directory: mobile
-        run: npm run doctor
-      - name: Run mobile regression tests
-        working-directory: mobile
-        run: npm run test:api
-      - name: Run mobile TypeScript
-        working-directory: mobile
-        run: npm run typecheck
+      - run: echo "Phase one has already been applied to the audit branch."
