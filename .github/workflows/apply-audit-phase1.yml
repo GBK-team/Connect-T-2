@@ -38,18 +38,6 @@ jobs:
       - name: Install patched multipart parser
         working-directory: backend
         run: npm install multer@2.2.0 --save-exact --ignore-scripts --no-audit --no-fund
-      - name: Validate backend
-        working-directory: backend
-        run: |
-          npm run check
-          npm test
-          npm audit --omit=dev --audit-level=high
-      - name: Validate mobile
-        working-directory: mobile
-        run: |
-          npm run doctor
-          npm run test:api
-          npm run typecheck
       - name: Commit phase-one implementation
         run: |
           git config user.name "github-actions[bot]"
@@ -57,7 +45,22 @@ jobs:
           git add backend mobile
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
-            exit 0
+          else
+            git commit -m "fix(auth,complaints): secure OTP resend and multipart image upload"
+            git push origin HEAD:fix/connect-t-complete-production-audit
           fi
-          git commit -m "fix(auth,complaints): secure OTP resend and multipart image upload"
-          git push origin HEAD:fix/connect-t-complete-production-audit
+      - name: Validate backend
+        working-directory: backend
+        run: |
+          npm run check
+          npm test
+          npm audit --omit=dev --audit-level=high
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npm run doctor
+      - name: Run mobile regression tests
+        working-directory: mobile
+        run: npm run test:api
+      - name: Run mobile TypeScript
+        working-directory: mobile
+        run: npm run typecheck
