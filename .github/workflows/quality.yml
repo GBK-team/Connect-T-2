@@ -44,7 +44,14 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-      - run: npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: Install Expo-aligned mobile dependencies
+        run: npm install --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: Upload regenerated mobile lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-lockfile
+          path: mobile/package-lock.json
+          retention-days: 3
       - name: Run Expo Doctor
         shell: bash
         run: |
