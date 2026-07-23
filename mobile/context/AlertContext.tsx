@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { AppState, createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type AlertType = "alert" | "news" | "emergency";
@@ -33,170 +33,147 @@ export interface AppAlert {
   ward?: string;
 }
 
-export type AlertDraft = Pick<AppAlert, "title" | "body" | "type"> &
-  Partial<
-    Pick<
-      AppAlert,
-      | "category"
-      | "priority"
-      | "location"
-      | "validUntil"
-      | "expiresAt"
-      | "targetAudience"
-      | "media"
-    >
-  >;
+export type AlertDraft = Pick<AppAlert, "title" | "body" | "type"> & Partial<Pick<AppAlert,
+  "category" | "priority" | "location" | "validUntil" | "expiresAt" | "targetAudience" | "media"
+>>;
 
 interface AlertContextType {
   alerts: AppAlert[];
-  addAlert: (
-    data: AlertDraft,
-    postedBy?: string,
-    postedById?: string,
-    ward?: string,
-  ) => Promise<AppAlert>;
+  loading: boolean;
+  error: string;
+  lastUpdatedAt?: string;
+  addAlert: (data: AlertDraft, postedBy?: string, postedById?: string, ward?: string) => Promise<AppAlert>;
   removeAlert: (id: string) => Promise<void>;
   refreshAlerts: () => Promise<void>;
-  loading: boolean;
 }
 
 const AlertContext = createContext<AlertContextType | null>(null);
 const ALERT_ACTIVE_MS = 12 * 60 * 60 * 1000;
 
-function normalizeAlertType(value: any): AlertType {
-  if (value === "news" || value === "emergency" || value === "alert") return value;
-  return "alert";
+function normalizeType(value: unknown): AlertType {
+  const type = String(value || "alert").toLowerCase();
+  return type === "news" || type === "emergency" ? type : "alert";
 }
 
-function normalizePriority(value: any): AlertPriority {
-  if (
-    value === "important" ||
-    value === "urgent" ||
-    value === "high" ||
-    value === "normal"
-  ) {
-    return value;
-  }
-
-  return "normal";
+function normalizePriority(value: unknown): AlertPriority {
+  const priority = String(value || "normal").toLowerCase();
+  return ["important", "urgent", "high"].includes(priority) ? priority as AlertPriority : "normal";
 }
 
-function sortAlerts(items: AppAlert[]) {
-  return [...items].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+export function wardKey(ward?: string | null) {
+  const raw = String(ward || "").trim().toLowerCase();
+  if (!raw || raw === "all wards" || raw === "all" || raw === "all citizens") return "";
+  const match = raw.match(/(?:ward\s*)?([0-9]{1,2}[a-z]?)/i);
+  return match ? match[1].toLowerCase() : raw.replace(/\s+/g, "");
+}
+
+export function isGlobalAlert(alert: Partial<AppAlert>) {
+  const audience = String(alert.targetAudience || "").toLowerCase();
+  return !wardKey(alert.ward) || audience.includes("all citizen") || audience.includes("all ward");
+}
+
+export function alertVisibleForWard(alert: Partial<AppAlert>, ward?: string | null) {
+  return isGlobalAlert(alert) || (!!wardKey(ward) && wardKey(alert.ward) === wardKey(ward));
+}
+
+function normalizeBackendAlert(item: any): AppAlert {
+  const mediaUri = item?.media?.uri || item?.media_uri || item?.image_uri || item?.video_uri || "";
+  const rawMediaType = item?.media?.type || item?.media_type || (item?.video_uri ? "video" : item?.image_uri ? "image" : "");
+  return {
+    id: String(item?.id || item?.alertId || `alert_${Date.now()}`),
+    title: String(item?.title || ""),
+    body: String(item?.body || item?.message || ""),
+    type: normalizeType(item?.type),
+    category: item?.category || undefined,
+    priority: normalizePriority(item?.priority),
+    location: item?.location || undefined,
+    validFrom: item?.validFrom || item?.valid_from || undefined,
+    validUntil: item?.validUntil || item?.valid_until || undefined,
+    expiresAt: item?.expiresAt || item?.expires_at || undefined,
+    targetAudience: item?.targetAudience || item?.target_audience || undefined,
+    media: mediaUri ? {
+      uri: mediaUri,
+      type: rawMediaType === "video" ? "video" : "image",
+      fileName: item?.media?.fileName || item?.media_file_name || undefined,
+      mimeType: item?.media?.mimeType || item?.media_mime_type || undefined,
+      duration: item?.media?.duration !== undefined
+        ? Number(item.media.duration)
+        : item?.media_duration !== undefined && item?.media_duration !== null ? Number(item.media_duration) : undefined,
+    } : null,
+    createdAt: item?.createdAt || item?.created_at || item?.created || new Date().toISOString(),
+    postedBy: item?.postedBy || item?.posted_by || "Connect-T",
+    postedById: item?.postedById || item?.posted_by_id || undefined,
+    ward: item?.ward || undefined,
+  };
+}
+
+function activeAlerts(items: AppAlert[]) {
+  const now = Date.now();
+  return items
+    .filter((item) => {
+      if (!item.expiresAt) return true;
+      const expiry = new Date(item.expiresAt).getTime();
+      return Number.isNaN(expiry) || expiry > now;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 function formatValidUntil(value: string) {
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function normalizeBackendAlert(item: any): AppAlert {
-  const createdAt =
-    item.createdAt ||
-    item.created_at ||
-    item.created ||
-    new Date().toISOString();
-
-  const expiresAt = item.expiresAt || item.expires_at || "";
-
-  const mediaUri = item.media?.uri || item.media_uri || item.image_uri || item.video_uri || "";
-  const mediaType = item.media?.type || item.media_type || (item.video_uri ? "video" : item.image_uri ? "image" : "");
-
-  return {
-    id: String(item.id || item.alertId || "ALT" + Date.now()),
-    title: item.title || "",
-    body: item.body || item.message || "",
-    type: normalizeAlertType(item.type),
-    category: item.category || undefined,
-    priority: normalizePriority(item.priority),
-    location: item.location || undefined,
-    validFrom: item.validFrom || item.valid_from || undefined,
-    validUntil: item.validUntil || item.valid_until || undefined,
-    expiresAt: expiresAt || undefined,
-    targetAudience: item.targetAudience || item.target_audience || undefined,
-    media: mediaUri
-      ? {
-          uri: mediaUri,
-          type: mediaType === "video" ? "video" : "image",
-          fileName: item.media?.fileName || item.media_file_name || undefined,
-          mimeType: item.media?.mimeType || item.media_mime_type || undefined,
-          duration:
-            item.media?.duration !== undefined
-              ? Number(item.media.duration)
-              : item.media_duration !== undefined && item.media_duration !== null
-                ? Number(item.media_duration)
-                : undefined,
-        }
-      : null,
-    createdAt,
-    postedBy: item.postedBy || item.posted_by || "Connect-T",
-    postedById: item.postedById || item.posted_by_id || undefined,
-    ward: item.ward || undefined,
-  };
+  return date.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function AlertProvider({ children }: { children: ReactNode }) {
   const [alerts, setAlerts] = useState<AppAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string>();
+  const refreshInFlight = useRef<Promise<void> | null>(null);
 
-  const refreshAlerts = async () => {
-    try {
+  const refreshAlerts = useCallback(async () => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const request = (async () => {
       setLoading(true);
-
-      const result = await apiGet<any>("/api/alerts");
-      const backendAlerts = Array.isArray(result.alerts)
-        ? result.alerts.map(normalizeBackendAlert)
-            .filter((item: AppAlert) => !item.expiresAt || new Date(item.expiresAt).getTime() > Date.now())
-        : [];
-
-      setAlerts(sortAlerts(backendAlerts));
-    } catch (error) {
-      console.error("Failed to load alerts from MySQL", error);
-      setAlerts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshAlerts();
+      setError("");
+      try {
+        const result = await apiGet<{ alerts?: any[] }>("/api/alerts");
+        setAlerts(activeAlerts((result.alerts || []).map(normalizeBackendAlert)));
+        setLastUpdatedAt(new Date().toISOString());
+      } catch (requestError) {
+        setError(getUserErrorMessage(requestError, "Alerts and news could not be loaded. Pull down to try again."));
+        throw requestError;
+      } finally {
+        setLoading(false);
+      }
+    })();
+    refreshInFlight.current = request;
+    try { await request; }
+    finally { refreshInFlight.current = null; }
   }, []);
 
-  const addAlert = async (
-    data: AlertDraft,
-    postedBy: string = "Super Admin",
-    postedById?: string,
-    ward?: string,
-  ) => {
-    const createdAt = new Date();
-    const expiresAt =
-      data.expiresAt ||
-      new Date(createdAt.getTime() + ALERT_ACTIVE_MS).toISOString();
+  useEffect(() => {
+    void refreshAlerts().catch(() => undefined);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshAlerts().catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, [refreshAlerts]);
 
-    const id = "ALT" + Date.now().toString().slice(-8);
+  const addAlert = async (data: AlertDraft, postedBy = "Connect-T", postedById?: string, ward?: string) => {
+    const expiresAt = data.expiresAt || new Date(Date.now() + ALERT_ACTIVE_MS).toISOString();
     const mediaUri = await toUploadableMediaUri(data.media?.uri);
-
     const payload = {
-      id,
-      title: data.title,
-      body: data.body,
+      id: `ALT${Date.now().toString().slice(-10)}`,
+      title: data.title.trim(),
+      body: data.body.trim(),
       type: data.type,
       category: data.category || null,
       priority: data.priority || "normal",
       location: data.location || null,
       valid_until: data.validUntil || formatValidUntil(expiresAt),
       expires_at: expiresAt,
-      target_audience: data.targetAudience || null,
+      target_audience: data.targetAudience || (ward ? "Ward residents" : "All citizens"),
       media_uri: mediaUri,
       media_type: data.media?.type || null,
       media_file_name: data.media?.fileName || null,
@@ -206,41 +183,31 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       posted_by_id: postedById || null,
       ward: ward || null,
     };
-
-    const result = await apiPost<any>("/api/alerts", payload);
-
-    const created = normalizeBackendAlert({
-      ...payload,
-      id: result.alertId || id,
-      created_at: createdAt.toISOString(),
-    });
-
+    const result = await apiPost<{ alert?: any; alertId?: string }>("/api/alerts", payload);
+    const created = normalizeBackendAlert(result.alert || { ...payload, id: result.alertId || payload.id, created_at: new Date().toISOString() });
+    setAlerts((current) => activeAlerts([created, ...current.filter((item) => item.id !== created.id)]));
     await refreshAlerts();
     return created;
   };
 
   const removeAlert = async (id: string) => {
-    await apiDelete(`/api/alerts/${encodeURIComponent(id)}`);
-    await refreshAlerts();
+    const previous = alerts;
+    setAlerts((items) => items.filter((item) => item.id !== id));
+    try {
+      await apiDelete(`/api/alerts/${encodeURIComponent(id)}`);
+      await refreshAlerts();
+    } catch (requestError) {
+      setAlerts(previous);
+      throw requestError;
+    }
   };
 
-  return (
-    <AlertContext.Provider
-      value={{ alerts, addAlert, removeAlert, refreshAlerts, loading }}
-    >
-      {children}
-    </AlertContext.Provider>
-  );
-}
-
-export function wardKey(ward?: string | null): string {
-  if (!ward) return "";
-  const m = ward.match(/\d+/);
-  return m ? m[0] : ward.trim().toLowerCase();
+  const value = useMemo(() => ({ alerts, loading, error, lastUpdatedAt, addAlert, removeAlert, refreshAlerts }), [alerts, loading, error, lastUpdatedAt, refreshAlerts]);
+  return <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
 }
 
 export function useAlerts() {
-  const ctx = useContext(AlertContext);
-  if (!ctx) throw new Error("useAlerts must be used inside AlertProvider");
-  return ctx;
+  const context = useContext(AlertContext);
+  if (!context) throw new Error("useAlerts must be used inside AlertProvider");
+  return context;
 }
