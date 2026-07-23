@@ -12,11 +12,11 @@ function JobsAuthGate({ children }: { children: React.ReactNode }) {
     if (loading) return;
 
     const routeName = String(segments[1] || "");
-    const inOnboarding = routeName === "onboarding" || routeName === "login";
+    const inSetup = routeName === "profile-setup" || routeName === "onboarding" || routeName === "login";
 
-    if (!jobsUser && !inOnboarding) {
-      router.replace("/jobs/onboarding" as any);
-    } else if (jobsUser && inOnboarding) {
+    if (!jobsUser && !inSetup) {
+      router.replace("/jobs/profile-setup" as any);
+    } else if (jobsUser && inSetup) {
       router.replace("/jobs/(tabs)" as any);
     }
   }, [jobsUser, loading, segments, router]);
@@ -30,6 +30,7 @@ export default function JobsLayout() {
       <JobsProvider>
         <JobsAuthGate>
           <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="profile-setup" options={{ animation: "fade" }} />
             <Stack.Screen name="onboarding" options={{ animation: "fade" }} />
             <Stack.Screen name="login" options={{ animation: "fade" }} />
             <Stack.Screen name="(tabs)" options={{ animation: "fade" }} />
