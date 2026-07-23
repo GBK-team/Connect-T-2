@@ -2,11 +2,13 @@ import React, { createContext, ReactNode, useCallback, useContext, useEffect, us
 import { AppState, AppStateStatus } from "react-native";
 
 import { useAuth } from "@/context/AuthContext";
-import { apiDelete, apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, getUserErrorMessage } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
 export type AlertType = "alert" | "news" | "emergency";
 export type AlertPriority = "normal" | "important" | "urgent" | "high";
+export type AlertLanguage = "en" | "mr" | "hi";
+export type AlertStatus = "draft" | "scheduled" | "published" | "archived";
 
 export interface AlertMedia {
   uri: string;
@@ -23,6 +25,9 @@ export interface AppAlert {
   type: AlertType;
   category?: string;
   priority?: AlertPriority;
+  language: AlertLanguage;
+  status: AlertStatus;
+  publishAt?: string;
   location?: string;
   validFrom?: string;
   validUntil?: string;
@@ -33,10 +38,13 @@ export interface AppAlert {
   postedBy: string;
   postedById?: string;
   ward?: string;
+  isRead: boolean;
+  deliveredCount: number;
+  readCount: number;
 }
 
 export type AlertDraft = Pick<AppAlert, "title" | "body" | "type"> & Partial<Pick<AppAlert,
-  "category" | "priority" | "location" | "validUntil" | "expiresAt" | "targetAudience" | "media"
+  "category" | "priority" | "language" | "status" | "publishAt" | "location" | "validUntil" | "expiresAt" | "targetAudience" | "media"
 >>;
 
 interface AlertContextType {
@@ -45,12 +53,18 @@ interface AlertContextType {
   error: string;
   lastUpdatedAt?: string;
   addAlert: (data: AlertDraft, postedBy?: string, postedById?: string, ward?: string) => Promise<AppAlert>;
+  updateAlert: (id: string, data: Partial<AlertDraft>) => Promise<AppAlert>;
   removeAlert: (id: string) => Promise<void>;
+  markAlertRead: (id: string) => Promise<void>;
   refreshAlerts: () => Promise<void>;
 }
 
 const AlertContext = createContext<AlertContextType | null>(null);
 const ALERT_ACTIVE_MS = 12 * 60 * 60 * 1000;
+
+function strictBoolean(value: unknown) {
+  return value === true || value === 1 || value === "1";
+}
 
 function normalizeType(value: unknown): AlertType {
   const type = String(value || "alert").toLowerCase();
@@ -60,6 +74,16 @@ function normalizeType(value: unknown): AlertType {
 function normalizePriority(value: unknown): AlertPriority {
   const priority = String(value || "normal").toLowerCase();
   return ["important", "urgent", "high"].includes(priority) ? priority as AlertPriority : "normal";
+}
+
+function normalizeLanguage(value: unknown): AlertLanguage {
+  const language = String(value || "en").toLowerCase();
+  return language === "mr" || language === "hi" ? language : "en";
+}
+
+function normalizeStatus(value: unknown): AlertStatus {
+  const status = String(value || "published").toLowerCase();
+  return ["draft", "scheduled", "archived"].includes(status) ? status as AlertStatus : "published";
 }
 
 export function wardKey(ward?: string | null) {
@@ -88,6 +112,9 @@ function normalizeBackendAlert(item: any): AppAlert {
     type: normalizeType(item?.type),
     category: item?.category || undefined,
     priority: normalizePriority(item?.priority),
+    language: normalizeLanguage(item?.language),
+    status: normalizeStatus(item?.status),
+    publishAt: item?.publishAt || item?.publish_at || undefined,
     location: item?.location || undefined,
     validFrom: item?.validFrom || item?.valid_from || undefined,
     validUntil: item?.validUntil || item?.valid_until || undefined,
@@ -106,6 +133,9 @@ function normalizeBackendAlert(item: any): AppAlert {
     postedBy: item?.postedBy || item?.posted_by || "Connect-T",
     postedById: item?.postedById || item?.posted_by_id || undefined,
     ward: item?.ward || undefined,
+    isRead: strictBoolean(item?.isRead ?? item?.is_read ?? item?.read_at),
+    deliveredCount: Number(item?.deliveredCount ?? item?.delivered_count ?? 0),
+    readCount: Number(item?.readCount ?? item?.read_count ?? 0),
   };
 }
 
@@ -113,11 +143,12 @@ function activeAlerts(items: AppAlert[]) {
   const now = Date.now();
   return items
     .filter((item) => {
+      if (item.status === "archived") return false;
       if (!item.expiresAt) return true;
       const expiry = new Date(item.expiresAt).getTime();
       return Number.isNaN(expiry) || expiry > now;
     })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort((a, b) => new Date(b.publishAt || b.createdAt).getTime() - new Date(a.publishAt || a.createdAt).getTime());
 }
 
 function formatValidUntil(value: string) {
@@ -146,7 +177,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError("");
       try {
-        const result = await apiGet<{ alerts?: any[] }>("/api/alerts");
+        const result = await apiGet<{ alerts?: any[] }>("/api/alerts?limit=100&page=1");
         setAlerts(activeAlerts((result.alerts || []).map(normalizeBackendAlert)));
         setLastUpdatedAt(new Date().toISOString());
       } catch (requestError) {
@@ -185,6 +216,9 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       type: data.type,
       category: data.category || null,
       priority: data.priority || "normal",
+      language: data.language || "en",
+      status: data.status || (data.publishAt ? "scheduled" : "published"),
+      publish_at: data.publishAt || null,
       location: data.location || null,
       valid_until: data.validUntil || formatValidUntil(expiresAt),
       expires_at: expiresAt,
@@ -205,6 +239,19 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     return created;
   };
 
+  const updateAlert = async (id: string, data: Partial<AlertDraft>) => {
+    const result = await apiPatch<{ alert?: any }>(`/api/alerts/${encodeURIComponent(id)}`, {
+      ...data,
+      publish_at: data.publishAt,
+      target_audience: data.targetAudience,
+      expires_at: data.expiresAt,
+    });
+    const updated = normalizeBackendAlert(result.alert || { ...data, id });
+    setAlerts((current) => activeAlerts(current.map((item) => item.id === id ? { ...item, ...updated } : item)));
+    await refreshAlerts();
+    return updated;
+  };
+
   const removeAlert = async (id: string) => {
     const previous = alerts;
     setAlerts((items) => items.filter((item) => item.id !== id));
@@ -217,7 +264,18 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value = useMemo(() => ({ alerts, loading, error, lastUpdatedAt, addAlert, removeAlert, refreshAlerts }), [alerts, loading, error, lastUpdatedAt, refreshAlerts]);
+  const markAlertRead = async (id: string) => {
+    const previous = alerts;
+    setAlerts((items) => items.map((item) => item.id === id ? { ...item, isRead: true } : item));
+    try {
+      await apiPost(`/api/alerts/${encodeURIComponent(id)}/read`, {});
+    } catch (requestError) {
+      setAlerts(previous);
+      throw requestError;
+    }
+  };
+
+  const value = useMemo(() => ({ alerts, loading, error, lastUpdatedAt, addAlert, updateAlert, removeAlert, markAlertRead, refreshAlerts }), [alerts, loading, error, lastUpdatedAt, refreshAlerts]);
   return <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
 }
 
