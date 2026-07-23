@@ -1,6 +1,7 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 
+import { useAuth } from "@/context/AuthContext";
 import { apiDelete, apiGet, apiPost, getUserErrorMessage } from "@/lib/api";
 import { toUploadableMediaUri } from "@/lib/mediaUpload";
 
@@ -126,13 +127,20 @@ function formatValidUntil(value: string) {
 }
 
 export function AlertProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [alerts, setAlerts] = useState<AppAlert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>();
   const refreshInFlight = useRef<Promise<void> | null>(null);
 
   const refreshAlerts = useCallback(async () => {
+    if (!user) {
+      setAlerts([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
     if (refreshInFlight.current) return refreshInFlight.current;
     const request = (async () => {
       setLoading(true);
@@ -151,15 +159,21 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     refreshInFlight.current = request;
     try { await request; }
     finally { refreshInFlight.current = null; }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
+    if (!user) {
+      setAlerts([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
     void refreshAlerts().catch(() => undefined);
     const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") void refreshAlerts().catch(() => undefined);
     });
     return () => subscription.remove();
-  }, [refreshAlerts]);
+  }, [refreshAlerts, user?.id]);
 
   const addAlert = async (data: AlertDraft, postedBy = "Connect-T", postedById?: string, ward?: string) => {
     const expiresAt = data.expiresAt || new Date(Date.now() + ALERT_ACTIVE_MS).toISOString();
