@@ -54,6 +54,8 @@ function FloatingSettingsButton() {
     <TouchableOpacity
       onPress={() => router.push("/super-admin/settings" as any)}
       activeOpacity={0.86}
+      accessibilityRole="button"
+      accessibilityLabel="Open super admin settings"
       style={{
         position: "absolute",
         top: (Platform.OS === "web" ? 24 : Math.max(insets.top, 8)) + 10,
@@ -71,7 +73,7 @@ function FloatingSettingsButton() {
         elevation: 8,
         borderWidth: 1,
         borderColor: "rgba(22,163,74,0.22)",
-        zIndex: 999,
+        zIndex: 20,
       }}
     >
       <Feather name="settings" size={19} color={GREEN} />
@@ -82,10 +84,7 @@ function FloatingSettingsButton() {
 export default function SuperAdminLayout() {
   const { user } = useAuth();
   const pathname = usePathname();
-  const hideFloatingSettings =
-    pathname.startsWith("/super-admin/officer/") ||
-    pathname === "/super-admin/settings" ||
-    pathname === "/super-admin/access";
+  const showFloatingSettings = pathname === "/super-admin" || pathname === "/super-admin/";
 
   if (!user || (user.role !== "super_admin" && !user.isSuperAdmin)) return null;
 
@@ -102,7 +101,7 @@ export default function SuperAdminLayout() {
             <Tabs.Screen name="settings" options={{ href: null }} />
             <Tabs.Screen name="access" options={{ href: null }} />
           </Tabs>
-          {!hideFloatingSettings && <FloatingSettingsButton />}
+          {showFloatingSettings && <FloatingSettingsButton />}
         </View>
       </JobsProvider>
     </JobsAuthProvider>
