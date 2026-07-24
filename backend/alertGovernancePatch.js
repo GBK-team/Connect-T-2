@@ -145,9 +145,17 @@ async function guardCreate(req, res, next) {
       return sendJson(res, 400, { success: false, code: "INVALID_ALERT_REQUEST_ID", message: "The publish request could not be verified. Please try again." });
     }
     if (id) {
-      const [rows] = await pool.query("SELECT posted_by_id FROM alerts WHERE id = ? LIMIT 1", [id]);
-      if (rows.length && String(rows[0].posted_by_id || "") !== String(user.id)) {
-        return sendJson(res, 409, { success: false, code: "ALERT_REQUEST_CONFLICT", message: "This publish request conflicts with an existing update. Please try again." });
+      const [rows] = await pool.query("SELECT * FROM alerts WHERE id = ? LIMIT 1", [id]);
+      if (rows.length) {
+        if (String(rows[0].posted_by_id || "") !== String(user.id)) {
+          return sendJson(res, 409, { success: false, code: "ALERT_REQUEST_CONFLICT", message: "This publish request conflicts with an existing update. Please try again." });
+        }
+        return sendJson(res, 200, {
+          success: true,
+          duplicate: true,
+          alertId: id,
+          alert: rows[0],
+        });
       }
     }
 
