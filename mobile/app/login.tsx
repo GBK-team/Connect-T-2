@@ -1,5 +1,5 @@
 import { AppScrollView } from "@/components/AppScrollView";
-import { getOtpSessionState, sendRealOtp, verifyRealOtp } from "../lib/otpApi";
+import { getActiveOtpSessionState, getOtpSessionState, sendRealOtp, verifyRealOtp } from "../lib/otpApi";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -14,8 +14,8 @@ import { useAuth } from "@/context/AuthContext";
 import { ambernathWards } from "@/data/mumbaiServices";
 import { getUserErrorMessage } from "@/lib/api";
 
-type AuthTab = "register" | "login";
-type Step = "form" | "otp" | "notifications" | "success";
+ type AuthTab = "register" | "login";
+ type Step = "form" | "otp" | "notifications" | "success";
 
 const ORANGE = "#EA580C";
 const DARK = "#C2410C";
@@ -68,9 +68,62 @@ export default function LoginScreen() {
 
   const phone = tab === "register" ? cleanPhone(regPhone) : cleanPhone(loginPhone);
 
+  const registrationDraft = () => ({
+    regName: regName.trim(),
+    regEmail: regEmail.trim(),
+    regDob: regDob.trim(),
+    regAddress: regAddress.trim(),
+    regWard,
+    notifyEmail,
+    notifyWhatsapp,
+  });
+
   const updateCountdown = useCallback(() => {
     setResendRemaining(Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)));
   }, [resendAt]);
+
+  useEffect(() => {
+    let active = true;
+    void getActiveOtpSessionState().then((session) => {
+      if (!active || !session) return;
+      const restoredTab: AuthTab = session.purpose === "register" ? "register" : "login";
+      setTab(restoredTab);
+      setResendAt(session.resendAt);
+      setOtp("");
+
+      if (restoredTab === "login") {
+        setLoginPhone(session.mobile);
+        setStep("otp");
+        setOtpNotice("Continue with the OTP already sent to your mobile number.");
+        return;
+      }
+
+      const draft = session.draft || {};
+      const restoredName = String(draft.regName || "");
+      const restoredDob = String(draft.regDob || "");
+      const restoredAddress = String(draft.regAddress || "");
+      const restoredWard = String(draft.regWard || "");
+      setRegName(restoredName);
+      setRegEmail(String(draft.regEmail || ""));
+      setRegDob(restoredDob);
+      setRegAddress(restoredAddress);
+      setRegPhone(session.mobile);
+      setRegWard(restoredWard);
+      setNotifyEmail(draft.notifyEmail !== false);
+      setNotifyWhatsapp(draft.notifyWhatsapp !== false);
+
+      if (restoredName && restoredDob && restoredAddress && restoredWard) {
+        setStep("otp");
+        setOtpNotice("Your registration details and OTP timer were restored.");
+      } else {
+        setStep("form");
+        setError("Enter your registration details again before continuing with OTP verification.");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (step !== "otp" || phone.length !== 10) return;
@@ -117,7 +170,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const otpSend = await sendRealOtp(phone, tab);
+      const otpSend = await sendRealOtp(phone, tab, tab === "register" ? registrationDraft() : undefined);
       if (!otpSend.success) {
         setError(otpSend.error || "Failed to send OTP");
         if (otpSend.retryAfterSeconds) setResendAt(Date.now() + otpSend.retryAfterSeconds * 1000);
@@ -138,7 +191,7 @@ export default function LoginScreen() {
     setError("");
     setOtpNotice("");
     try {
-      const result = await sendRealOtp(phone, tab);
+      const result = await sendRealOtp(phone, tab, tab === "register" ? registrationDraft() : undefined);
       if (!result.success) {
         setError(result.error || "OTP could not be resent. Please try again.");
         if (result.retryAfterSeconds) setResendAt(Date.now() + result.retryAfterSeconds * 1000);
