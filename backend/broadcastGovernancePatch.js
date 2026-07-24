@@ -24,6 +24,13 @@ function normalizeWardCode(value) {
   return number >= 1 && number <= 29 ? String(number) : undefined;
 }
 
+function parseSchedule(value) {
+  const text = cleanText(value, 80);
+  if (!text) return null;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function isSuperAdmin(user) {
   return !!user && (user.role === "super_admin" || !!user.is_super_admin);
 }
@@ -79,8 +86,17 @@ async function guardCreate(req, res, next) {
     }
 
     const requestedAudience = cleanText(req.body?.audienceRole || req.body?.audience_role || "all", 30).toLowerCase();
-    if (!['all', 'citizen', 'nagarsevak', 'seeker', 'employer'].includes(requestedAudience)) {
+    if (!["all", "citizen", "nagarsevak", "seeker", "employer"].includes(requestedAudience)) {
       return sendJson(res, 400, { success: false, message: "Choose a valid audience." });
+    }
+
+    const scheduleValue = req.body?.scheduledAt || req.body?.scheduled_at;
+    const schedule = parseSchedule(scheduleValue);
+    if (schedule === undefined) {
+      return sendJson(res, 400, { success: false, message: "Enter a valid schedule date and time." });
+    }
+    if (schedule && schedule.getTime() <= Date.now()) {
+      return sendJson(res, 400, { success: false, message: "Scheduled broadcasts require a future date and time." });
     }
 
     if (isSuperAdmin(user)) {
@@ -127,7 +143,7 @@ try {
     if (installed) return;
     installed = true;
     originalPost.call(app, "/api/broadcasts", guardCreate);
-    console.log("[BroadcastGovernancePatch] ward and idempotency ownership guards active");
+    console.log("[BroadcastGovernancePatch] ward, schedule, and idempotency ownership guards active");
   }
 
   express.application.post = function patchedPost(path, ...handlers) {
@@ -140,4 +156,5 @@ try {
 
 module.exports = {
   normalizeWardCode,
+  parseSchedule,
 };
