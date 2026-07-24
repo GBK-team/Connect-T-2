@@ -22,13 +22,14 @@ test("OTP UI has persistent resend timing, restart recovery, and duplicate-submi
   assert.match(otpApi, /OTP_SESSION_EXPIRED/);
 });
 
-test("complaint photos use retry-safe multipart transport and require a stored URL", () => {
+test("complaints use retry-safe request ids for image and text-only submissions", () => {
   const context = read("context/ComplaintContext.tsx");
   const screen = read("app/complaint/new.tsx");
   assert.match(context, /apiPostForm/);
   assert.ok(context.includes('form.append("photo"'));
   assert.match(context, /submitMultipartWithNetworkRecovery/);
   assert.match(context, /clientRequestId\?: string/);
+  assert.match(context, /client_request_id: clientRequestId/);
   assert.match(context, /COMPLAINT_UPLOAD_INCOMPLETE/);
   assert.doesNotMatch(context, /result\.photo_url \|\| data\.photoAsset\.uri/);
   assert.match(screen, /requestIdRef/);
@@ -38,4 +39,12 @@ test("complaint photos use retry-safe multipart transport and require a stored U
   assert.match(screen, /Remove complaint image/);
   assert.match(screen, /Uploading image/);
   assert.match(screen, /keyboardVisible \? <SubmitButton inline/);
+});
+
+test("native image permissions are declared without unnecessary microphone access", () => {
+  const appConfig = read("app.json");
+  assert.match(appConfig, /expo-image-picker/);
+  assert.match(appConfig, /NSCameraUsageDescription/);
+  assert.match(appConfig, /NSPhotoLibraryUsageDescription/);
+  assert.match(appConfig, /"microphonePermission": false/);
 });
