@@ -26,7 +26,8 @@ test("profile removes direct switching and uses admin-reviewed requests", () => 
   assert.doesNotMatch(profile, /switchJobsRole/);
   assert.match(profile, /role-change-requests/);
   assert.match(profile, /Request Role Correction/);
-  assert.match(profile, /Switch Civic \/ Job Portal/);
+  assert.match(profile, /Switch to Civic Portal/);
+  assert.doesNotMatch(profile, /portal-select/);
 });
 
 test("Super Admin has a dedicated role governance screen", () => {

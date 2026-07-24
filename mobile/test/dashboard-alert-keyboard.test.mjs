@@ -25,21 +25,22 @@ test("job dashboards use authoritative refresh and strict database booleans", ()
 
 test("citizen alerts refresh on focus and publishing controls are role restricted", () => {
   const context = read("context/AlertContext.tsx");
-  const list = read("app/alert/list.tsx");
-  const form = read("app/alert/new.tsx");
+  const list = read("screens/OfficialUpdatesScreen.tsx");
+  const form = read("screens/AlertComposerScreen.tsx");
   assert.match(context, /AppState\.addEventListener/);
   assert.match(context, /alertVisibleForWard/);
   assert.match(list, /useFocusEffect/);
   assert.match(list, /canPublish/);
-  assert.match(list, /Official updates published by your Nagarsevak and Super Admin/);
-  assert.match(form, /if \(!canPublish\) router\.replace\("\/alert\/list"/);
+  assert.match(list, /citizenSub/);
+  assert.match(form, /const canPublish/);
+  assert.match(form, /Publishing unavailable/);
   assert.match(form, /All citizens/);
   assert.match(form, /Ward residents/);
 });
 
 test("forms use keyboard-safe scroll behavior and adjustable insets", () => {
   const appScroll = read("components/AppScrollView.tsx");
-  const alertForm = read("app/alert/new.tsx");
+  const alertForm = read("screens/AlertComposerScreen.tsx");
   const profile = read("app/jobs/(tabs)/profile.tsx");
   assert.match(appScroll, /automaticallyAdjustKeyboardInsets/);
   assert.match(appScroll, /keyboardDismissMode/);
