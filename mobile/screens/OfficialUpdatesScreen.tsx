@@ -52,8 +52,18 @@ function broadcastConfig(item: AppBroadcast) {
 function AlertCard({ item, canDelete, onOpen, onDelete }: { item: AppAlert; canDelete: boolean; onOpen: () => void; onDelete: () => void }) {
   const config = alertConfig(item);
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.86} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${config.label}: ${item.title}`}>
-      {item.media?.type === "image" ? <Image source={{ uri: item.media.uri }} style={styles.image} /> : <View style={[styles.iconBox, { backgroundColor: config.bg }]}><Feather name={item.media?.type === "video" ? "play-circle" : config.icon} size={23} color={config.color} /></View>}
+    <TouchableOpacity style={[styles.card, !item.isRead && styles.unreadCard]} activeOpacity={0.86} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${config.label}: ${item.title}`}>
+      {item.media?.type === "image" ? (
+        <View style={styles.mediaWrap}>
+          <Image source={{ uri: item.media.uri }} style={styles.image} />
+          {!item.isRead ? <View style={styles.unreadDot} /> : null}
+        </View>
+      ) : (
+        <View style={[styles.iconBox, { backgroundColor: config.bg }]}>
+          <Feather name={item.media?.type === "video" ? "play-circle" : config.icon} size={23} color={config.color} />
+          {!item.isRead ? <View style={styles.unreadDot} /> : null}
+        </View>
+      )}
       <View style={styles.cardContent}>
         <View style={styles.cardTopRow}><View style={[styles.typePill, { backgroundColor: config.bg }]}><Text style={[styles.typeText, { color: config.color }]}>{config.label}</Text></View><Text style={styles.date}>{formatDate(item.createdAt)}</Text></View>
         <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
@@ -105,22 +115,23 @@ export default function OfficialUpdatesScreen() {
 
   const visibleAlerts = useMemo(() => {
     if (!user) return [];
-    if (isSuperAdmin) return allAlerts;
-    if (user.role === "nagarsevak") return allAlerts;
-    return allAlerts.filter((item) => alertVisibleForWard(item, user.ward));
+    if (isSuperAdmin || user.role === "nagarsevak") return allAlerts;
+    return allAlerts.filter((item) => alertVisibleForWard(item, user.ward || user.wardCode));
   }, [allAlerts, isSuperAdmin, user]);
 
+  const sentBroadcasts = useMemo(() => broadcasts.filter((item) => item.status === "sent"), [broadcasts]);
+
   const items = useMemo<OfficialItem[]>(() => [
-    ...visibleAlerts.map((alert) => ({ key: `alert:${alert.id}`, kind: "alert" as const, createdAt: alert.createdAt, alert })),
-    ...broadcasts.filter((item) => item.status === "sent").map((broadcast) => ({ key: `broadcast:${broadcast.id}`, kind: "broadcast" as const, createdAt: broadcast.sentAt || broadcast.createdAt, broadcast })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [broadcasts, visibleAlerts]);
+    ...visibleAlerts.map((alert) => ({ key: `alert:${alert.id}`, kind: "alert" as const, createdAt: alert.publishAt || alert.createdAt, alert })),
+    ...sentBroadcasts.map((broadcast) => ({ key: `broadcast:${broadcast.id}`, kind: "broadcast" as const, createdAt: broadcast.sentAt || broadcast.createdAt, broadcast })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [sentBroadcasts, visibleAlerts]);
 
   const counts = useMemo(() => ({
     alerts: visibleAlerts.filter((item) => item.type === "alert" || item.type === "emergency").length,
     news: visibleAlerts.filter((item) => item.type === "news").length,
-    broadcasts: broadcasts.filter((item) => item.status === "sent").length,
-    unread: broadcasts.filter((item) => item.status === "sent" && !item.isRead).length,
-  }), [broadcasts, visibleAlerts]);
+    broadcasts: sentBroadcasts.length,
+    unread: visibleAlerts.filter((item) => !item.isRead).length + sentBroadcasts.filter((item) => !item.isRead).length,
+  }), [sentBroadcasts, visibleAlerts]);
 
   const openBroadcast = async (item: AppBroadcast) => {
     setSelectedBroadcast(item);
@@ -218,7 +229,8 @@ const styles = StyleSheet.create({
   list: { padding: 14, gap: 10 },
   card: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 18, backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0" },
   unreadCard: { borderColor: "#F59E0B", backgroundColor: "#FFFBEB" },
-  iconBox: { width: 50, height: 50, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  mediaWrap: { position: "relative", flexShrink: 0 },
+  iconBox: { width: 50, height: 50, borderRadius: 15, alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 },
   unreadDot: { position: "absolute", top: 5, right: 5, width: 9, height: 9, borderRadius: 5, backgroundColor: "#DC2626", borderWidth: 1.5, borderColor: "white" },
   image: { width: 58, height: 58, borderRadius: 15, backgroundColor: "#F8FAFC" },
   cardContent: { flex: 1, minWidth: 0 },
