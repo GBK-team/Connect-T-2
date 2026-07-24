@@ -59,7 +59,7 @@ test("Job Portal profiles expose complete role-specific fields and verified mobi
   ]) assert.match(screen, new RegExp(field));
   assert.match(screen, /Verified Mobile Number/);
   assert.match(screen, /cannot be edited here/);
-  assert.match(screen, /profilePhoto: null/);
+  assert.match(screen, /setField\("profilePhoto", null\)/);
   assert.match(screen, /requestCivicPortal/);
   assert.match(screen, /role-change-requests/);
   assert.doesNotMatch(context, /switchJobsRole/);
