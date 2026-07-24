@@ -22,12 +22,20 @@ test("OTP UI has persistent resend timing, restart recovery, and duplicate-submi
   assert.match(otpApi, /OTP_SESSION_EXPIRED/);
 });
 
-test("complaint photos use multipart transport instead of JSON base64", () => {
+test("complaint photos use retry-safe multipart transport and require a stored URL", () => {
   const context = read("context/ComplaintContext.tsx");
   const screen = read("app/complaint/new.tsx");
   assert.match(context, /apiPostForm/);
   assert.ok(context.includes('form.append("photo"'));
-  assert.doesNotMatch(context, /toUploadableMediaUri\(data\.photoUri\)/);
+  assert.match(context, /submitMultipartWithNetworkRecovery/);
+  assert.match(context, /clientRequestId\?: string/);
+  assert.match(context, /COMPLAINT_UPLOAD_INCOMPLETE/);
+  assert.doesNotMatch(context, /result\.photo_url \|\| data\.photoAsset\.uri/);
+  assert.match(screen, /requestIdRef/);
+  assert.match(screen, /clientRequestId: requestIdRef\.current/);
+  assert.match(screen, /VERIFIED CONTACT NUMBER/);
+  assert.match(screen, /This verified number cannot be changed/);
   assert.match(screen, /Remove complaint image/);
   assert.match(screen, /Uploading image/);
+  assert.match(screen, /keyboardVisible \? <SubmitButton inline/);
 });
