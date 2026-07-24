@@ -37,7 +37,7 @@ export type NewBroadcast = {
   audienceRole: BroadcastAudience;
   ward?: string;
   scheduledAt?: string;
-  idempotencyKey: string;
+  idempotencyKey?: string;
 };
 
 type BroadcastContextValue = {
@@ -83,12 +83,29 @@ function normalizeBroadcast(raw: any): AppBroadcast {
   };
 }
 
+function broadcastFingerprint(data: NewBroadcast) {
+  return JSON.stringify({
+    title: data.title.trim(),
+    body: data.body.trim(),
+    category: data.category,
+    language: data.language,
+    audienceRole: data.audienceRole,
+    ward: data.ward || "",
+    scheduledAt: data.scheduledAt || "",
+  });
+}
+
+function makeIdempotencyKey() {
+  return `broadcast_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+}
+
 export function BroadcastProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [broadcasts, setBroadcasts] = useState<AppBroadcast[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const refreshing = useRef<Promise<void> | null>(null);
+  const pendingIdempotencyKeys = useRef(new Map<string, string>());
 
   const refreshBroadcasts = useCallback(async () => {
     if (!user) {
@@ -118,6 +135,7 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       setBroadcasts([]);
+      pendingIdempotencyKeys.current.clear();
       return;
     }
     void refreshBroadcasts().catch(() => undefined);
@@ -132,7 +150,15 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
   }, [refreshBroadcasts, user?.id]);
 
   const createBroadcast = useCallback(async (data: NewBroadcast) => {
-    const result = await apiPost<{ broadcast: any }>("/api/broadcasts", data);
+    const fingerprint = broadcastFingerprint(data);
+    const idempotencyKey = pendingIdempotencyKeys.current.get(fingerprint) || data.idempotencyKey || makeIdempotencyKey();
+    pendingIdempotencyKeys.current.set(fingerprint, idempotencyKey);
+
+    const result = await apiPost<{ broadcast: any }>("/api/broadcasts", {
+      ...data,
+      idempotencyKey,
+    });
+    pendingIdempotencyKeys.current.delete(fingerprint);
     const created = normalizeBroadcast(result.broadcast);
     setBroadcasts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
     return created;
