@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -31,8 +31,9 @@ import { getUserErrorMessage } from "@/lib/api";
 const ORANGE = "#EA580C";
 const GREEN = "#059669";
 const BG = "#EEF2F7";
+const MAX_PROFILE_PHOTO_BYTES = 8 * 1024 * 1024;
 
-function cleanMobile(value?: string) {
+function cleanMobile(value?: string | null) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
 
@@ -76,7 +77,7 @@ type FormState = {
   contactNumber: string;
   notifyEmail: boolean;
   notifyWhatsapp: boolean;
-  profilePhoto?: string;
+  profilePhoto?: string | null;
 };
 
 function formFromUser(user: User): FormState {
@@ -93,11 +94,11 @@ function formFromUser(user: User): FormState {
     contactNumber: user.contactNumber || "",
     notifyEmail: !!user.notifyEmail,
     notifyWhatsapp: !!user.notifyWhatsapp,
-    profilePhoto: user.profilePhoto,
+    profilePhoto: user.profilePhoto ?? null,
   };
 }
 
-function DetailRow({ icon, label, value, verified }: { icon: keyof typeof Feather.glyphMap; label: string; value?: string; verified?: boolean }) {
+function DetailRow({ icon, label, value, verified }: { icon: keyof typeof Feather.glyphMap; label: string; value?: string | null; verified?: boolean }) {
   return (
     <View style={styles.detailRow}>
       <View style={styles.detailIcon}><Feather name={icon} size={16} color={ORANGE} /></View>
@@ -116,29 +117,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><View style={styles.card}>{children}</View></View>;
 }
 
-function InputField({ label, value, onChangeText, placeholder, keyboardType = "default", multiline = false, autoCapitalize = "sentences" }: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  keyboardType?: "default" | "email-address" | "phone-pad";
-  multiline?: boolean;
-  autoCapitalize?: "none" | "sentences" | "words";
-}) {
+function InputField({ label, multiline, style, ...props }: React.ComponentProps<typeof TextInput> & { label: string }) {
   return (
     <View style={styles.formGroup}>
       <Text style={styles.formLabel}>{label}</Text>
       <TextInput
-        style={[styles.input, multiline && styles.multilineInput]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#94A3B8"
-        keyboardType={keyboardType}
-        autoCapitalize={autoCapitalize}
+        {...props}
         multiline={multiline}
         textAlignVertical={multiline ? "top" : "center"}
         returnKeyType={multiline ? "default" : "next"}
+        placeholderTextColor="#94A3B8"
+        style={[styles.input, multiline && styles.multilineInput, style]}
       />
     </View>
   );
@@ -160,9 +149,14 @@ export default function CivicProfileScreen() {
   const [successMessage, setSuccessMessage] = useState("");
   const [form, setForm] = useState<FormState | null>(user ? formFromUser(user) : null);
 
+  useEffect(() => {
+    if (user && !editVisible) setForm(formFromUser(user));
+  }, [editVisible, user]);
+
   const roleLabel = useMemo(() => user ? roleName(user.role, language) : c("citizen"), [language, user]);
-  const roleColor = user?.role === "nagarsevak" || user?.role === "super_admin" ? GREEN : ORANGE;
-  const headerColors = user?.role === "nagarsevak" || user?.role === "super_admin"
+  const officialAccount = user?.role === "nagarsevak" || user?.role === "super_admin";
+  const roleColor = officialAccount ? GREEN : ORANGE;
+  const headerColors = officialAccount
     ? (["#14532D", "#16A34A", "#22C55E"] as const)
     : (["#9A3412", ORANGE, "#FB923C"] as const);
 
@@ -179,6 +173,7 @@ export default function CivicProfileScreen() {
   const openEditor = () => {
     setForm(formFromUser(user));
     setFormError("");
+    setSuccessMessage("");
     setEditVisible(true);
   };
 
@@ -196,16 +191,25 @@ export default function CivicProfileScreen() {
       aspect: [1, 1],
       quality: 0.55,
     });
-    if (!result.canceled && result.assets[0]) {
-      setForm((current) => current ? { ...current, profilePhoto: result.assets[0].uri } : current);
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) return;
+    const mime = String(asset.mimeType || "").toLowerCase();
+    if (mime && !["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+      setFormError("Choose a JPEG, PNG or WebP profile image.");
+      return;
     }
+    if (asset.fileSize && asset.fileSize > MAX_PROFILE_PHOTO_BYTES) {
+      setFormError("Choose a profile image smaller than 8MB.");
+      return;
+    }
+    setForm((current) => current ? { ...current, profilePhoto: asset.uri } : current);
   };
 
   const saveProfile = async () => {
     if (saving) return;
     setFormError("");
     setSuccessMessage("");
-    if (form.name.trim().split(/\s+/).length < 2) return setFormError(c("nameRequired"));
+    if (form.name.trim().split(/\s+/).filter(Boolean).length < 2) return setFormError(c("nameRequired"));
     if (!isValidEmail(form.email)) return setFormError(c("emailInvalid"));
     if (!isValidDob(form.dob)) return setFormError(c("dobInvalid"));
     if (!form.address.trim() && user.role === "citizen") return setFormError(c("addressRequired"));
@@ -222,11 +226,11 @@ export default function CivicProfileScreen() {
         address: form.address.trim() || undefined,
         ward: user.role === "super_admin" ? user.ward : form.ward,
         wardChanged: user.wardChanged || wardWasChanged,
-        officeAddress: form.officeAddress.trim() || undefined,
-        residenceAddress: form.residenceAddress.trim() || undefined,
-        officeTimings: form.officeTimings.trim() || undefined,
-        contactName: form.contactName.trim() || undefined,
-        contactNumber: cleanMobile(form.contactNumber) || undefined,
+        officeAddress: officialAccount ? form.officeAddress.trim() || undefined : user.officeAddress,
+        residenceAddress: officialAccount ? form.residenceAddress.trim() || undefined : user.residenceAddress,
+        officeTimings: officialAccount ? form.officeTimings.trim() || undefined : user.officeTimings,
+        contactName: officialAccount ? form.contactName.trim() || undefined : user.contactName,
+        contactNumber: officialAccount ? cleanMobile(form.contactNumber) || undefined : user.contactNumber,
         notifyEmail: form.notifyEmail,
         notifyWhatsapp: form.notifyWhatsapp,
         profilePhoto: form.profilePhoto,
@@ -240,14 +244,17 @@ export default function CivicProfileScreen() {
     }
   };
 
-  const officialRows = user.role === "citizen" ? [] : [
-    { icon: "briefcase" as const, label: c("designation"), value: user.officialDesignation || c("wardOfficer") },
-    { icon: "award" as const, label: c("nagarsevakId"), value: user.nagarsevakId },
-    { icon: "map-pin" as const, label: c("ward"), value: user.ward },
+  const officialRows = officialAccount ? [
+    { icon: "briefcase" as const, label: c("designation"), value: user.officialDesignation || roleLabel },
+    ...(user.role === "nagarsevak" ? [{ icon: "award" as const, label: c("nagarsevakId"), value: user.nagarsevakId }] : []),
+    { icon: "check-circle" as const, label: c("approvalStatus"), value: user.approvalStatus || "approved" },
+    ...(user.role === "nagarsevak" ? [{ icon: "map-pin" as const, label: c("ward"), value: user.ward }] : []),
     { icon: "home" as const, label: c("officeAddress"), value: user.officeAddress },
+    { icon: "map" as const, label: c("residenceAddress"), value: user.residenceAddress },
     { icon: "clock" as const, label: c("officeTimings"), value: user.officeTimings },
+    { icon: "user-check" as const, label: c("contactPerson"), value: user.contactName },
     { icon: "phone-call" as const, label: c("officeContact"), value: user.contactNumber ? `+91 ${cleanMobile(user.contactNumber)}` : undefined },
-  ].filter((row) => row.value);
+  ] : [];
 
   const actionTitle = accountActions.pendingAction === "logout" ? c("logoutTitle") : c("switchJobsTitle");
   const actionMessage = accountActions.pendingAction === "logout" ? c("logoutMessage") : c("switchJobsMessage");
@@ -276,14 +283,24 @@ export default function CivicProfileScreen() {
         <Section title={c("personalInfo")}>
           <DetailRow icon="user" label={c("fullName")} value={user.name} />
           <DetailRow icon="phone" label={c("mobile")} value={`+91 ${cleanMobile(user.mobile)}`} verified />
-          {user.email ? <DetailRow icon="mail" label={c("email")} value={user.email} /> : null}
-          {user.dob ? <DetailRow icon="calendar" label={c("dob")} value={user.dob} /> : null}
-          {user.address ? <DetailRow icon="home" label={c("address")} value={user.address} /> : null}
+          <DetailRow icon="mail" label={c("email")} value={user.email || c("missing")} />
+          <DetailRow icon="calendar" label={c("dob")} value={user.dob || c("missing")} />
+          <DetailRow icon="home" label={c("address")} value={user.address || c("missing")} />
           {user.role !== "super_admin" ? <DetailRow icon="map-pin" label={c("ward")} value={user.ward || c("missing")} /> : null}
-          {user.createdAt ? <DetailRow icon="clock" label={c("accountSince")} value={new Date(user.createdAt).toLocaleDateString()} /> : null}
         </Section>
 
         {officialRows.length ? <Section title={c("officialInfo")}>{officialRows.map((row) => <DetailRow key={row.label} {...row} />)}</Section> : null}
+
+        <Section title={c("preferences")}>
+          <DetailRow icon="mail" label={c("emailNotifications")} value={user.notifyEmail ? c("notificationsOn") : c("notificationsOff")} />
+          <DetailRow icon="message-circle" label={c("whatsappNotifications")} value={user.notifyWhatsapp ? c("notificationsOn") : c("notificationsOff")} />
+          <DetailRow icon="globe" label={c("language")} value={languageOptions.find((option) => option.code === language)?.nativeLabel} />
+        </Section>
+
+        <Section title={c("accountInfo")}>
+          <DetailRow icon="calendar" label={c("accountSince")} value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : c("missing")} />
+          {officialAccount ? <DetailRow icon="shield" label={c("approvalStatus")} value={user.approvalStatus || "approved"} /> : null}
+        </Section>
 
         <Section title={c("quickActions")}>
           <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/complaint/list" as any)}>
@@ -310,28 +327,29 @@ export default function CivicProfileScreen() {
           <View style={styles.editorSheet}>
             <View style={styles.sheetHandle} />
             <View style={styles.editorHeader}><Text style={styles.editorTitle}>{c("editProfile")}</Text><TouchableOpacity style={styles.closeButton} onPress={() => setEditVisible(false)} disabled={saving} accessibilityLabel="Close"><Feather name="x" size={20} color="#64748B" /></TouchableOpacity></View>
-            <AppScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+            <AppScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} automaticallyAdjustKeyboardInsets>
               <View style={styles.photoEditRow}>
                 <TouchableOpacity style={[styles.photoEdit, { backgroundColor: roleColor }]} onPress={pickPhoto} accessibilityLabel={c("editPhoto")}>
                   {form.profilePhoto ? <Image source={{ uri: form.profilePhoto }} style={styles.photoEditImage} /> : <Text style={styles.photoEditText}>{initials(form.name)}</Text>}
                   <View style={styles.photoCamera}><Feather name="camera" size={13} color="white" /></View>
                 </TouchableOpacity>
-                <View style={{ flex: 1 }}><Text style={styles.actionTitle}>{c("editPhoto")}</Text><TouchableOpacity onPress={() => setForm((current) => current ? { ...current, profilePhoto: undefined } : current)}><Text style={styles.removePhotoText}>{c("removePhoto")}</Text></TouchableOpacity></View>
+                <View style={{ flex: 1 }}><Text style={styles.actionTitle}>{c("editPhoto")}</Text><TouchableOpacity onPress={() => setForm((current) => current ? { ...current, profilePhoto: null } : current)}><Text style={styles.removePhotoText}>{c("removePhoto")}</Text></TouchableOpacity></View>
               </View>
 
-              <InputField label={c("fullName")} value={form.name} onChangeText={(name) => setForm({ ...form, name })} placeholder={c("fullName")} autoCapitalize="words" />
+              <InputField label={c("fullName")} value={form.name} onChangeText={(name) => setForm({ ...form, name })} placeholder={c("fullName")} autoCapitalize="words" maxLength={160} />
               <View style={styles.formGroup}><Text style={styles.formLabel}>{c("mobile")}</Text><View style={styles.readOnlyInput}><Feather name="lock" size={15} color="#64748B" /><Text style={styles.readOnlyText}>+91 {cleanMobile(user.mobile)}</Text><View style={styles.verifiedPill}><Feather name="check-circle" size={10} color={GREEN} /><Text style={styles.verifiedText}>{c("verified")}</Text></View></View><Text style={styles.helpText}>{c("readOnlyMobile")}</Text></View>
-              <InputField label={c("email")} value={form.email} onChangeText={(email) => setForm({ ...form, email })} placeholder="name@example.com" keyboardType="email-address" autoCapitalize="none" />
+              <InputField label={c("email")} value={form.email} onChangeText={(email) => setForm({ ...form, email })} placeholder="name@example.com" keyboardType="email-address" autoCapitalize="none" maxLength={190} />
               <View style={styles.formGroup}><DobDatePicker label={c("dob")} value={form.dob} onChange={(dob) => setForm({ ...form, dob })} placeholder={c("dob")} /></View>
-              <InputField label={c("address")} value={form.address} onChangeText={(address) => setForm({ ...form, address })} placeholder={c("address")} multiline />
+              <InputField label={c("address")} value={form.address} onChangeText={(address) => setForm({ ...form, address })} placeholder={c("address")} multiline maxLength={1000} />
 
-              {user.role !== "super_admin" ? <View style={styles.formGroup}><Text style={styles.formLabel}>{c("ward")}</Text><TouchableOpacity style={[styles.input, styles.pickerInput, user.wardChanged && styles.readOnlyDisabled]} onPress={() => !user.wardChanged && setWardVisible(true)} disabled={!!user.wardChanged}><Text style={styles.pickerValue}>{form.ward || c("selectWard")}</Text><Feather name={user.wardChanged ? "lock" : "chevron-down"} size={16} color="#64748B" /></TouchableOpacity></View> : null}
+              {user.role !== "super_admin" ? <View style={styles.formGroup}><Text style={styles.formLabel}>{c("ward")}</Text><TouchableOpacity style={[styles.input, styles.pickerInput, user.wardChanged && styles.readOnlyDisabled]} onPress={() => !user.wardChanged && setWardVisible(true)} disabled={!!user.wardChanged}><Text style={styles.pickerValue}>{form.ward || c("selectWard")}</Text><Feather name={user.wardChanged ? "lock" : "chevron-down"} size={16} color="#64748B" /></TouchableOpacity><Text style={styles.helpText}>{user.wardChanged ? "Ward change has already been used for this account." : "Ward can be changed once after registration."}</Text></View> : null}
 
-              {user.role !== "citizen" ? <>
-                <InputField label={c("officeAddress")} value={form.officeAddress} onChangeText={(officeAddress) => setForm({ ...form, officeAddress })} placeholder={c("officeAddress")} multiline />
-                <InputField label={c("residenceAddress")} value={form.residenceAddress} onChangeText={(residenceAddress) => setForm({ ...form, residenceAddress })} placeholder={c("residenceAddress")} multiline />
-                <InputField label={c("officeTimings")} value={form.officeTimings} onChangeText={(officeTimings) => setForm({ ...form, officeTimings })} placeholder="10:00 AM – 5:00 PM" />
-                <InputField label={c("officeContact")} value={form.contactNumber} onChangeText={(contactNumber) => setForm({ ...form, contactNumber })} placeholder="10-digit mobile number" keyboardType="phone-pad" />
+              {officialAccount ? <>
+                <InputField label={c("officeAddress")} value={form.officeAddress} onChangeText={(officeAddress) => setForm({ ...form, officeAddress })} placeholder={c("officeAddress")} multiline maxLength={1000} />
+                <InputField label={c("residenceAddress")} value={form.residenceAddress} onChangeText={(residenceAddress) => setForm({ ...form, residenceAddress })} placeholder={c("residenceAddress")} multiline maxLength={1000} />
+                <InputField label={c("officeTimings")} value={form.officeTimings} onChangeText={(officeTimings) => setForm({ ...form, officeTimings })} placeholder="10:00 AM – 5:00 PM" maxLength={190} />
+                <InputField label={c("contactPerson")} value={form.contactName} onChangeText={(contactName) => setForm({ ...form, contactName })} placeholder={c("contactPerson")} autoCapitalize="words" maxLength={150} />
+                <InputField label={c("officeContact")} value={form.contactNumber} onChangeText={(contactNumber) => setForm({ ...form, contactNumber: contactNumber.replace(/\D/g, "").slice(0, 10) })} placeholder="10-digit mobile number" keyboardType="phone-pad" maxLength={10} />
               </> : null}
 
               <View style={styles.preferenceRow}><View style={styles.preferenceText}><Text style={styles.actionTitle}>{c("emailNotifications")}</Text></View><Switch value={form.notifyEmail} onValueChange={(notifyEmail) => setForm({ ...form, notifyEmail })} /></View>
