@@ -6,11 +6,11 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments, router as staticRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -39,6 +39,20 @@ function dashboardForUser(user: any) {
   if (isSuperAdminUser(user)) return "/super-admin";
   if (user.role === "nagarsevak") return "/(tabs)/admin";
   return "/portal-select";
+}
+
+function ProtectedCacheResetter() {
+  const { user, loading } = useAuth();
+  const client = useQueryClient();
+  const previouslyAuthenticated = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (loading) return;
+    if (previouslyAuthenticated.current === true && !user) client.clear();
+    previouslyAuthenticated.current = !!user;
+  }, [client, loading, user]);
+
+  return null;
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -176,6 +190,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <LanguageProvider>
             <AuthProvider>
+              <ProtectedCacheResetter />
               <AlertProvider>
                 <BroadcastProvider>
                   <ComplaintProvider>
