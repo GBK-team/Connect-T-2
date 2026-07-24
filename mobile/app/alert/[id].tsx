@@ -1,6 +1,6 @@
 import { AppScrollView } from "@/components/AppScrollView";
-import React, { useEffect } from "react";
-import { Alert, Image, Platform, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Image, Platform, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -56,13 +56,25 @@ export default function AlertDetailScreen() {
   const { user } = useAuth();
   const { language } = useLanguage();
   const c = (key: Parameters<typeof updatesCopy>[1]) => updatesCopy(language, key);
-  const { alerts, removeAlert, markAlertRead } = useAlerts();
+  const { alerts, loading, refreshAlerts, removeAlert, markAlertRead } = useAlerts();
+  const refreshAttemptedFor = useRef<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
 
   const alert = alerts.find((item) => String(item.id) === String(id));
   const theme = typeTheme(alert);
   const isSuperAdmin = user?.role === "super_admin" || !!user?.isSuperAdmin;
   const ownsAlert = user?.role === "nagarsevak" && String(alert?.postedById || "") === String(user?.id || "");
   const canManage = isSuperAdmin || ownsAlert;
+
+  useEffect(() => {
+    const requestedId = String(id || "");
+    if (!requestedId || alert || loading || recovering || refreshAttemptedFor.current === requestedId) return;
+    refreshAttemptedFor.current = requestedId;
+    setRecovering(true);
+    void refreshAlerts()
+      .catch(() => undefined)
+      .finally(() => setRecovering(false));
+  }, [alert, id, loading, recovering, refreshAlerts]);
 
   useEffect(() => {
     if (!alert || alert.isRead || canManage) return;
@@ -88,6 +100,15 @@ export default function AlertDetailScreen() {
       ],
     );
   };
+
+  if (!alert && (loading || recovering)) {
+    return (
+      <View style={{ flex: 1, backgroundColor: BG, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={GREEN} />
+        <Text style={{ marginTop: 10, color: "#64748B", fontFamily: "Inter_500Medium" }}>{c("loading")}</Text>
+      </View>
+    );
+  }
 
   if (!alert) {
     return (
