@@ -157,6 +157,29 @@ function formatValidUntil(value: string) {
   return date.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+function alertFingerprint(data: AlertDraft, postedById?: string, ward?: string) {
+  return JSON.stringify({
+    title: data.title.trim(),
+    body: data.body.trim(),
+    type: data.type,
+    category: data.category || "",
+    priority: data.priority || "normal",
+    language: data.language || "en",
+    status: data.status || "published",
+    publishAt: data.publishAt || "",
+    expiresAt: data.expiresAt || "",
+    targetAudience: data.targetAudience || "",
+    ward: ward || "",
+    postedById: postedById || "",
+    mediaUri: data.media?.uri || "",
+    mediaType: data.media?.type || "",
+  });
+}
+
+function makeAlertRequestId() {
+  return `ALT${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function AlertProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [alerts, setAlerts] = useState<AppAlert[]>([]);
@@ -164,6 +187,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>();
   const refreshInFlight = useRef<Promise<void> | null>(null);
+  const pendingAlertIds = useRef(new Map<string, string>());
 
   const refreshAlerts = useCallback(async () => {
     if (!user) {
@@ -197,6 +221,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       setAlerts([]);
       setError("");
       setLoading(false);
+      pendingAlertIds.current.clear();
       return;
     }
     void refreshAlerts().catch(() => undefined);
@@ -207,10 +232,14 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   }, [refreshAlerts, user?.id]);
 
   const addAlert = async (data: AlertDraft, postedBy = "Connect-T", postedById?: string, ward?: string) => {
+    const fingerprint = alertFingerprint(data, postedById, ward);
+    const requestId = pendingAlertIds.current.get(fingerprint) || makeAlertRequestId();
+    pendingAlertIds.current.set(fingerprint, requestId);
+
     const expiresAt = data.expiresAt || new Date(Date.now() + ALERT_ACTIVE_MS).toISOString();
     const mediaUri = await toUploadableMediaUri(data.media?.uri);
     const payload = {
-      id: `ALT${Date.now().toString().slice(-10)}`,
+      id: requestId,
       title: data.title.trim(),
       body: data.body.trim(),
       type: data.type,
@@ -232,7 +261,9 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       posted_by_id: postedById || null,
       ward: ward || null,
     };
+
     const result = await apiPost<{ alert?: any; alertId?: string }>("/api/alerts", payload);
+    pendingAlertIds.current.delete(fingerprint);
     const created = normalizeBackendAlert(result.alert || { ...payload, id: result.alertId || payload.id, created_at: new Date().toISOString() });
     setAlerts((current) => activeAlerts([created, ...current.filter((item) => item.id !== created.id)]));
     await refreshAlerts();
@@ -240,11 +271,17 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAlert = async (id: string, data: Partial<AlertDraft>) => {
+    const mediaUri = data.media?.uri ? await toUploadableMediaUri(data.media.uri) : undefined;
     const result = await apiPatch<{ alert?: any }>(`/api/alerts/${encodeURIComponent(id)}`, {
       ...data,
       publish_at: data.publishAt,
       target_audience: data.targetAudience,
       expires_at: data.expiresAt,
+      media_uri: mediaUri,
+      media_type: data.media?.type,
+      media_file_name: data.media?.fileName,
+      media_mime_type: data.media?.mimeType,
+      media_duration: data.media?.duration,
     });
     const updated = normalizeBackendAlert(result.alert || { ...data, id });
     setAlerts((current) => activeAlerts(current.map((item) => item.id === id ? { ...item, ...updated } : item)));
