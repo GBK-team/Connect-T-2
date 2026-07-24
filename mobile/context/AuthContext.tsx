@@ -32,10 +32,14 @@ export interface User {
   lastLoginAt?: string;
   notifyEmail?: boolean;
   notifyWhatsapp?: boolean;
-  profilePhoto?: string | null;
+  profilePhoto?: string;
   wardChanged?: boolean;
   officeAddress?: string;
 }
+
+export type UserUpdates = Omit<Partial<User>, "profilePhoto"> & {
+  profilePhoto?: string | null;
+};
 
 interface AuthContextType {
   user: User | null;
@@ -50,7 +54,7 @@ interface AuthContextType {
   loginWithPhone: (mobile: string) => Promise<User | null>;
   loginWithNagarsevakId: (mobile: string, nagarsevakId: string) => Promise<User | null>;
   unifiedLogin: (mobile: string) => Promise<User>;
-  updateUser: (updates: Partial<User>) => Promise<void>;
+  updateUser: (updates: UserUpdates) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -67,8 +71,7 @@ function normalizeRole(value: any): UserRole {
   return "citizen";
 }
 
-function normalizedProfilePhoto(raw: any): string | null | undefined {
-  if (raw?.profilePhoto === null || raw?.profile_photo === null) return null;
+function normalizedProfilePhoto(raw: any): string | undefined {
   return raw?.profilePhoto || raw?.profile_photo || undefined;
 }
 
@@ -127,11 +130,17 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
   }
 }
 
-async function upsertBackendUser(userData: User): Promise<User> {
+async function upsertBackendUser(
+  userData: User,
+  profilePhotoOverride?: string | null,
+  profilePhotoSpecified = false,
+): Promise<User> {
   const user = normalizeUser(userData);
   if (!user.name || !user.mobile) throw new Error("User name and mobile are required.");
 
-  const profilePhoto = await toUploadableMediaUri(user.profilePhoto);
+  const profilePhoto = profilePhotoSpecified
+    ? await toUploadableMediaUri(profilePhotoOverride)
+    : await toUploadableMediaUri(user.profilePhoto);
   const response = await apiPost<any>("/api/users", {
     id: user.id,
     name: user.name,
@@ -164,7 +173,7 @@ async function upsertBackendUser(userData: User): Promise<User> {
 
   return normalizeUser({
     ...user,
-    profilePhoto: responseHasPhoto ? response.profilePhoto : profilePhoto,
+    profilePhoto: responseHasPhoto ? response.profilePhoto : profilePhoto || undefined,
     wardChanged: response?.wardChanged ?? user.wardChanged ?? false,
   });
 }
@@ -277,11 +286,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextUser;
   };
 
-  const updateUser = async (updates: Partial<User>) => {
+  const updateUser = async (updates: UserUpdates) => {
     if (!user) return;
+    const profilePhotoSpecified = Object.prototype.hasOwnProperty.call(updates, "profilePhoto");
     const updated: User = normalizeUser({
       ...user,
       ...updates,
+      profilePhoto: profilePhotoSpecified ? updates.profilePhoto || undefined : user.profilePhoto,
       id: user.id,
       mobile: user.mobile,
       role: updates.role || user.role,
@@ -290,7 +301,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       wardCode: updates.wardCode ?? user.wardCode ?? null,
       isSuperAdmin: updates.isSuperAdmin ?? user.isSuperAdmin ?? false,
     });
-    const saved = await upsertBackendUser(updated);
+    const saved = await upsertBackendUser(updated, updates.profilePhoto, profilePhotoSpecified);
     await persistSession(saved);
   };
 
