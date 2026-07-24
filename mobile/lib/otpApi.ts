@@ -6,6 +6,9 @@ import { deleteSessionSecret, getSessionSecret, setSessionSecret } from "./secur
 const REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_RESEND_SECONDS = 45;
 const OTP_SESSION_PREFIX = "connect_t_otp_session_v2";
+const ACTIVE_OTP_SESSION_KEY = `${OTP_SESSION_PREFIX}:active`;
+
+export type OtpSessionDraft = Record<string, string | boolean | number | null | undefined>;
 
 export type OtpSessionState = {
   mobile: string;
@@ -13,6 +16,7 @@ export type OtpSessionState = {
   sessionToken: string;
   resendAt: number;
   expiresAt: number;
+  draft?: OtpSessionDraft;
 };
 
 export type OtpResult = {
@@ -56,6 +60,26 @@ async function readResponse(res: Response) {
   return res.json().catch(() => ({}));
 }
 
+async function clearActivePointerIfMatching(mobile: string, purpose: string) {
+  const raw = await getSessionSecret(ACTIVE_OTP_SESSION_KEY);
+  if (!raw) return;
+  try {
+    const active = JSON.parse(raw) as { mobile?: string; purpose?: string };
+    if (normalizedMobile(active.mobile || "") === normalizedMobile(mobile) && normalizedPurpose(active.purpose || "") === normalizedPurpose(purpose)) {
+      await deleteSessionSecret(ACTIVE_OTP_SESSION_KEY);
+    }
+  } catch {
+    await deleteSessionSecret(ACTIVE_OTP_SESSION_KEY);
+  }
+}
+
+export async function clearOtpSession(mobile: string, purpose = "login") {
+  await Promise.all([
+    deleteSessionSecret(sessionKey(mobile, purpose)),
+    clearActivePointerIfMatching(mobile, purpose),
+  ]);
+}
+
 export async function getOtpSessionState(mobile: string, purpose = "login"): Promise<OtpSessionState | null> {
   const key = sessionKey(mobile, purpose);
   const raw = await getSessionSecret(key);
@@ -63,36 +87,58 @@ export async function getOtpSessionState(mobile: string, purpose = "login"): Pro
   try {
     const state = JSON.parse(raw) as OtpSessionState;
     if (!state.sessionToken || state.expiresAt <= Date.now()) {
-      await deleteSessionSecret(key);
+      await clearOtpSession(mobile, purpose);
       return null;
     }
     return state;
   } catch {
-    await deleteSessionSecret(key);
+    await clearOtpSession(mobile, purpose);
     return null;
   }
 }
 
-export async function clearOtpSession(mobile: string, purpose = "login") {
-  await deleteSessionSecret(sessionKey(mobile, purpose));
+export async function getActiveOtpSessionState(): Promise<OtpSessionState | null> {
+  const raw = await getSessionSecret(ACTIVE_OTP_SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const active = JSON.parse(raw) as { mobile?: string; purpose?: string };
+    const mobile = normalizedMobile(active.mobile || "");
+    const purpose = normalizedPurpose(active.purpose || "login");
+    if (mobile.length !== 10 || !["login", "register"].includes(purpose)) {
+      await deleteSessionSecret(ACTIVE_OTP_SESSION_KEY);
+      return null;
+    }
+    const session = await getOtpSessionState(mobile, purpose);
+    if (!session) await deleteSessionSecret(ACTIVE_OTP_SESSION_KEY);
+    return session;
+  } catch {
+    await deleteSessionSecret(ACTIVE_OTP_SESSION_KEY);
+    return null;
+  }
 }
 
-async function saveOtpSession(mobile: string, purpose: string, data: any) {
+async function saveOtpSession(mobile: string, purpose: string, data: any, draft?: OtpSessionDraft) {
   const now = Date.now();
+  const normalizedOtpMobile = normalizedMobile(mobile);
+  const normalizedOtpPurpose = normalizedPurpose(purpose);
   const resendAfterSeconds = Math.max(1, Number(data?.resendAfterSeconds || DEFAULT_RESEND_SECONDS));
   const expiresInSeconds = Math.max(resendAfterSeconds, Number(data?.expiresInSeconds || 300));
   const state: OtpSessionState = {
-    mobile,
-    purpose,
+    mobile: normalizedOtpMobile,
+    purpose: normalizedOtpPurpose,
     sessionToken: String(data.sessionToken),
     resendAt: now + resendAfterSeconds * 1000,
     expiresAt: now + expiresInSeconds * 1000,
+    draft,
   };
-  await setSessionSecret(sessionKey(mobile, purpose), JSON.stringify(state));
+  await Promise.all([
+    setSessionSecret(sessionKey(normalizedOtpMobile, normalizedOtpPurpose), JSON.stringify(state)),
+    setSessionSecret(ACTIVE_OTP_SESSION_KEY, JSON.stringify({ mobile: normalizedOtpMobile, purpose: normalizedOtpPurpose })),
+  ]);
   return state;
 }
 
-export async function sendRealOtp(mobile: string, purpose = "login"): Promise<OtpResult> {
+export async function sendRealOtp(mobile: string, purpose = "login", draft?: OtpSessionDraft): Promise<OtpResult> {
   try {
     const mobile10 = normalizedMobile(mobile);
     const normalizedOtpPurpose = normalizedPurpose(purpose);
@@ -122,7 +168,7 @@ export async function sendRealOtp(mobile: string, purpose = "login"): Promise<Ot
       return { success: false, error: "OTP session was not created. Please try again.", code: "OTP_SESSION_MISSING" };
     }
 
-    const state = await saveOtpSession(mobile10, normalizedOtpPurpose, data);
+    const state = await saveOtpSession(mobile10, normalizedOtpPurpose, data, draft);
     await storeOtpVerificationToken(null);
     return {
       success: true,
@@ -176,7 +222,7 @@ export async function verifyRealOtp(mobile: string, otp: string, purpose = "logi
     const retryAfterSeconds = Number(data?.retryAfterSeconds || 0) || undefined;
 
     if (!res.ok || !data.success) {
-      if (["OTP_MAX_ATTEMPTS", "OTP_SESSION_MISMATCH", "OTP_SESSION_REQUIRED"].includes(String(data?.code || ""))) {
+      if (["OTP_MAX_ATTEMPTS", "OTP_SESSION_EXPIRED", "OTP_SESSION_MISMATCH", "OTP_SESSION_REQUIRED"].includes(String(data?.code || ""))) {
         await clearOtpSession(mobile10, normalizedOtpPurpose);
       }
       return {
