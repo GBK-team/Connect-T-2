@@ -25,6 +25,13 @@ test("shared logout confirmation is used by civic jobs nagarsevak and super admi
   }
 });
 
+test("logout also clears protected in-memory query data", () => {
+  const layout = read("app/_layout.tsx");
+  assert.match(layout, /ProtectedCacheResetter/);
+  assert.match(layout, /useQueryClient/);
+  assert.match(layout, /client\.clear\(\)/);
+});
+
 test("civic profile exposes registration fields and keeps mobile read-only", () => {
   const screen = read("screens/CivicProfileScreen.tsx");
   assert.match(screen, /readOnlyMobile/);
