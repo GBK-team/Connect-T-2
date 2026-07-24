@@ -32,7 +32,7 @@ export interface User {
   lastLoginAt?: string;
   notifyEmail?: boolean;
   notifyWhatsapp?: boolean;
-  profilePhoto?: string;
+  profilePhoto?: string | null;
   wardChanged?: boolean;
   officeAddress?: string;
 }
@@ -65,6 +65,11 @@ function normalizeMobile(mobile: string): string {
 function normalizeRole(value: any): UserRole {
   if (value === "nagarsevak" || value === "super_admin") return value;
   return "citizen";
+}
+
+function normalizedProfilePhoto(raw: any): string | null | undefined {
+  if (raw?.profilePhoto === null || raw?.profile_photo === null) return null;
+  return raw?.profilePhoto || raw?.profile_photo || undefined;
 }
 
 function normalizeUser(raw: any): User {
@@ -103,7 +108,7 @@ function normalizeUser(raw: any): User {
     lastLoginAt: raw.lastLoginAt || raw.last_login_at || undefined,
     notifyEmail: raw.notifyEmail ?? raw.notify_email ?? false,
     notifyWhatsapp: raw.notifyWhatsapp ?? raw.notify_whatsapp ?? false,
-    profilePhoto: raw.profilePhoto || raw.profile_photo || undefined,
+    profilePhoto: normalizedProfilePhoto(raw),
     officeAddress: raw.officeAddress || raw.office_address || undefined,
   };
 }
@@ -114,7 +119,6 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
       mobile: normalizeMobile(mobile),
       role: role || undefined,
     });
-
     if (res.token) await storeAuthToken(res.token);
     return res.user ? normalizeUser(res.user) : null;
   } catch (error: any) {
@@ -125,10 +129,7 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
 
 async function upsertBackendUser(userData: User): Promise<User> {
   const user = normalizeUser(userData);
-
-  if (!user.name || !user.mobile) {
-    throw new Error("User name and mobile are required.");
-  }
+  if (!user.name || !user.mobile) throw new Error("User name and mobile are required.");
 
   const profilePhoto = await toUploadableMediaUri(user.profilePhoto);
   const response = await apiPost<any>("/api/users", {
@@ -159,10 +160,11 @@ async function upsertBackendUser(userData: User): Promise<User> {
   });
 
   if (response?.token) await storeAuthToken(response.token);
+  const responseHasPhoto = Object.prototype.hasOwnProperty.call(response || {}, "profilePhoto");
 
   return normalizeUser({
     ...user,
-    profilePhoto: response?.profilePhoto || profilePhoto || undefined,
+    profilePhoto: responseHasPhoto ? response.profilePhoto : profilePhoto,
     wardChanged: response?.wardChanged ?? user.wardChanged ?? false,
   });
 }
@@ -228,14 +230,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkPhone = async (mobile: string): Promise<User | null> => fetchUserByMobile(mobile);
 
-  const register = async (
-    userData: Omit<User, "id" | "avatarColor" | "createdAt">
-  ): Promise<User> => {
+  const register = async (userData: Omit<User, "id" | "avatarColor" | "createdAt">): Promise<User> => {
     const normalizedMobile = normalizeMobile(userData.mobile);
     const role = userData.role || "citizen";
     const existing = await fetchUserByMobile(normalizedMobile, role);
     const colorIndex = Math.floor(Math.random() * AVATAR_COLORS.length);
-
     const newUser: User = normalizeUser({
       ...userData,
       mobile: normalizedMobile,
@@ -246,7 +245,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatarColor: existing?.avatarColor || AVATAR_COLORS[colorIndex],
       createdAt: existing?.createdAt || new Date().toISOString(),
     });
-
     const saved = await upsertBackendUser(newUser);
     await persistSession(saved);
     return saved;
@@ -263,10 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithNagarsevakId = async (mobile: string, nagarsevakId: string): Promise<User | null> => {
     const existingUser = await fetchUserByMobile(mobile, "nagarsevak");
-    if (
-      existingUser &&
-      (!nagarsevakId || existingUser.nagarsevakId === nagarsevakId || existingUser.id === nagarsevakId)
-    ) {
+    if (existingUser && (!nagarsevakId || existingUser.nagarsevakId === nagarsevakId || existingUser.id === nagarsevakId)) {
       await persistSession(existingUser);
       return existingUser;
     }
@@ -274,12 +269,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const unifiedLogin = async (mobile: string): Promise<User> => {
-    const response = await apiPost<any>("/api/auth/unified-login", {
-      mobile: normalizeMobile(mobile),
-    });
-    if (!response?.user || !response?.token) {
-      throw new Error("Login could not be completed. Please try again.");
-    }
+    const response = await apiPost<any>("/api/auth/unified-login", { mobile: normalizeMobile(mobile) });
+    if (!response?.user || !response?.token) throw new Error("Login could not be completed. Please try again.");
     await storeAuthToken(response.token);
     const nextUser = normalizeUser(response.user);
     await persistSession(nextUser);
@@ -288,7 +279,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
-
     const updated: User = normalizeUser({
       ...user,
       ...updates,
@@ -300,7 +290,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       wardCode: updates.wardCode ?? user.wardCode ?? null,
       isSuperAdmin: updates.isSuperAdmin ?? user.isSuperAdmin ?? false,
     });
-
     const saved = await upsertBackendUser(updated);
     await persistSession(saved);
   };
