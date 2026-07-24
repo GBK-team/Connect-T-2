@@ -32,11 +32,38 @@ test("logout also clears protected in-memory query data", () => {
   assert.match(layout, /client\.clear\(\)/);
 });
 
-test("civic profile exposes registration fields and keeps mobile read-only", () => {
+test("civic profile exposes registration, official, preference and account fields", () => {
   const screen = read("screens/CivicProfileScreen.tsx");
+  const auth = read("context/AuthContext.tsx");
   assert.match(screen, /readOnlyMobile/);
   assert.match(screen, /notifyEmail/);
+  assert.match(screen, /notifyWhatsapp/);
   assert.match(screen, /officeTimings/);
+  assert.match(screen, /residenceAddress/);
+  assert.match(screen, /contactName/);
+  assert.match(screen, /approvalStatus/);
   assert.match(screen, /DobDatePicker/);
+  assert.match(screen, /profilePhoto: null/);
   assert.match(screen, /updateUser/);
+  assert.match(auth, /nagarsevakId: role === "nagarsevak"/);
+  assert.match(auth, /mobile: user\.mobile/);
+  assert.match(auth, /responseHasPhoto/);
+});
+
+test("Job Portal profiles expose complete role-specific fields and verified mobile is read-only", () => {
+  const screen = read("app/jobs/(tabs)/profile.tsx");
+  const context = read("context/JobsAuthContext.tsx");
+  for (const field of [
+    "currentCompany", "currentRole", "previousCompany", "previousRole", "collegeName", "fieldOfStudy",
+    "companyType", "companySize", "companyDescription", "pincode", "whatsapp", "gstNo", "yearEstablished",
+  ]) assert.match(screen, new RegExp(field));
+  assert.match(screen, /Verified Mobile Number/);
+  assert.match(screen, /cannot be edited here/);
+  assert.match(screen, /profilePhoto: null/);
+  assert.match(screen, /requestCivicPortal/);
+  assert.match(screen, /role-change-requests/);
+  assert.doesNotMatch(context, /switchJobsRole/);
+  assert.match(context, /delete payload\.phone/);
+  assert.match(context, /delete payload\.role/);
+  assert.match(context, /apiPatch<any>\(`\/api\/job-portal\/users\/\$\{jobsUser\.id\}`/);
 });
