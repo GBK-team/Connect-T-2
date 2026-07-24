@@ -16,6 +16,7 @@ export interface User {
   wardNumber?: string;
   officialDesignation?: string;
   isSuperAdmin?: boolean;
+  approvalStatus?: string;
   age?: number;
   dob?: string;
   email?: string;
@@ -27,6 +28,8 @@ export interface User {
   nagarsevakId?: string;
   avatarColor?: string;
   createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
   notifyEmail?: boolean;
   notifyWhatsapp?: boolean;
   profilePhoto?: string;
@@ -84,6 +87,7 @@ function normalizeUser(raw: any): User {
     officialDesignation: raw.officialDesignation || raw.official_designation || undefined,
     wardChanged: raw.wardChanged ?? raw.ward_changed ?? false,
     isSuperAdmin,
+    approvalStatus: raw.approvalStatus || raw.approval_status || undefined,
     age: raw.age === undefined || raw.age === null ? undefined : Number(raw.age),
     dob: raw.dob || undefined,
     email: raw.email || undefined,
@@ -92,9 +96,11 @@ function normalizeUser(raw: any): User {
     contactName: raw.contactName || raw.contact_name || undefined,
     officeTimings: raw.officeTimings || raw.office_timings || undefined,
     residenceAddress: raw.residenceAddress || raw.residence_address || undefined,
-    nagarsevakId: raw.nagarsevakId || raw.nagarsevak_id || raw.id || undefined,
+    nagarsevakId: role === "nagarsevak" ? (raw.nagarsevakId || raw.nagarsevak_id || undefined) : undefined,
     avatarColor: raw.avatarColor || raw.avatar_color || AVATAR_COLORS[0],
     createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.updated_at || undefined,
+    lastLoginAt: raw.lastLoginAt || raw.last_login_at || undefined,
     notifyEmail: raw.notifyEmail ?? raw.notify_email ?? false,
     notifyWhatsapp: raw.notifyWhatsapp ?? raw.notify_whatsapp ?? false,
     profilePhoto: raw.profilePhoto || raw.profile_photo || undefined,
@@ -112,10 +118,7 @@ async function fetchUserByMobile(mobile: string, role?: UserRole): Promise<User 
     if (res.token) await storeAuthToken(res.token);
     return res.user ? normalizeUser(res.user) : null;
   } catch (error: any) {
-    if (isApiError(error) && error.status === 404) {
-      return null;
-    }
-
+    if (isApiError(error) && error.status === 404) return null;
     throw error;
   }
 }
@@ -142,7 +145,7 @@ async function upsertBackendUser(userData: User): Promise<User> {
     dob: user.dob || null,
     email: user.email || null,
     address: user.address || null,
-    nagarsevak_id: user.nagarsevakId || user.id,
+    nagarsevak_id: user.role === "nagarsevak" ? user.nagarsevakId || user.id : null,
     avatar_color: user.avatarColor || null,
     profile_photo: profilePhoto,
     notify_email: user.notifyEmail ? 1 : 0,
@@ -155,9 +158,7 @@ async function upsertBackendUser(userData: User): Promise<User> {
     contact_number: user.contactNumber || null,
   });
 
-  if (response?.token) {
-    await storeAuthToken(response.token);
-  }
+  if (response?.token) await storeAuthToken(response.token);
 
   return normalizeUser({
     ...user,
@@ -215,8 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (_redirectTo?: string) => {
-    // Logout is intentionally global. Every role leaves both Civic and Job Portal
-    // sessions and is sent to the single Connect T login screen.
     setLogoutTarget("/login");
     setUser(null);
     await Promise.all([
@@ -227,9 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]);
   };
 
-  const checkPhone = async (mobile: string): Promise<User | null> => {
-    return fetchUserByMobile(mobile);
-  };
+  const checkPhone = async (mobile: string): Promise<User | null> => fetchUserByMobile(mobile);
 
   const register = async (
     userData: Omit<User, "id" | "avatarColor" | "createdAt">
@@ -257,18 +254,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithPhone = async (mobile: string): Promise<User | null> => {
     const existingUser = await fetchUserByMobile(mobile, "citizen");
-
     if (existingUser) {
       await persistSession(existingUser);
       return existingUser;
     }
-
     return null;
   };
 
   const loginWithNagarsevakId = async (mobile: string, nagarsevakId: string): Promise<User | null> => {
     const existingUser = await fetchUserByMobile(mobile, "nagarsevak");
-
     if (
       existingUser &&
       (!nagarsevakId || existingUser.nagarsevakId === nagarsevakId || existingUser.id === nagarsevakId)
@@ -276,7 +270,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await persistSession(existingUser);
       return existingUser;
     }
-
     return null;
   };
 
@@ -300,8 +293,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...user,
       ...updates,
       id: user.id,
+      mobile: user.mobile,
       role: updates.role || user.role,
-      nagarsevakId: updates.nagarsevakId ?? user.nagarsevakId,
+      nagarsevakId: user.role === "nagarsevak" ? (updates.nagarsevakId ?? user.nagarsevakId) : undefined,
       createdAt: user.createdAt,
       wardCode: updates.wardCode ?? user.wardCode ?? null,
       isSuperAdmin: updates.isSuperAdmin ?? user.isSuperAdmin ?? false,
