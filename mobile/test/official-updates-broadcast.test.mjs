@@ -13,6 +13,9 @@ test("citizen official updates combine alerts news and broadcasts", () => {
   assert.match(screen, /useBroadcasts/);
   assert.match(screen, /markBroadcastRead/);
   assert.match(screen, /alertVisibleForWard/);
+  assert.match(screen, /user\.ward \|\| user\.wardCode/);
+  assert.match(screen, /visibleAlerts\.filter\(\(item\) => !item\.isRead\)/);
+  assert.match(screen, /!item\.isRead && styles\.unreadCard/);
   assert.match(screen, /externalPushStatus === "not_configured"/);
 });
 
@@ -26,10 +29,13 @@ test("broadcast center supports audience language preview schedule and archive",
   assert.match(screen, /Not configured/);
 });
 
-test("alert details hide destructive controls from citizens and sync read state", () => {
+test("alert details hide destructive controls from citizens, recover deep links, and sync read state", () => {
   const detail = read("app/alert/[id].tsx");
   assert.match(detail, /canManage/);
   assert.match(detail, /markAlertRead/);
+  assert.match(detail, /refreshAttemptedFor/);
+  assert.match(detail, /refreshAlerts/);
+  assert.match(detail, /loading \|\| recovering/);
   assert.match(detail, /canManage \?/);
   assert.match(detail, /removeAlert/);
 });
