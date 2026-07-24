@@ -30,6 +30,10 @@ function activeKey(mobile, purpose) {
   return `${mobile}:${cleanPurpose(purpose)}`;
 }
 
+function otpDigest(sessionToken, code) {
+  return crypto.createHash("sha256").update(`${sessionToken}:${code}`).digest();
+}
+
 function removeSession(token) {
   const session = sessions.get(token);
   sessions.delete(token);
@@ -108,7 +112,7 @@ async function sendOtp({ mobile: rawMobile, purpose = "login", sendSms }) {
   sessions.set(sessionToken, {
     mobile,
     purpose: normalizedPurpose,
-    code,
+    codeDigest: otpDigest(sessionToken, code),
     attempts: 0,
     expiresAt: now + OTP_TTL_MS,
   });
@@ -132,7 +136,7 @@ function verifyOtp({ mobile: rawMobile, code: rawCode, purpose = "login", sessio
 
   if (!token) throw new OtpError("OTP session is required", 400, "OTP_SESSION_REQUIRED");
   const session = sessions.get(token);
-  if (!session) throw new OtpError("Invalid or expired OTP", 400, "OTP_INVALID_OR_EXPIRED");
+  if (!session) throw new OtpError("OTP session expired or was replaced. Request a new OTP.", 400, "OTP_SESSION_EXPIRED");
 
   if (session.mobile !== mobile || session.purpose !== normalizedPurpose || activeSessions.get(activeKey(mobile, normalizedPurpose)) !== token) {
     removeSession(token);
@@ -140,8 +144,8 @@ function verifyOtp({ mobile: rawMobile, code: rawCode, purpose = "login", sessio
   }
 
   session.attempts += 1;
-  const expected = Buffer.from(session.code);
-  const received = Buffer.from(code);
+  const expected = session.codeDigest;
+  const received = otpDigest(token, code);
   const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
 
   if (!valid) {
@@ -154,7 +158,7 @@ function verifyOtp({ mobile: rawMobile, code: rawCode, purpose = "login", sessio
         RESEND_DELAY_MS,
       );
     }
-    throw new OtpError("Invalid or expired OTP", 400, "OTP_INVALID_OR_EXPIRED");
+    throw new OtpError("The OTP is incorrect. Please try again.", 400, "OTP_INVALID");
   }
 
   removeSession(token);
